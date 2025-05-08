@@ -9,13 +9,24 @@ import (
 
 func StartServer() {
 	r := mux.NewRouter()
-	r.HandleFunc("/stake", handleStake).Methods("POST")
-	r.HandleFunc("/unstake", handleUnstake).Methods("POST")
-	r.HandleFunc("/claim-rewards", handleClaimRewards).Methods("GET")
+	r.HandleFunc("/stake", handleStake).Methods("POST", "OPTIONS")
+	r.HandleFunc("/unstake", handleUnstake).Methods("POST", "OPTIONS")
+	r.HandleFunc("/claim-rewards", handleClaimRewards).Methods("GET", "OPTIONS")
 	http.ListenAndServe(":8080", r)
 }
 
 func handleStake(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight OPTIONS request
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	var req struct {
 		Address   string `json:"address"`
 		Target    string `json:"target"`
@@ -35,6 +46,17 @@ func handleStake(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleUnstake(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight OPTIONS request
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	var req struct {
 		Address string `json:"address"`
 		Amount  uint64 `json:"amount"`
@@ -52,6 +74,17 @@ func handleUnstake(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleClaimRewards(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight OPTIONS request
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	address := r.URL.Query().Get("address")
 	if address == "" {
 		http.Error(w, "Address is required", http.StatusBadRequest)

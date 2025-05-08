@@ -17,6 +17,7 @@ type Event struct {
 
 // Emit events to a channel or logging system (customize as needed)
 func (t *Token) emitEvent(event Event) {
-	// Example: Integrate with WebSocket, Kafka, or log to file
-	// eventChannel <- event
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.events = append(t.events, event)
 }
