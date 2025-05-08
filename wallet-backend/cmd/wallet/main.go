@@ -8,18 +8,26 @@ import (
 )
 
 func main() {
-	// Simple test without CLI``
+	// Create and save
 	wallet, err := internal.NewWallet()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed to create wallet:", err)
 	}
-
 	fmt.Println("=== Wallet Created ===")
-	fmt.Printf("Public Key: %s\n", wallet.PublicKey)
+	fmt.Println("Address:", wallet.Address)
+	fmt.Println("Public Key:", wallet.PublicKey)
 
-	// If you implemented Save function
 	if err := wallet.Save("wallet.json"); err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed to save wallet:", err)
 	}
-	fmt.Println("Wallet saved to wallet.json")
+	fmt.Println("Wallet saved.")
+
+	// Load
+	loaded, err := internal.Load("wallet.json")
+	if err != nil {
+		log.Fatal("Failed to load wallet:", err)
+	}
+	fmt.Println("=== Wallet Loaded ===")
+	fmt.Println("Address:", loaded.Address)
+	fmt.Println("Public Key:", loaded.PublicKey)
 }
