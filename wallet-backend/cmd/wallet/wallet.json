@@ -1,5 +1,6 @@
 {
-  "public_key": "0381486a720204313ce393bf2380262eaa02d826c9ed9c05be73365719b4aee8eb",
-  "address": "80262eaa02d826c9ed9c05be73365719b4aee8eb",
-  "encrypted_private_key": "17e6fd74025dee797b4cf7d0f5687c49a887db1e37d5f6a44de2c8b30d7b5a5bb385cf6fba76d4aeb0bdfefb8d62468551275a6edd95508bc77a67a39633d16544fa836c90906ee65adfa96661c2650d"
+  "PublicKey": "030aae82de5594e2a790b1ab9d702cdbb7597db62f698d2937e99b688c019ec23b",
+  "Address": "894aae7b315756215e8aa47478f5047ba518be85",
+  "Mnemonic": "else december pet review gun bicycle hunt barely promote recycle slight borrow",
+  "EncryptedPrivKey": "904baec12c5f67e8f66d17288a6a1ab3ae4f06e252735ae8e0c0c07169ce06b48f28696f9eff35897ea32d3557c70b43"
 }

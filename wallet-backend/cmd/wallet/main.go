@@ -3,31 +3,32 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend/internal"
 )
 
 func main() {
-	// Create and save
-	wallet, err := internal.NewWallet()
-	if err != nil {
-		log.Fatal("Failed to create wallet:", err)
-	}
-	fmt.Println("=== Wallet Created ===")
-	fmt.Println("Address:", wallet.Address)
-	fmt.Println("Public Key:", wallet.PublicKey)
 
-	if err := wallet.Save("wallet.json"); err != nil {
-		log.Fatal("Failed to save wallet:", err)
-	}
-	fmt.Println("Wallet saved.")
+	walletPath := "wallet.json"
 
-	// Load
-	loaded, err := internal.Load("wallet.json")
-	if err != nil {
-		log.Fatal("Failed to load wallet:", err)
+	if _, err := os.Stat(walletPath); os.IsNotExist(err) {
+		// Wallet doesn't exist → create new
+		wallet, err := internal.NewWallet()
+		if err != nil {
+			log.Fatal(err)
+		}
+		wallet.Save(walletPath)
+		fmt.Println("New wallet created:")
+		fmt.Println(wallet)
+	} else {
+		// Wallet exists → load existing
+		wallet, err := internal.Load(walletPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("Existing wallet loaded:")
+		fmt.Println(wallet)
 	}
-	fmt.Println("=== Wallet Loaded ===")
-	fmt.Println("Address:", loaded.Address)
-	fmt.Println("Public Key:", loaded.PublicKey)
+
 }

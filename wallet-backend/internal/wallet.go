@@ -1,88 +1,73 @@
 package internal
 
 import (
-	// "crypto/aes"
-	// "crypto/cipher"
-	// "crypto/rand"
-	// "encoding/hex"
 	"encoding/json"
 	"errors"
-	// "io"
 	"os"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend/crypto"
 )
 
 type Wallet struct {
-	KeyManager       *crypto.KeyManager `json:"-"`
-	PublicKey        string             `json:"public_key"`
-	Address          string             `json:"address"`
-	EncryptedPrivKey string             `json:"encrypted_private_key"`
-	Mnemonic         string             `json:"mnemonic,omitempty"` 
+	PublicKey        string
+	Address          string
+	Mnemonic         string
+	EncryptedPrivKey string
 }
 
-var encryptionKey = []byte("0123456789ABCDEF0123456789ABCDEF") // exactly 32 bytes
-
- // must be 32 bytes
-
+// Create a new wallet with mnemonic-based key
 func NewWallet() (*Wallet, error) {
-	km, err := crypto.NewKeyManager()
+	km, mnemonic, err := crypto.NewKeyManagerWithMnemonic()
 	if err != nil {
 		return nil, err
 	}
 
-	pubKey := km.GetPublicKey()
-	address := crypto.DeriveAddress(pubKey)
-
-	privKeyHex := km.GetPrivateKeyHex()
-	encrypted, err := encrypt([]byte(privKeyHex), encryptionKey)
+	encryptedKey, err := crypto.EncryptPrivateKey(km)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Wallet{
-		KeyManager:       km,
-		PublicKey:        pubKey,
-		Address:          address,
-		EncryptedPrivKey: encrypted,
-		Mnemonic:         "", // if using HD wallets
+		PublicKey:        km.GetPublicKey(),
+		Address:          km.GetAddress(),
+		Mnemonic:         mnemonic,
+		EncryptedPrivKey: encryptedKey,
 	}, nil
 }
 
-func (w *Wallet) Save(walletPath string) error {
-	fileData, err := json.MarshalIndent(w, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(walletPath, fileData, 0600)
-}
-
+// Restore wallet from saved file
 func Load(walletPath string) (*Wallet, error) {
 	data, err := os.ReadFile(walletPath)
 	if err != nil {
 		return nil, err
 	}
 
-	var temp Wallet
-	if err := json.Unmarshal(data, &temp); err != nil {
+	var walletData Wallet
+	if err := json.Unmarshal(data, &walletData); err != nil {
 		return nil, err
 	}
 
-	if temp.EncryptedPrivKey == "" {
+	if walletData.EncryptedPrivKey == "" {
 		return nil, errors.New("missing EncryptedPrivKey in wallet file")
 	}
 
-	// Decrypt private key
-	privKeyBytes, err := decrypt(temp.EncryptedPrivKey, encryptionKey)
+	km, err := crypto.DecryptPrivateKey(walletData.EncryptedPrivKey)
 	if err != nil {
 		return nil, err
 	}
 
-	km, err := crypto.NewKeyManagerFromPrivateKeyHex(string(privKeyBytes))
-	if err != nil {
-		return nil, err
-	}
+	// Update walletData with KeyManager values
+	walletData.PublicKey = km.GetPublicKey()
+	walletData.Address = km.GetAddress()
 
-	temp.KeyManager = km
-	return &temp, nil
+	return &walletData, nil
+}
+
+// Save wallet to a file
+func (w *Wallet) Save(walletPath string) error {
+	data, err := json.MarshalIndent(w, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(walletPath, data, 0600)
 }

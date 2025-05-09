@@ -25,7 +25,7 @@ func Run() {
 	go func() {
 		// Wait 10 seconds to allow staking via API
 		log.Println("Waiting 10 seconds before distributing rewards...")
-		time.Sleep(10 * time.Second)
+		time.Sleep(30 * time.Second)
 		log.Println("Distributing rewards for epoch 1...")
 		consensus.DistributeRewards(1, t)
 	}()
