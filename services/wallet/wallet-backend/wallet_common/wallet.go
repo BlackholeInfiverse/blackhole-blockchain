@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend/crypto"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet-backend/crypto"
 )
 
 type Wallet struct {
@@ -213,7 +213,7 @@ func (w *Wallet) VerifyTransaction(data, signature []byte) (bool, error) {
 
 func CreateAndSignTransaction(mnemonic, password, toAddress, amount, txType string) (*Transaction, error) {
 	// Restore wallet
-	wallet, err := RestoreWallet(mnemonic,password)
+	wallet, err := RestoreWallet(mnemonic, password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to restore wallet: %v", err)
 	}

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/cmd/relay"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/cmd/relay"
 )
 
 func main() {

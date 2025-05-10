@@ -5,11 +5,11 @@ import (
 	"log"
 	"time"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/api"
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/chain"
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/consensus"
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/crypto"
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/token"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/api"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/consensus"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/crypto"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
 )
 
 func Run() {
@@ -19,7 +19,7 @@ func Run() {
 	// validator := consensus.New
 	// Validator() // Removed as NewValidator is undefined
 
-// Initialize consensus state
+	// Initialize consensus state
 	consensus.Validators = make(map[string]*consensus.Validator)
 	consensus.Stakes = make(map[string]*consensus.Stake)
 	consensus.Rewards = []consensus.Reward{}
@@ -38,7 +38,6 @@ func Run() {
 	}()
 
 	// Keep the node running
-	
 
 	// Generate test key pairs
 	privKey1, pubKey1, err := crypto.GenerateKeyPair()
@@ -84,4 +83,3 @@ func Run() {
 
 	select {}
 }
-

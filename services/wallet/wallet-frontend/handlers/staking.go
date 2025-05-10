@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"text/template"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend/client"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet-backend/client"
 )
 
 func StakeHandler(w http.ResponseWriter, r *http.Request) {

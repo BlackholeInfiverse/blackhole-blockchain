@@ -3,7 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/consensus"
+
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/consensus"
 	"github.com/gorilla/mux"
 )
 

@@ -5,7 +5,7 @@ import (
 	"log"
 	"sort"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/token"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
 )
 
 type Stake struct {
@@ -72,13 +72,13 @@ func StakeTokens(address, target string, amount uint64, stakeType string) error 
 func SelectValidators() []*Validator {
 	var validatorList []*Validator
 	for _, v := range Validators {
-			validatorList = append(validatorList, v)
+		validatorList = append(validatorList, v)
 	}
 	sort.Slice(validatorList, func(i, j int) bool {
-			return validatorList[i].TotalStake > validatorList[j].TotalStake
+		return validatorList[i].TotalStake > validatorList[j].TotalStake
 	})
 	if len(validatorList) > 100 {
-			return validatorList[:100]
+		return validatorList[:100]
 	}
 	return validatorList
 }
@@ -86,21 +86,21 @@ func SelectValidators() []*Validator {
 func SlashValidator(address string, offense string) error {
 	validator, exists := Validators[address]
 	if !exists {
-			return errors.New("validator not found")
+		return errors.New("validator not found")
 	}
 	var penalty float64
 	switch offense {
 	case "downtime":
-			penalty = 0.01 // 1%
+		penalty = 0.01 // 1%
 	case "double-signing":
-			penalty = 0.05 // 5%
+		penalty = 0.05 // 5%
 	default:
-			return errors.New("unknown offense")
+		return errors.New("unknown offense")
 	}
 	slashAmount := uint64(float64(validator.TotalStake) * penalty)
 	validator.TotalStake -= slashAmount
 	if validator.TotalStake == 0 {
-			validator.Active = false
+		validator.Active = false
 	}
 	return nil
 }
