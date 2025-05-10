@@ -1,3 +1,3 @@
-module github.com/Shivam-Patel-G/blackhole-blockchain/parachains
+module github.com/blackhole-blockchain/parachains
 
 go 1.24.2
