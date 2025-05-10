@@ -1,64 +1,129 @@
 package crypto
+
 import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
+
+	"golang.org/x/crypto/pbkdf2"
 )
 
-var encryptionKey = []byte("0123456789abcdef0123456789abcdef") // 32 bytes = AES-256
+const (
+	keyDerivationIterations = 100000
+	saltSize                = 32
+)
 
-func EncryptPrivateKey(km *KeyManager) (string, error) {
-	plainBytes := km.GetPrivateKeyBytes()
+// EncryptPrivateKey encrypts the private key from KeyManager using AES-256-GCM
+func EncryptPrivateKey(km *KeyManager, password string) (string, error) {
+	if km == nil || km.privateKey == nil {
+		return "", errors.New("invalid key manager or private key")
+	}
 
-	block, err := aes.NewCipher(encryptionKey)
+	// Convert private key to bytes
+	privateKeyBytes := km.privateKey.D.Bytes()
+
+	// Generate random salt
+	salt := make([]byte, saltSize)
+	if _, err := rand.Read(salt); err != nil {
+		return "", fmt.Errorf("failed to generate salt: %v", err)
+	}
+
+	// Derive encryption key from password
+	key := pbkdf2.Key([]byte(password), salt, keyDerivationIterations, 32, sha256.New)
+
+	// Create AES cipher block
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create cipher block: %v", err)
 	}
 
-	ciphertext := make([]byte, aes.BlockSize+len(plainBytes))
-	iv := ciphertext[:aes.BlockSize]
-
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return "", err
+	// Create GCM mode
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %v", err)
 	}
 
-	stream := cipher.NewCFBEncrypter(block, iv)
-	stream.XORKeyStream(ciphertext[aes.BlockSize:], plainBytes)
+	// Generate nonce
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", fmt.Errorf("failed to generate nonce: %v", err)
+	}
 
-	return hex.EncodeToString(ciphertext), nil
+	// Encrypt the private key
+	ciphertext := gcm.Seal(nil, nonce, privateKeyBytes, nil)
+
+	// Combine salt + nonce + ciphertext
+	encryptedData := make([]byte, 0, len(salt)+len(nonce)+len(ciphertext))
+	encryptedData = append(encryptedData, salt...)
+	encryptedData = append(encryptedData, nonce...)
+	encryptedData = append(encryptedData, ciphertext...)
+
+	return hex.EncodeToString(encryptedData), nil
 }
 
-func DecryptPrivateKey(encryptedHex string) (*KeyManager, error) {
-	ciphertext, err := hex.DecodeString(encryptedHex)
+// DecryptPrivateKey decrypts the private key and returns a KeyManager
+func DecryptPrivateKey(encryptedHex string, password string) (*KeyManager, error) {
+	// Decode hex string
+	encryptedData, err := hex.DecodeString(encryptedHex)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid hex string: %v", err)
 	}
 
-	if len(ciphertext) < aes.BlockSize {
-		return nil, errors.New("ciphertext too short")
+	// Check minimum length (salt + nonce)
+	if len(encryptedData) < saltSize+12 {
+		return nil, errors.New("invalid encrypted data length")
 	}
 
-	block, err := aes.NewCipher(encryptionKey)
+	// Extract components
+	salt := encryptedData[:saltSize]
+	encryptedData = encryptedData[saltSize:]
+
+	// Derive encryption key
+	key := pbkdf2.Key([]byte(password), salt, keyDerivationIterations, 32, sha256.New)
+
+	// Create AES cipher block
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create cipher block: %v", err)
 	}
 
-	iv := ciphertext[:aes.BlockSize]
-	ciphertext = ciphertext[aes.BlockSize:]
+	// Create GCM mode
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %v", err)
+	}
 
-	stream := cipher.NewCFBDecrypter(block, iv)
-	stream.XORKeyStream(ciphertext, ciphertext)
+	// Extract nonce and ciphertext
+	nonceSize := gcm.NonceSize()
+	if len(encryptedData) < nonceSize {
+		return nil, errors.New("invalid encrypted data length")
+	}
 
-	d := new(big.Int).SetBytes(ciphertext)
-	priv := new(ecdsa.PrivateKey)
-	priv.D = d
-	priv.PublicKey.Curve = elliptic.P256()
+	nonce := encryptedData[:nonceSize]
+	ciphertext := encryptedData[nonceSize:]
+
+	// Decrypt the private key
+	privateKeyBytes, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("decryption failed: %v", err)
+	}
+
+	// Reconstruct ECDSA private key
+	d := new(big.Int).SetBytes(privateKeyBytes)
+	priv := &ecdsa.PrivateKey{
+		D: d,
+		PublicKey: ecdsa.PublicKey{
+			Curve: elliptic.P256(),
+		},
+	}
 	priv.PublicKey.X, priv.PublicKey.Y = priv.PublicKey.Curve.ScalarBaseMult(d.Bytes())
 
 	return &KeyManager{privateKey: priv}, nil

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>Transaction Status</title></head>
+<body>
+  <h1>{{ .Message }}</h1>
+
+  {{ with .Transaction }}
+    <p><strong>From:</strong> {{ .From }}</p>
+    <p><strong>To:</strong> {{ .To }}</p>
+    <p><strong>Amount:</strong> {{ .Value }}</p>
+
+    <p><strong>Timestamp:</strong> {{ .Timestamp }}</p>
+    <p><strong>Signature:</strong> {{ .Signature }}</p>
+  {{ else }}
+    <p>No transaction details available.</p>
+  {{ end }}
+
+  <a href="/">Back to Home</a>
+</body>
+</html>

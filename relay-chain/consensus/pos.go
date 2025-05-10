@@ -2,7 +2,9 @@ package consensus
 
 import (
 	"errors"
+	"log"
 	"sort"
+
 	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/token"
 )
 
@@ -108,25 +110,48 @@ func DistributeRewards(epoch int64, token *token.Token) []Reward {
 	for _, v := range Validators {
 		totalStake += v.TotalStake
 	}
-	inflationRate := 0.05 // 5% annual inflation
-	newTokens := uint64(float64(totalStake) * inflationRate / 365) // Daily minting
+	inflationRate := 0.05
+	newTokens := uint64(float64(totalStake) * inflationRate)
+	log.Printf("Total Stake: %d, New Tokens: %d", totalStake, newTokens)
 
 	var epochRewards []Reward
 	for _, v := range Validators {
 		validatorReward := uint64(float64(newTokens) * float64(v.TotalStake) / float64(totalStake) * (1 - v.Commission))
-		if err := token.Mint(v.Address, validatorReward); err != nil {
-			continue
-		}
-		epochRewards = append(epochRewards, Reward{v.Address, validatorReward, epoch})
-		for _, d := range v.Delegators {
-			delegatorReward := uint64(float64(newTokens) * float64(d.Amount) / float64(totalStake) * v.Commission)
-			if err := token.Mint(d.Address, delegatorReward); err != nil {
+		log.Printf("Validator %s: TotalStake=%d, Reward=%d", v.Address, v.TotalStake, validatorReward)
+		if validatorReward > 0 {
+			if err := token.Mint(v.Address, validatorReward); err != nil {
+				log.Printf("Mint failed for validator %s: %v", v.Address, err)
+				// For debugging: Append reward even if mint fails
+				reward := Reward{v.Address, validatorReward, epoch}
+				epochRewards = append(epochRewards, reward)
+				log.Printf("Appended reward despite mint failure for validator %s: %+v", v.Address, reward)
 				continue
 			}
-			epochRewards = append(epochRewards, Reward{d.Address, delegatorReward, epoch})
+			reward := Reward{v.Address, validatorReward, epoch}
+			epochRewards = append(epochRewards, reward)
+			log.Printf("Added reward for validator %s: %+v", v.Address, reward)
+		}
+		for _, d := range v.Delegators {
+			delegatorReward := uint64(float64(newTokens) * float64(d.Amount) / float64(totalStake) * v.Commission)
+			log.Printf("Delegator %s: Amount=%d, Reward=%d", d.Address, d.Amount, delegatorReward)
+			if delegatorReward > 0 {
+				if err := token.Mint(d.Address, delegatorReward); err != nil {
+					log.Printf("Mint failed for delegator %s: %v", d.Address, err)
+					// For debugging: Append reward even if mint fails
+					reward := Reward{d.Address, delegatorReward, epoch}
+					epochRewards = append(epochRewards, reward)
+					log.Printf("Appended reward despite mint failure for delegator %s: %+v", d.Address, reward)
+					continue
+				}
+				reward := Reward{d.Address, delegatorReward, epoch}
+				epochRewards = append(epochRewards, reward)
+				log.Printf("Added reward for delegator %s: %+v", d.Address, reward)
+			}
 		}
 	}
+	log.Printf("Epoch Rewards: %+v", epochRewards)
 	Rewards = append(Rewards, epochRewards...)
+	log.Printf("Global Rewards: %+v", Rewards)
 	return epochRewards
 }
 
@@ -159,6 +184,7 @@ func ClaimRewards(address string) ([]Reward, error) {
 			userRewards = append(userRewards, reward)
 		}
 	}
+	log.Printf("Claiming rewards for %s: %+v", address, userRewards)
 	if len(userRewards) == 0 {
 		return nil, errors.New("no rewards available")
 	}
@@ -169,5 +195,6 @@ func ClaimRewards(address string) ([]Reward, error) {
 		}
 	}
 	Rewards = remaining
+	log.Printf("Remaining rewards after claim: %+v", Rewards)
 	return userRewards, nil
 }

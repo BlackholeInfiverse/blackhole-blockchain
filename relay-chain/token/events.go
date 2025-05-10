@@ -17,7 +17,8 @@ type Event struct {
 
 // Emit events to a channel or logging system (customize as needed)
 func (t *Token) emitEvent(event Event) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.events = append(t.events, event)
+    if t.events == nil {
+        t.events = []Event{}
+    }
+    t.events = append(t.events, event)
 }
