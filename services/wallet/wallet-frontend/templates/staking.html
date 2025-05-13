@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stake TokenX</title>
+    <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+    <h1>Stake TokenX</h1>
+    <form action="/stake" method="POST">
+        <label>Address: <input type="text" name="address"></label><br>
+        <label>Target Validator: <input type="text" name="target"></label><br>
+        <label>Amount: <input type="number" name="amount"></label><br>
+        <label>Type: 
+            <select name="stakeType">
+                <option value="validator">Validator</option>
+                <option value="delegator">Delegator</option>
+            </select>
+        </label><br>
+        <button type="submit">Stake</button>
+    </form>
+</body>
+</html>

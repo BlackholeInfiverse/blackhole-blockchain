@@ -1,0 +1,11 @@
+go 1.24.2
+
+use (
+	./core
+	./core/relay-chain
+	./libs
+	./parachains
+	./services
+	./services/wallet/wallet-backend
+	./services/wallet/wallet-frontend
+)
