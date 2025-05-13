@@ -3,15 +3,11 @@ module github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain
 go 1.24.2
 
 require (
-	github.com/gorilla/mux v1.8.0
 	github.com/libp2p/go-libp2p v0.32.2
-	github.com/libp2p/go-libp2p-core v0.20.1
 	github.com/multiformats/go-multiaddr v0.12.0
-	github.com/stretchr/testify v1.10.0
 )
 
 require (
-	github.com/Shivam-Patel-G/blackhole-blockchain v0.0.0-20250510095253-0575a4863e7d // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
@@ -78,6 +74,7 @@ require (
 	github.com/quic-go/webtransport-go v0.6.0 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
+	github.com/stretchr/testify v1.10.0 // indirect
 	go.uber.org/dig v1.17.1 // indirect
 	go.uber.org/fx v1.20.1 // indirect
 	go.uber.org/mock v0.3.0 // indirect
