@@ -7,7 +7,7 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet-backend/crypto"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend/crypto"
 )
 
 type Transaction struct {

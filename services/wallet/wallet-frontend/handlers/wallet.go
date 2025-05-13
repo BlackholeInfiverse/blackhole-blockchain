@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"text/template"
 
-	wallet "github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet-backend/wallet_common"
+	wallet "github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend/wallet_common"
 )
 
 var (
@@ -125,12 +125,12 @@ func SendTransaction(w http.ResponseWriter, r *http.Request) {
 
 	// Send transaction info back to frontend
 	err = transactionTmpl.Execute(w, struct {
-		Message     string
-		Transaction *wallet.Transaction
-	}{
-		Message:     "Transaction created and signed successfully!",
-		Transaction: tx,
-	})
+	Message     string
+	Transaction *wallet.Transaction
+}{
+	Message:     "Transaction created and signed successfully!",
+	Transaction: tx,
+})
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -7,15 +7,27 @@ import (
 	"os"
 	"time"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet-backend/crypto"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend/crypto"
 )
 
 type Wallet struct {
-	PublicKey        string `json:"public_key"`
-	Address          string `json:"address"`
-	Mnemonic         string `json:"mnemonic"`
-	EncryptedPrivKey string `json:"encrypted_priv_key"`
+	PublicKey          string        `json:"public_key"`
+	Address            string        `json:"address"`
+	Mnemonic           string        `json:"mnemonic"`
+	EncryptedPrivKey   string        `json:"encrypted_priv_key"`
+	Balance            float64       `json:"balance,omitempty"`
+	TransactionHistory []Transaction `json:"transaction_history,omitempty"`
+	LastSyncTimestamp  time.Time     `json:"last_sync_timestamp,omitempty"`
 }
+
+// BlockchainAPIInterface abstracts blockchain interactions
+type BlockchainAPIInterface interface {
+	GetBalance(address string) (float64, error)
+	GetTransactionHistory(address string) ([]Transaction, error)
+}
+
+// Global blockchain API variable (to be implemented or mocked later)
+var BlockchainAPI BlockchainAPIInterface
 
 // Create a new wallet with mnemonic-based key
 func NewWallet(password string) (*Wallet, error) {
@@ -78,7 +90,7 @@ func Load(walletPath, password string) (*Wallet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid password or corrupted wallet: %v", err)
 	}
-
+	fmt.Println(walletData.Address)
 	return &walletData, nil
 }
 
@@ -228,4 +240,46 @@ func CreateAndSignTransaction(mnemonic, password, toAddress, amount, txType stri
 	}
 
 	return tx, nil
+}
+
+// GetBalance calculates the wallet's balance by querying the blockchain
+func (w *Wallet) GetBalance() (float64, error) {
+	if BlockchainAPI == nil {
+		return 0, errors.New("BlockchainAPI not initialized")
+	}
+
+	balance, err := BlockchainAPI.GetBalance(w.Address)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get balance: %v", err)
+	}
+	w.Balance = balance
+	return balance, nil
+}
+
+// GetTransactionHistory fetches the wallet's transaction history from the blockchain
+func (w *Wallet) GetTransactionHistory() ([]Transaction, error) {
+	if BlockchainAPI == nil {
+		return nil, errors.New("BlockchainAPI not initialized")
+	}
+
+	history, err := BlockchainAPI.GetTransactionHistory(w.Address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction history: %v", err)
+	}
+	w.TransactionHistory = history
+	return history, nil
+}
+
+// SyncWallet syncs the wallet data (balance and transaction history) with the blockchain
+func (w *Wallet) SyncWallet() error {
+	if _, err := w.GetBalance(); err != nil {
+		return err
+	}
+
+	if _, err := w.GetTransactionHistory(); err != nil {
+		return err
+	}
+
+	w.LastSyncTimestamp = time.Now()
+	return nil
 }

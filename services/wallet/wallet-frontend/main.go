@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet-frontend/handlers"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/wallet-frontend/handlers"
 )
 
 func main() {
