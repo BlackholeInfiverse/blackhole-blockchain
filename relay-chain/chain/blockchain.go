@@ -4,15 +4,14 @@ import (
 	"context"
 	"sync"
 	"time"
-
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/p2p"
+	
 )
 
 type Blockchain struct {
 	Blocks      []*Block
 	PendingTxs  []*Transaction
 	StakeLedger *StakeLedger
-	P2PNode     *p2p.Node
+	P2PNode     *Node
 	mu          sync.RWMutex
 	GenesisTime time.Time
 	TotalSupply uint64
@@ -23,7 +22,7 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 	genesis := createGenesisBlock()
 
 	// Initialize P2P node
-	node, err := p2p.NewNode(context.Background(), p2pPort)
+	node, err := NewNode(context.Background(), p2pPort)
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +128,8 @@ func (bc *Blockchain) AddBlock(block *Block) bool {
 
 func (bc *Blockchain) BroadcastTransaction(tx *Transaction) {
 	data, _ := tx.Serialize()
-	msg := &p2p.Message{
-		Type: p2p.MessageTypeTx,
+	msg := &Message{
+		Type: MessageTypeTx,
 		Data: data.([]byte),
 	}
 	bc.P2PNode.Broadcast(msg)
@@ -138,16 +137,16 @@ func (bc *Blockchain) BroadcastTransaction(tx *Transaction) {
 
 func (bc *Blockchain) BroadcastBlock(block *Block) {
 	data, _ := block.Serialize()
-	msg := &p2p.Message{
-		Type: p2p.MessageTypeBlock,
+	msg := &Message{
+		Type: MessageTypeBlock,
 		Data: data.([]byte),
 	}
 	bc.P2PNode.Broadcast(msg)
 }
 
 func (bc *Blockchain) SyncChain() {
-	msg := &p2p.Message{
-		Type: p2p.MessageTypeSyncReq,
+	msg := &Message{
+		Type: MessageTypeSyncReq,
 		Data: []byte{},
 	}
 	bc.P2PNode.Broadcast(msg)

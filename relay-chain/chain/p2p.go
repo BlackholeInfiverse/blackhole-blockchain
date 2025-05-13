@@ -1,4 +1,4 @@
-package p2p
+package chain
 
 import (
 	"context"
@@ -11,21 +11,19 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
-
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/chain"
 )
 
 func init() {
-	gob.Register(&chain.Transaction{})
-	gob.Register(&chain.Block{})
-	gob.Register(&chain.StakeLedger{})
+	gob.Register(&Transaction{})
+	gob.Register(&Block{})
+	gob.Register(&StakeLedger{})
 }
 
 type Node struct {
 	Host      host.Host
 	peers     map[peer.ID]*peer.AddrInfo
 	peersLock sync.RWMutex
-	chain     *chain.Blockchain
+	chain     *Blockchain
 }
 
 func NewNode(ctx context.Context, port int) (*Node, error) {
@@ -64,7 +62,7 @@ func (n *Node) Connect(ctx context.Context, addr string) error {
 	return nil
 }
 
-func (n *Node) SetChain(bc *chain.Blockchain) {
+func (n *Node) SetChain(bc *Blockchain) {
 	n.chain = bc
 }
 
