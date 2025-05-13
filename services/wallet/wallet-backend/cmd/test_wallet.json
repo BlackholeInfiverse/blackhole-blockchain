@@ -1,7 +1,7 @@
 {
-  "public_key": "028448d39a0810e6ca05db98fda414a37ca09329ffd8afc240ee15141fad7bc7a4",
-  "address": "a686525bf281a2b28422c2a0f491c04a6618e492",
-  "mnemonic": "mixture vital domain trumpet way alcohol inmate mixed coil roast ethics order",
-  "encrypted_priv_key": "fdc21b8e30492b45e102652bdd9fd5a13fb10ec0572e4a952bff15108bde04382c14d0d175c01415b909869e0d46aca99584ceebf784590a1ed81d1b5ea60b58583dd2370720f7f5385d40ed7ee816cf44cc774363d28348966b43e1",
+  "public_key": "023fd3f7f5966d7466392fd6e00ee038c08ff4d2c320c0ec811badf5c91d888430",
+  "address": "67cc3b1cabe3875d1f3c9731c1f6630037a6d30d",
+  "mnemonic": "razor caught useful seed clog this silver animal twelve wealth insane nasty",
+  "encrypted_priv_key": "60210867a1bc0e326c54812a97077781a982559475ca6369f68987755daeec1d90b5924affe8d0d017cf5ccab61eccf2d2146276e62deea0072af3ebc41bf33e72c173dd122b0f3eeb6ecf29a03adc0ce443bc1333403f119a243e87",
   "last_sync_timestamp": "0001-01-01T00:00:00Z"
 }
