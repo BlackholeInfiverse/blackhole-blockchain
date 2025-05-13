@@ -1,14 +1,6 @@
-module github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain
+module blackhole-blockchain
 
-go 1.24.2
-
-require (
-	github.com/gorilla/mux v1.8.0
-	github.com/libp2p/go-libp2p v0.32.2
-	github.com/libp2p/go-libp2p-core v0.20.1
-	github.com/multiformats/go-multiaddr v0.12.0
-	github.com/stretchr/testify v1.10.0
-)
+go 1.24.3
 
 require (
 	github.com/Shivam-Patel-G/blackhole-blockchain v0.0.0-20250510095253-0575a4863e7d // indirect
@@ -41,6 +33,7 @@ require (
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/libp2p/go-cidranger v1.1.0 // indirect
 	github.com/libp2p/go-flow-metrics v0.1.0 // indirect
+	github.com/libp2p/go-libp2p v0.32.2 // indirect
 	github.com/libp2p/go-libp2p-asn-util v0.3.0 // indirect
 	github.com/libp2p/go-msgio v0.3.0 // indirect
 	github.com/libp2p/go-nat v0.2.0 // indirect
@@ -57,6 +50,7 @@ require (
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.1.0 // indirect
 	github.com/multiformats/go-base36 v0.2.0 // indirect
+	github.com/multiformats/go-multiaddr v0.12.0 // indirect
 	github.com/multiformats/go-multiaddr-dns v0.3.1 // indirect
 	github.com/multiformats/go-multiaddr-fmt v0.1.0 // indirect
 	github.com/multiformats/go-multibase v0.2.0 // indirect
