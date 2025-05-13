@@ -1,17 +1,15 @@
-package p2p
+package chain
 
 import (
 	"bytes"
 	"encoding/gob"
 	"io"
-
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/chain"
 )
 
 type MessageType byte
 
 const (
-	MessageTypeTx      MessageType = iota
+	MessageTypeTx MessageType = iota
 	MessageTypeBlock
 	MessageTypeSyncReq
 	MessageTypeSyncResp
@@ -31,7 +29,7 @@ func (m *Message) Decode(r io.Reader) error {
 }
 
 type TransactionWrapper struct {
-	Transaction *chain.Transaction
+	Transaction *Transaction
 }
 
 func (tw *TransactionWrapper) Serialize() ([]byte, error) {
@@ -43,8 +41,8 @@ func (tw *TransactionWrapper) Serialize() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func DeserializeTransaction(data []byte) (*chain.Transaction, error) {
-	var tx chain.Transaction
+func DeserializeTransaction(data []byte) (*Transaction, error) {
+	var tx Transaction
 	dec := gob.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&tx); err != nil {
 		return nil, err
@@ -53,7 +51,7 @@ func DeserializeTransaction(data []byte) (*chain.Transaction, error) {
 }
 
 type BlockWrapper struct {
-	Block *chain.Block
+	Block *Block
 }
 
 func (bw *BlockWrapper) Serialize() ([]byte, error) {
@@ -65,8 +63,8 @@ func (bw *BlockWrapper) Serialize() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func DeserializeBlock(data []byte) (*chain.Block, error) {
-	var block chain.Block
+func DeserializeBlock(data []byte) (*Block, error) {
+	var block Block
 	dec := gob.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&block); err != nil {
 		return nil, err

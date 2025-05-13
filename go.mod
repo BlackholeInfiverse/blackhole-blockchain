@@ -4,6 +4,7 @@ go 1.24.3
 
 require (
 	github.com/Shivam-Patel-G/blackhole-blockchain v0.0.0-20250510095253-0575a4863e7d // indirect
+	github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain v0.0.0-20250513065618-aca47857e844 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
