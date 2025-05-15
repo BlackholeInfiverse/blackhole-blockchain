@@ -96,10 +96,10 @@ func (n *Node) handleStream(s network.Stream) {
 		}
 	case MessageTypeSyncReq:
 		for _, block := range n.chain.Blocks {
-			data, _ := block.Serialize()
+			data := block.Serialize()
 			resp := &Message{
 				Type: MessageTypeSyncResp,
-				Data: data.([]byte),
+				Data: data,
 			}
 			n.Broadcast(resp)
 		}

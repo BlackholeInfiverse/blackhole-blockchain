@@ -8,57 +8,56 @@ import (
 	"os"
 	"os/signal"
 	"time"
-	
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/chain"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/consensus"
 )
 
 func main() {
-	// Create context
+	// Setup context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize blockchain with P2P
+	// Initialize blockchain
 	bc, err := chain.NewBlockchain(3000)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("❌ Failed to initialize blockchain: %v", err)
 	}
+	fmt.Printf("✅ StakeLedger: %+v\n", bc.StakeLedger)
 
-	// Connect to bootstrap nodes (if any)
+	// Connect to peers if given
 	if len(os.Args) > 1 {
 		for _, addr := range os.Args[1:] {
 			if err := bc.P2PNode.Connect(ctx, addr); err != nil {
-				log.Printf("Failed to connect to %s: %v", addr, err)
+				log.Printf("⚠️  Could not connect to %s: %v", addr, err)
 			}
 		}
 	}
 
-	// Initialize consensus with StakeLedger
+	// Setup PoS validator
 	validator := consensus.NewValidator(bc.StakeLedger)
-
-	// Set blockchain reference in P2P node
 	bc.P2PNode.SetChain(bc)
 
-	// Start blockchain sync
+	// Start chain sync in background
 	go bc.SyncChain()
 
-	// Handle interrupts
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	// Graceful shutdown on CTRL+C
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
 	go func() {
-		<-c
+		<-sigCh
+		fmt.Println("\n🛑 Shutting down...")
 		cancel()
 	}()
 
 	// Start mining loop
-	go mineBlocks(ctx, bc, validator)
+	go miningLoop(ctx, bc, validator)
 
 	// Start CLI
-	startCLI(ctx, bc, validator)
+	startCLI(ctx, bc)
 }
 
-func mineBlocks(ctx context.Context, bc *chain.Blockchain, validator *consensus.Validator) {
+func miningLoop(ctx context.Context, bc *chain.Blockchain, validator *consensus.Validator) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -67,30 +66,37 @@ func mineBlocks(ctx context.Context, bc *chain.Blockchain, validator *consensus.
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Mining logic
 			selectedValidator := validator.SelectValidator()
 			if selectedValidator == "" {
-				log.Println("No validator selected")
+				log.Println("⚠️ No validator selected")
 				continue
 			}
+
 			block := bc.MineBlock(selectedValidator)
 
 			if validator.ValidateBlock(block, bc) {
+				// ✅ Append ONLY if valid
+				bc.Blocks = append(bc.Blocks, block)
+				bc.PendingTxs = []*chain.Transaction{}
+				bc.StakeLedger.AddStake(block.Header.Validator, bc.BlockReward)
+				bc.TotalSupply += bc.BlockReward
+
+				// ✅ Print details and broadcast
+				log.Printf("✅ Block %d added with hash: %s\n", block.Header.Index, block.Hash)
+				log.Printf("🕒 Timestamp     : %s", block.Header.Timestamp.Format(time.RFC3339))
+log.Printf("🔗 PreviousHash  : %s", block.Header.PreviousHash)
+log.Printf("🔐 Current Hash  : %s", block.Hash)
 				bc.BroadcastBlock(block)
-				fmt.Printf("Mined block %d\n", block.Header.Index)
 			} else {
-				log.Println("Failed to validate block")
+				log.Printf("❌ Failed to validate block %d\n", block.Header.Index)
 			}
 		}
 	}
 }
 
-func startCLI(ctx context.Context, bc *chain.Blockchain, validator *consensus.Validator) {
-	// Simple CLI interface
-	fmt.Println("BlackHole Blockchain CLI")
-	fmt.Println("Commands:")
-	fmt.Println("  status - Show blockchain status")
-	fmt.Println("  exit - Shutdown node")
+func startCLI(ctx context.Context, bc *chain.Blockchain) {
+	fmt.Println("🚀 BlackHole Blockchain CLI")
+	fmt.Println("Commands:\n  status\n  exit")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -102,17 +108,15 @@ func startCLI(ctx context.Context, bc *chain.Blockchain, validator *consensus.Va
 			if !scanner.Scan() {
 				return
 			}
-
-			cmd := scanner.Text()
-			switch cmd {
+			switch scanner.Text() {
 			case "status":
-				fmt.Printf("Block height: %d\n", len(bc.Blocks))
-				fmt.Printf("Pending transactions: %d\n", len(bc.PendingTxs))
+				fmt.Printf("📊 Height: %d   📦 Pending TXs: %d\n",
+					len(bc.Blocks), len(bc.PendingTxs))
 			case "exit":
-				fmt.Println("Shutting down...")
+				fmt.Println("👋 Bye!")
 				return
 			default:
-				fmt.Println("Unknown command")
+				fmt.Println("❓ Unknown command")
 			}
 		}
 	}

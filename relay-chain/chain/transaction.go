@@ -6,9 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/crypto"
 	"math/big"
 	"time"
+
+	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/crypto"
 )
 
 type TransactionType string
@@ -89,11 +90,16 @@ func (tx *Transaction) Sign(privateKey *ecdsa.PrivateKey) error {
 }
 
 func (tx *Transaction) Verify() bool {
+	// ✅ Skip signature check for system reward transactions
+	if tx.From == "system" && tx.Type == TokenTransfer {
+		return true
+	}
+
 	if tx.Signature == nil {
 		return false
 	}
 
-	publicKey, err := crypto.ParsePublicKey(tx.From) // Implement this based on your crypto setup
+	publicKey, err := crypto.ParsePublicKey(tx.From)
 	if err != nil {
 		return false
 	}

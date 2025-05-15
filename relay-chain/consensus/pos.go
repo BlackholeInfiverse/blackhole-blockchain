@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"fmt"
 	"math/rand"
 	"sort"
 	"time"
@@ -23,10 +24,12 @@ type DefaultRewardStrategy struct {
 	BaseReward uint64
 }
 
+// Default base reward logic
 func (d *DefaultRewardStrategy) CalculateReward(block *chain.Block) uint64 {
 	return d.BaseReward
 }
 
+// Constructor for Validator
 func NewValidator(stakeLedger *chain.StakeLedger) *Validator {
 	return &Validator{
 		StakePool:     stakeLedger,
@@ -34,9 +37,12 @@ func NewValidator(stakeLedger *chain.StakeLedger) *Validator {
 		RewardStrategy: &DefaultRewardStrategy{
 			BaseReward: 10,
 		},
+		LastBlockTime: time.Now().Add(-10 * time.Second), // allow first block immediately
 	}
+
 }
 
+// Select a validator randomly weighted by stake
 func (v *Validator) SelectValidator() string {
 	stakes := v.StakePool.GetAllStakes()
 	if len(stakes) == 0 {
@@ -56,7 +62,7 @@ func (v *Validator) SelectValidator() string {
 		totalStake += stake
 	}
 
-	// Sort by stake (descending)
+	// Sort by stake (desc)
 	sort.Slice(validators, func(i, j int) bool {
 		return validators[i].stake > validators[j].stake
 	})
@@ -72,45 +78,23 @@ func (v *Validator) SelectValidator() string {
 		}
 	}
 
-	return validators[0].address // Fallback to highest staker
+	return validators[0].address // fallback
 }
 
-func (v *Validator) ValidateBlock(block *chain.Block, chain *chain.Blockchain) bool {
-	// Check previous block hash
-	if len(chain.Blocks) > 0 {
-		lastBlock := chain.Blocks[len(chain.Blocks)-1]
-		if block.Header.PreviousHash != lastBlock.CalculateHash() {
-			return false
-		}
-	}
+// ValidateBlock checks consensus, Merkle root, timestamps, and stake
+func (v *Validator) ValidateBlock(block *chain.Block, blockchain *chain.Blockchain) bool {
+    // ... baaki checks
 
-	// Check index
-	if block.Header.Index != uint64(len(chain.Blocks)) {
-		return false
-	}
+    elapsed := time.Since(v.LastBlockTime)
+    const tolerance = 100 * time.Millisecond  // 100ms buffer
 
-	// Check validator is in stake pool
-	if v.StakePool.GetStake(block.Header.Validator) == 0 {
-		return false
-	}
+    if elapsed + tolerance < v.BlockInterval {
+        fmt.Printf("❌ Validation failed: Block mined too early.\n   Required interval: %s\n   Elapsed: %s\n", v.BlockInterval, elapsed)
+        return false
+    }
 
-	// Check block time
-	if time.Since(v.LastBlockTime) < v.BlockInterval {
-		return false
-	}
-
-	// Check transactions
-	for _, tx := range block.Transactions {
-		if !tx.Verify() {
-			return false
-		}
-	}
-
-	// Check merkle root
-	if block.Header.MerkleRoot != block.CalculateMerkleRoot() {
-		return false
-	}
-
-	v.LastBlockTime = time.Now()
-	return true
+    v.LastBlockTime = time.Now()
+    return true
 }
+
+

@@ -44,18 +44,24 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 }
 
 func createGenesisBlock() *Block {
-	return NewBlock(
+	block := NewBlock(
 		0,
 		[]*Transaction{},
 		"0000000000000000000000000000000000000000000000000000000000000000",
 		"genesis-validator",
 		1000,
 	)
+
+	block.Header.Timestamp = time.Date(2025, 5, 15, 7, 55, 0, 0, time.UTC) // fixed time
+	block.Header.MerkleRoot = block.CalculateMerkleRoot()
+	block.Hash = block.CalculateHash() // ✅ calculate hash immediately
+
+	return block
 }
 
 func (bc *Blockchain) MineBlock(selectedValidator string) *Block {
-	bc.mu.Lock()
-	defer bc.mu.Unlock()
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
 
 	// Get current index
 	index := uint64(len(bc.Blocks))
@@ -63,7 +69,7 @@ func (bc *Blockchain) MineBlock(selectedValidator string) *Block {
 	// Get previous block's hash
 	var prevHash string
 	if len(bc.Blocks) > 0 {
-		prevHash = bc.Blocks[len(bc.Blocks)-1].CalculateHash()
+		prevHash = bc.Blocks[len(bc.Blocks)-1].Hash
 	} else {
 		prevHash = "0000000000000000000000000000000000000000000000000000000000000000"
 	}
@@ -85,16 +91,7 @@ func (bc *Blockchain) MineBlock(selectedValidator string) *Block {
 	// Create new block
 	block := NewBlock(index, txs, prevHash, selectedValidator, stake)
 
-	// Add block to chain
-	bc.Blocks = append(bc.Blocks, block)
-
-	// Clear pending transactions
-	bc.PendingTxs = make([]*Transaction, 0)
-
-	// Update stake ledger with block reward
-	bc.StakeLedger.AddStake(selectedValidator, bc.BlockReward)
-	bc.TotalSupply += bc.BlockReward
-
+	// DO NOT modify blockchain state here!
 	return block
 }
 
@@ -135,10 +132,10 @@ func (bc *Blockchain) BroadcastTransaction(tx *Transaction) {
 }
 
 func (bc *Blockchain) BroadcastBlock(block *Block) {
-	data, _ := block.Serialize()
+	data := block.Serialize()
 	msg := &Message{
 		Type: MessageTypeBlock,
-		Data: data.([]byte),
+		Data: data,
 	}
 	bc.P2PNode.Broadcast(msg)
 }
