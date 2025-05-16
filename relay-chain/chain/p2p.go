@@ -26,6 +26,10 @@ type Node struct {
 	chain     *Blockchain
 }
 
+func (n *Node) Peers() {
+	panic("unimplemented")
+}
+
 func NewNode(ctx context.Context, port int) (*Node, error) {
 	h, err := libp2p.New(
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port)),
