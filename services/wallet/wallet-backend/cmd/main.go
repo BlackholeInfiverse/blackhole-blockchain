@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	wallet_common "github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend/wallet_common"
+	wallet_common "github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet-backend/wallet_common"
 )
 
 func main() {

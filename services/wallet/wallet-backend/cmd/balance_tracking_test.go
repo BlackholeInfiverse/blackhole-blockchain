@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	wallet "github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend/wallet_common"
+	wallet "github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet-backend/wallet_common"
 )
 
 // MockBlockchainAPI is a mock implementation of the BlockchainAPIInterface for testing purposes.

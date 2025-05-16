@@ -1,7 +1,14 @@
 {
+<<<<<<< HEAD
   "public_key": "020f0fa8128bc9457119f74d8dbb37c9ed6135c176f4a5a0dd6559e7948df09f56",
   "address": "26ac466cee68b0e5fa226f84539cefe3be8b58a1",
   "mnemonic": "stone twenty violin egg town level reward rail capable gaze mean crack",
   "encrypted_priv_key": "20ffdcdf489b98a238c96f5fde4a0e0fd675eff3e3f6219105741bf5ae42a6759f723552021e44df31d76093f9637cec48e10266064e41b328212c73feaf1607e1f9b8c453ad0fa847140abbe78d0f99f8743a9dcba017bba5b7105a",
+=======
+  "public_key": "0348a2f075084d98100e7939b8ec39465156af8302447a311a926439b2081e2681",
+  "address": "fdfffa3145a2c1e377bfae6a0618a35e696a3276",
+  "mnemonic": "modify turkey disagree fence session visit ketchup river include unveil erosion luxury",
+  "encrypted_priv_key": "3931fa2998dedcde04b40a2eca36070496bba959589e56cce53fdbec48fea76ca6a26335f3779be6c09694065643b81c6640caad2d6bbf7a2a49d8916d72795d033199a2fa879e4bfc24206e900a507c7a71982e9a85194e018d9a75",
+>>>>>>> 22f189dadfe99edf1481bcdc721eb182d05d0cac
   "last_sync_timestamp": "0001-01-01T00:00:00Z"
 }

@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend/crypto"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet-backend/crypto"
 )
 
 type Wallet struct {
