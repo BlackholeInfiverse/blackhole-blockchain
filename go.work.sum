@@ -1,8 +1,0 @@
-github.com/BurntSushi/toml v1.4.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet-backend v0.0.0-20250510095253-0575a4863e7d/go.mod h1:jGxGcdurlnlIfHmY5+LINNMar25t82M0PomAPnFqA70=
-github.com/Shivam-Patel-G/blackhole-blockchain/wallet-backend v0.0.0-20250509051229-2b1750c6f6d0/go.mod h1:iMquZps/a+/GMRj3EzIqAyzwFNnqrGq4WgP1EQCtF9g=
-github.com/stretchr/objx v0.5.2/go.mod h1:FRsXN1f5AsAjCGJKqEizvkpNtU+EGNCLh3NxZ/8L+MA=
-golang.org/x/net v0.21.0/go.mod h1:bIjVDfnllIU7BJ2DNgfnXvpSvtn8VRwhlsaeUTyUS44=
-golang.org/x/sys v0.33.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
-golang.org/x/term v0.32.0/go.mod h1:uZG1FhGx848Sqfsq4/DlJr3xGGsYMu/L5GW4abiaEPQ=
-golang.org/x/text v0.25.0/go.mod h1:WEdwpYrmk1qmdHvhkSTNPm3app7v4rsT8F2UD6+VHIA=
