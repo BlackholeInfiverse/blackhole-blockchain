@@ -1,73 +1,69 @@
 package main
 
 import (
-	"bufio"
-	"context"
-	"fmt"
-	"log"
-	"os"
-	"os/signal"
-	"time"
+    "bufio"
+    "context"
+    "fmt"
+    "log"
+    "os"
+    "os/signal"
+    "time"
+    "strings"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/chain"
-	"github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/consensus"
+    "github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/chain"
+    "github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/consensus"
 )
 
 func main() {
-	chain.RegisterGobTypes()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+    chain.RegisterGobTypes()
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
 
-	// Choose port (default 3000)
-	port := 3000
-	if len(os.Args) > 1 {
-		fmt.Sscanf(os.Args[1], "%d", &port)
-	}
+    port := 3000
+    if len(os.Args) > 1 {
+        fmt.Sscanf(os.Args[1], "%d", &port)
+    }
 
-	// Create blockchain with P2P node
-	bc, err := chain.NewBlockchain(port)
-	if err != nil {
-		log.Fatal("Failed to create blockchain:", err)
-	}
+    bc, err := chain.NewBlockchain(port)
+    if err != nil {
+        log.Fatal("Failed to create blockchain:", err)
+    }
 
-	// Print P2P node info
-	fmt.Println("🚀 Your peer multiaddr:")
-	fmt.Printf("   /ip4/127.0.0.1/tcp/%d/p2p/%s\n", port, bc.P2PNode.Host.ID())
+    fmt.Println("🚀 Your peer multiaddr:")
+    fmt.Printf("   /ip4/127.0.0.1/tcp/%d/p2p/%s\n", port, bc.P2PNode.Host.ID())
 
-	// Connect to other nodes if passed in arguments
-	if len(os.Args) > 2 {
-		for _, addr := range os.Args[2:] {
-			fmt.Println("🌐 Connecting to:", addr)
-			if err := bc.P2PNode.Connect(ctx, addr); err != nil {
-				log.Println("❌ Connection failed:", err)
-			}
-		}
-	}
+    if len(os.Args) > 2 {
+        for _, addr := range os.Args[2:] {
+            if strings.Contains(addr, "12D3KooWKzQh2siF6pAidubw16GrZDhRZqFSeEJFA7BCcKvpopmG") {
+                fmt.Println("🚫 Skipping problematic peer:", addr)
+                continue
+            }
+            fmt.Println("🌐 Connecting to:", addr)
+            if err := bc.P2PNode.Connect(ctx, addr); err != nil {
+                log.Println("❌ Connection failed:", err)
+            }
+        }
+    }
 
-	// Set blockchain in P2P node
-	bc.P2PNode.SetChain(bc)
+    bc.P2PNode.SetChain(bc)
 
-	// Start syncing blocks
-	go bc.SyncChain()
+    go bc.SyncChain()
 
-	// Set up validator
-	validator := consensus.NewValidator(bc.StakeLedger)
+    validator := consensus.NewValidator(bc.StakeLedger)
 
-	// Graceful shutdown handler
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
-	go func() {
-		<-sigCh
-		cancel()
-	}()
+    sigCh := make(chan os.Signal, 1)
+    signal.Notify(sigCh, os.Interrupt)
+    go func() {
+        <-sigCh
+        cancel()
+    }()
 
-	// Start mining
-	go miningLoop(ctx, bc, validator)
+    go miningLoop(ctx, bc, validator)
 
-	// Start CLI loop
-	startCLI(ctx, bc)
+    startCLI(ctx, bc)
 }
 
+// ... (miningLoop, startCLI unchanged)
 func miningLoop(ctx context.Context, bc *chain.Blockchain, validator *consensus.Validator) {
 	ticker := time.NewTicker(6 * time.Second)
 	defer ticker.Stop()

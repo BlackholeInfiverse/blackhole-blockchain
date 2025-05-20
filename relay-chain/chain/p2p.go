@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/libp2p/go-libp2p"
@@ -14,10 +15,12 @@ import (
 )
 
 type Node struct {
-	Host      host.Host
-	peers     map[peer.ID]*peer.AddrInfo
-	peersLock sync.RWMutex
-	chain     *Blockchain
+	Host         host.Host
+	peers        map[peer.ID]*peer.AddrInfo
+	peersLock    sync.RWMutex
+	chain        *Blockchain
+	badPeers     map[peer.ID]int
+	badPeersLock sync.RWMutex
 }
 
 func GetLocalIP() string {
@@ -45,12 +48,14 @@ func NewNode(ctx context.Context, port int) (*Node, error) {
 	}
 
 	node := &Node{
-		Host:  h,
-		peers: make(map[peer.ID]*peer.AddrInfo),
+		Host:     h,
+		peers:    make(map[peer.ID]*peer.AddrInfo),
+		badPeers: make(map[peer.ID]int),
 	}
 
 	h.SetStreamHandler("/blackhole/1.0.0", node.handleStream)
 
+	fmt.Println("🆔 Peer ID:", h.ID().String())
 	for _, addr := range h.Addrs() {
 		fullAddr := fmt.Sprintf("%s/p2p/%s", addr.String(), h.ID().String())
 		fmt.Println("🚀 Your peer multiaddr:")
@@ -87,15 +92,27 @@ func (n *Node) SetChain(bc *Blockchain) {
 	n.chain = bc
 }
 
+func (n *Node) disconnectPeer(peerID peer.ID) {
+	n.peersLock.Lock()
+	delete(n.peers, peerID)
+	n.peersLock.Unlock()
+	n.Host.Network().ClosePeer(peerID)
+	fmt.Printf("🚫 Disconnected peer %s due to invalid blocks\n", peerID)
+}
+
 func (n *Node) handleStream(s network.Stream) {
 	defer s.Close()
 
 	peerID := s.Conn().RemotePeer()
-	fmt.Printf("📡 Received stream from peer: %s\n", peerID) // Added peer ID logging
+	fmt.Printf("📡 Received stream from peer: %s\n", peerID)
 
 	var msg Message
 	if err := msg.Decode(s); err != nil {
 		fmt.Printf("❌ Error decoding message from peer %s: %v\n", peerID, err)
+		if msg.Version != ProtocolVersion {
+			fmt.Printf("⚠️ Version mismatch from peer %s: got %d, expected %d\n", peerID, msg.Version, ProtocolVersion)
+			n.disconnectPeer(peerID)
+		}
 		return
 	}
 
@@ -112,28 +129,59 @@ func (n *Node) handleStream(s network.Stream) {
 	case MessageTypeBlock:
 		block, err := DeserializeBlock(msg.Data)
 		if err != nil {
+			if strings.Contains(err.Error(), "CommonType") {
+				fmt.Printf("⚠️ Skipping block with CommonType reference from peer %s\n", peerID)
+				n.disconnectPeer(peerID)
+				return
+			}
 			fmt.Printf("❌ Error deserializing block from peer %s: %v\n", peerID, err)
+			n.badPeersLock.Lock()
+			n.badPeers[peerID]++
+			if n.badPeers[peerID] >= 3 {
+				n.disconnectPeer(peerID)
+			}
+			n.badPeersLock.Unlock()
 			return
 		}
 		if n.chain.AddBlock(block) {
 			fmt.Printf("🧱 Added block %d from peer %s\n", block.Header.Index, peerID)
+			n.badPeersLock.Lock()
+			n.badPeers[peerID] = 0
+			n.badPeersLock.Unlock()
 		}
 	case MessageTypeSyncReq:
 		for _, block := range n.chain.Blocks {
 			data := block.Serialize()
 			resp := &Message{
-				Type: MessageTypeSyncResp,
-				Data: data,
+				Type:    MessageTypeSyncResp,
+				Data:    data,
+				Version: ProtocolVersion,
 			}
 			n.Broadcast(resp)
 		}
 	case MessageTypeSyncResp:
 		block, err := DeserializeBlock(msg.Data)
 		if err != nil {
+			if strings.Contains(err.Error(), "CommonType") {
+				fmt.Printf("⚠️ Skipping sync block with CommonType reference from peer %s\n", peerID)
+				n.disconnectPeer(peerID)
+				return
+			}
 			fmt.Printf("❌ Error deserializing sync block from peer %s: %v\n", peerID, err)
+			n.badPeersLock.Lock()
+			n.badPeers[peerID]++
+			if n.badPeers[peerID] >= 3 {
+				n.disconnectPeer(peerID)
+			}
+			n.badPeersLock.Unlock()
 			return
 		}
-		n.chain.AddBlock(block)
+		if n.chain.AddBlock(block) {
+			fmt.Printf("🧱 Added sync block %d from peer %s\n", block.Header.Index, peerID)
+			n.badPeersLock.Lock()
+			n.badPeers[peerID] = 0
+			n.badPeersLock.Unlock()
+		}
 	}
 }
 

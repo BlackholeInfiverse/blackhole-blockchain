@@ -1,9 +1,10 @@
 package chain
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/gob"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -15,11 +16,12 @@ type Block struct {
 }
 
 func (b *Block) Serialize() []byte {
-	data, err := json.Marshal(b)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(b); err != nil {
 		panic("failed to serialize block: " + err.Error())
 	}
-	return data
+	return buf.Bytes()
 }
 
 type BlockHeader struct {
