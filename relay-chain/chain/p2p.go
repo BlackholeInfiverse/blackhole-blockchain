@@ -2,8 +2,8 @@ package chain
 
 import (
 	"context"
-	"encoding/gob"
 	"fmt"
+	"net"
 	"sync"
 
 	"github.com/libp2p/go-libp2p"
@@ -13,12 +13,6 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
-func init() {
-	gob.Register(&Transaction{})
-	gob.Register(&Block{})
-	gob.Register(&StakeLedger{})
-}
-
 type Node struct {
 	Host      host.Host
 	peers     map[peer.ID]*peer.AddrInfo
@@ -26,13 +20,25 @@ type Node struct {
 	chain     *Blockchain
 }
 
-func (n *Node) Peers() {
-	panic("unimplemented")
+func GetLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "127.0.0.1"
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			return ipnet.IP.String()
+		}
+	}
+	return "127.0.0.1"
 }
 
 func NewNode(ctx context.Context, port int) (*Node, error) {
+	ip := GetLocalIP()
+	listenAddr := fmt.Sprintf("/ip4/%s/tcp/%d", ip, port)
+
 	h, err := libp2p.New(
-		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port)),
+		libp2p.ListenAddrStrings(listenAddr),
 	)
 	if err != nil {
 		return nil, err
@@ -44,6 +50,13 @@ func NewNode(ctx context.Context, port int) (*Node, error) {
 	}
 
 	h.SetStreamHandler("/blackhole/1.0.0", node.handleStream)
+
+	for _, addr := range h.Addrs() {
+		fullAddr := fmt.Sprintf("%s/p2p/%s", addr.String(), h.ID().String())
+		fmt.Println("🚀 Your peer multiaddr:")
+		fmt.Println("   " + fullAddr)
+		break
+	}
 
 	return node, nil
 }
@@ -59,7 +72,11 @@ func (n *Node) Connect(ctx context.Context, addr string) error {
 		return err
 	}
 
-	n.Host.Connect(ctx, *info)
+	fmt.Println("🌐 Connecting to:", addr)
+	if err := n.Host.Connect(ctx, *info); err != nil {
+		return err
+	}
+
 	n.peersLock.Lock()
 	n.peers[info.ID] = info
 	n.peersLock.Unlock()
@@ -73,9 +90,12 @@ func (n *Node) SetChain(bc *Blockchain) {
 func (n *Node) handleStream(s network.Stream) {
 	defer s.Close()
 
+	peerID := s.Conn().RemotePeer()
+	fmt.Printf("📡 Received stream from peer: %s\n", peerID) // Added peer ID logging
+
 	var msg Message
 	if err := msg.Decode(s); err != nil {
-		fmt.Printf("Error decoding message: %v\n", err)
+		fmt.Printf("❌ Error decoding message from peer %s: %v\n", peerID, err)
 		return
 	}
 
@@ -83,7 +103,7 @@ func (n *Node) handleStream(s network.Stream) {
 	case MessageTypeTx:
 		tx, err := DeserializeTransaction(msg.Data)
 		if err != nil {
-			fmt.Printf("Error deserializing transaction: %v\n", err)
+			fmt.Printf("❌ Error deserializing transaction from peer %s: %v\n", peerID, err)
 			return
 		}
 		if tx.Verify() {
@@ -92,11 +112,11 @@ func (n *Node) handleStream(s network.Stream) {
 	case MessageTypeBlock:
 		block, err := DeserializeBlock(msg.Data)
 		if err != nil {
-			fmt.Printf("Error deserializing block: %v\n", err)
+			fmt.Printf("❌ Error deserializing block from peer %s: %v\n", peerID, err)
 			return
 		}
 		if n.chain.AddBlock(block) {
-			fmt.Printf("Added block %d from peer\n", block.Header.Index)
+			fmt.Printf("🧱 Added block %d from peer %s\n", block.Header.Index, peerID)
 		}
 	case MessageTypeSyncReq:
 		for _, block := range n.chain.Blocks {
@@ -110,7 +130,7 @@ func (n *Node) handleStream(s network.Stream) {
 	case MessageTypeSyncResp:
 		block, err := DeserializeBlock(msg.Data)
 		if err != nil {
-			fmt.Printf("Error deserializing sync block: %v\n", err)
+			fmt.Printf("❌ Error deserializing sync block from peer %s: %v\n", peerID, err)
 			return
 		}
 		n.chain.AddBlock(block)
@@ -124,11 +144,11 @@ func (n *Node) Broadcast(msg *Message) {
 	for peerID := range n.peers {
 		s, err := n.Host.NewStream(context.Background(), peerID, "/blackhole/1.0.0")
 		if err != nil {
-			fmt.Printf("Error opening stream to %s: %v\n", peerID, err)
+			fmt.Printf("❌ Error opening stream to %s: %v\n", peerID, err)
 			continue
 		}
 		if err := msg.Encode(s); err != nil {
-			fmt.Printf("Error encoding message to %s: %v\n", peerID, err)
+			fmt.Printf("❌ Error encoding message to %s: %v\n", peerID, err)
 			s.Close()
 			continue
 		}

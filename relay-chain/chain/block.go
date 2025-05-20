@@ -11,8 +11,7 @@ import (
 type Block struct {
 	Header       BlockHeader
 	Transactions []*Transaction
-	Hash         string `json:"hash"` // <-- Add this
-
+	Hash         string `json:"hash"`
 }
 
 func (b *Block) Serialize() []byte {
@@ -30,7 +29,7 @@ type BlockHeader struct {
 	Validator      string    `json:"validator"`
 	StakeSnapshot  uint64    `json:"stakeSnapshot"`
 	MerkleRoot     string    `json:"merkleRoot"`
-	StateRoot      string    `json:"stateRoot"` // For smart contracts in future
+	StateRoot      string    `json:"stateRoot"`
 	ReceiptsRoot   string    `json:"receiptsRoot"`
 	ConsensusRound uint64    `json:"consensusRound"`
 }
@@ -50,7 +49,7 @@ func NewBlock(index uint64, txs []*Transaction, prevHash string, validator strin
 	block.Header.MerkleRoot = block.CalculateMerkleRoot()
 	block.Header.StateRoot = "0x0"
 	block.Header.ReceiptsRoot = "0x0"
-	block.Hash = block.CalculateHash() // ✅ MUST come after setting MerkleRoot
+	block.Hash = block.CalculateHash()
 
 	return block
 }
@@ -58,7 +57,7 @@ func NewBlock(index uint64, txs []*Transaction, prevHash string, validator strin
 func (b *Block) CalculateHash() string {
 	headerData := fmt.Sprintf("%d%s%s%s%d%s",
 		b.Header.Index,
-		b.Header.Timestamp.UTC().Format(time.RFC3339Nano), // precise format
+		b.Header.Timestamp.UTC().Format(time.RFC3339Nano),
 		b.Header.PreviousHash,
 		b.Header.Validator,
 		b.Header.StakeSnapshot,
@@ -78,7 +77,6 @@ func (b *Block) CalculateMerkleRoot() string {
 		hashes = append(hashes, tx.ID)
 	}
 
-	// Simple merkle tree implementation
 	for len(hashes) > 1 {
 		var newHashes []string
 		for i := 0; i < len(hashes); i += 2 {

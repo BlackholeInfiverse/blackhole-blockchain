@@ -52,9 +52,9 @@ func createGenesisBlock() *Block {
 		1000,
 	)
 
-	block.Header.Timestamp = time.Date(2025, 5, 15, 7, 55, 0, 0, time.UTC) // fixed time
+	block.Header.Timestamp = time.Date(2025, 5, 15, 7, 55, 0, 0, time.UTC)
 	block.Header.MerkleRoot = block.CalculateMerkleRoot()
-	block.Hash = block.CalculateHash() // ✅ calculate hash immediately
+	block.Hash = block.CalculateHash()
 
 	return block
 }

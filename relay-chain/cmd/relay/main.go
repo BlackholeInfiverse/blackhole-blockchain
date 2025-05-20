@@ -14,6 +14,7 @@ import (
 )
 
 func main() {
+	chain.RegisterGobTypes()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -42,7 +43,6 @@ func main() {
 			}
 		}
 	}
-	
 
 	// Set blockchain in P2P node
 	bc.P2PNode.SetChain(bc)
@@ -82,7 +82,7 @@ func miningLoop(ctx context.Context, bc *chain.Blockchain, validator *consensus.
 				log.Println("⚠️ No validator selected")
 				continue
 			}
-			
+
 			block := bc.MineBlock(validatorAddr)
 			if validator.ValidateBlock(block, bc) {
 				bc.Blocks = append(bc.Blocks, block)
@@ -127,7 +127,6 @@ func startCLI(ctx context.Context, bc *chain.Blockchain) {
 		case "exit":
 			fmt.Println("👋 Shutting down...")
 			os.Exit(0)
-			
 		default:
 			fmt.Println("❓ Unknown command")
 		}

@@ -3,6 +3,8 @@ package chain
 import (
 	"bytes"
 	"encoding/gob"
+	"encoding/hex"
+	"fmt"
 	"io"
 )
 
@@ -64,10 +66,27 @@ func (bw *BlockWrapper) Serialize() ([]byte, error) {
 }
 
 func DeserializeBlock(data []byte) (*Block, error) {
+	fmt.Println("➡️ Deserializing block, data length:", len(data))
+	// Log first 100 bytes of data for debugging
+	if len(data) > 0 {
+		dumpLen := len(data)
+		if dumpLen > 100 {
+			dumpLen = 100
+		}
+		fmt.Println("📜 Data prefix (hex):", hex.EncodeToString(data[:dumpLen]))
+	}
 	var block Block
 	dec := gob.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&block); err != nil {
-		return nil, err
+		fmt.Println("❌ Gob Decode Error:", err)
+		return nil, fmt.Errorf("failed to deserialize block: %v", err)
 	}
+	// Verify hash integrity
+	computedHash := block.CalculateHash()
+	if block.Hash != computedHash {
+		fmt.Println("❌ Hash mismatch: expected", block.Hash, "got", computedHash)
+		return nil, fmt.Errorf("hash mismatch: expected %s, got %s", block.Hash, computedHash)
+	}
+	fmt.Println("✅ Successfully deserialized block, index:", block.Header.Index)
 	return &block, nil
 }

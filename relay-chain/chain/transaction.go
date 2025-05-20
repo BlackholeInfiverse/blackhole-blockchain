@@ -27,11 +27,11 @@ type Transaction struct {
 	From      string          `json:"from"`
 	To        string          `json:"to"`
 	Amount    uint64          `json:"amount"`
-	Token     string          `json:"token"` // For multi-token support
-	Fee       uint64          `json:"fee"`   // For priority/fee market
-	Nonce     uint64          `json:"nonce"` // Prevent replay attacks
+	Token     string          `json:"token"`
+	Fee       uint64          `json:"fee"`
+	Nonce     uint64          `json:"nonce"`
 	Signature []byte          `json:"signature"`
-	Data      string          `json:"data"` // Additional data
+	Data      string          `json:"data"`
 	Timestamp int64           `json:"timestamp"`
 }
 
@@ -46,8 +46,8 @@ func NewTransaction(txType TransactionType, from, to string, amount uint64) *Tra
 		From:      from,
 		To:        to,
 		Amount:    amount,
-		Token:     "BHX", // Native token
-		Fee:       0,     // Free transactions per white paper
+		Token:     "BHX",
+		Fee:       0,
 		Nonce:     0,
 		Timestamp: time.Now().Unix(),
 	}
@@ -90,7 +90,6 @@ func (tx *Transaction) Sign(privateKey *ecdsa.PrivateKey) error {
 }
 
 func (tx *Transaction) Verify() bool {
-	// ✅ Skip signature check for system reward transactions
 	if tx.From == "system" && tx.Type == TokenTransfer {
 		return true
 	}
