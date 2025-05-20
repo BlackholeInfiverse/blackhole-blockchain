@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -99,29 +100,42 @@ func (bc *Blockchain) AddBlock(block *Block) bool {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 
-	// Basic validation
-	if len(bc.Blocks) == 0 {
-		return false // Should have genesis block
-	}
+	fmt.Printf("🧪 Validating block %d\n", block.Header.Index)
 
-	lastBlock := bc.Blocks[len(bc.Blocks)-1]
-	if block.Header.Index != uint64(len(bc.Blocks)) ||
-		block.Header.PreviousHash != lastBlock.CalculateHash() {
+	if len(bc.Blocks) == 0 {
+		fmt.Println("❌ Blockchain is empty, expected genesis block")
 		return false
 	}
 
-	// Update stake ledger for reward transaction
+	prevBlock := bc.Blocks[len(bc.Blocks)-1]
+	if block.Header.Index != prevBlock.Header.Index+1 {
+		fmt.Printf("❌ Invalid block index: got %d, expected %d\n", block.Header.Index, prevBlock.Header.Index+1)
+		return false
+	}
+
+	if block.Header.PreviousHash != prevBlock.Hash {
+		fmt.Printf("❌ Invalid previous hash: got %s, expected %s\n", block.Header.PreviousHash, prevBlock.Hash)
+		return false
+	}
+
+	computedHash := block.CalculateHash()
+	if block.Hash != computedHash {
+		fmt.Printf("❌ Invalid block hash: got %s, expected %s\n", block.Hash, computedHash)
+		return false
+	}
+
 	for _, tx := range block.Transactions {
-		if tx.From == "system" && tx.Type == TokenTransfer {
-			bc.StakeLedger.AddStake(tx.To, tx.Amount)
+		if !tx.Verify() {
+			fmt.Println("❌ Invalid transaction in block:", tx.ID)
+			return false
 		}
 	}
 
-	// Add block
 	bc.Blocks = append(bc.Blocks, block)
+	fmt.Printf("✅ Block %d added successfully\n", block.Header.Index)
 	return true
 }
-
+ 
 func (bc *Blockchain) BroadcastTransaction(tx *Transaction) {
 	data, _ := tx.Serialize()
 	msg := &Message{
