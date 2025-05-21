@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"strings"
@@ -124,7 +125,10 @@ func (n *Node) handleStream(s network.Stream) {
 			return
 		}
 		if tx.Verify() {
+			n.chain.mu.Lock()
 			n.chain.PendingTxs = append(n.chain.PendingTxs, tx)
+			n.chain.mu.Unlock()
+			fmt.Printf("📥 Added transaction %s from peer %s to pending\n", tx.ID, peerID)
 		}
 	case MessageTypeBlock:
 		block, err := DeserializeBlock(msg.Data)
@@ -143,21 +147,58 @@ func (n *Node) handleStream(s network.Stream) {
 			n.badPeersLock.Unlock()
 			return
 		}
+		fmt.Printf("📑 Block details: Index=%d, Hash=%s, PrevHash=%s, Validator=%s, TxCount=%d\n",
+			block.Header.Index, block.Hash, block.Header.PreviousHash, block.Header.Validator, len(block.Transactions))
 		if n.chain.AddBlock(block) {
 			fmt.Printf("🧱 Added block %d from peer %s\n", block.Header.Index, peerID)
 			n.badPeersLock.Lock()
 			n.badPeers[peerID] = 0
 			n.badPeersLock.Unlock()
+		} else {
+			fmt.Printf("⚠️ Failed to add block %d from peer %s\n", block.Header.Index, peerID)
 		}
 	case MessageTypeSyncReq:
+		startIndex := uint64(0)
+		endIndex := uint64(0)
+		if len(msg.Data) >= 16 {
+			startIndex = binary.BigEndian.Uint64(msg.Data[:8])
+			endIndex = binary.BigEndian.Uint64(msg.Data[8:])
+		} else {
+			n.chain.mu.RLock()
+			startIndex = 0
+			if len(n.chain.Blocks) > 0 {
+				endIndex = n.chain.Blocks[len(n.chain.Blocks)-1].Header.Index
+			}
+			n.chain.mu.RUnlock()
+		}
+		n.chain.mu.RLock()
+		blocks := make([]*Block, 0)
 		for _, block := range n.chain.Blocks {
+			if block.Header.Index < startIndex || block.Header.Index > endIndex {
+				continue
+			}
+			blocks = append(blocks, block)
+		}
+		n.chain.mu.RUnlock()
+		for _, block := range blocks {
 			data := block.Serialize()
 			resp := &Message{
 				Type:    MessageTypeSyncResp,
 				Data:    data,
 				Version: ProtocolVersion,
 			}
-			n.Broadcast(resp)
+			s, err := n.Host.NewStream(context.Background(), peerID, "/blackhole/1.0.0")
+			if err != nil {
+				fmt.Printf("❌ Error opening stream to %s: %v\n", peerID, err)
+				continue
+			}
+			if err := resp.Encode(s); err != nil {
+				fmt.Printf("❌ Error encoding sync response to %s: %v\n", peerID, err)
+				s.Close()
+				continue
+			}
+			s.Close()
+			fmt.Printf("📤 Sent block %d to peer %s\n", block.Header.Index, peerID)
 		}
 	case MessageTypeSyncResp:
 		block, err := DeserializeBlock(msg.Data)
@@ -176,11 +217,15 @@ func (n *Node) handleStream(s network.Stream) {
 			n.badPeersLock.Unlock()
 			return
 		}
+		fmt.Printf("📑 Sync block details: Index=%d, Hash=%s, PrevHash=%s, Validator=%s, TxCount=%d\n",
+			block.Header.Index, block.Hash, block.Header.PreviousHash, block.Header.Validator, len(block.Transactions))
 		if n.chain.AddBlock(block) {
 			fmt.Printf("🧱 Added sync block %d from peer %s\n", block.Header.Index, peerID)
 			n.badPeersLock.Lock()
 			n.badPeers[peerID] = 0
 			n.badPeersLock.Unlock()
+		} else {
+			fmt.Printf("⚠️ Failed to add sync block %d from peer %s\n", block.Header.Index, peerID)
 		}
 	}
 }
@@ -195,11 +240,13 @@ func (n *Node) Broadcast(msg *Message) {
 			fmt.Printf("❌ Error opening stream to %s: %v\n", peerID, err)
 			continue
 		}
+		msg.Version = ProtocolVersion
 		if err := msg.Encode(s); err != nil {
 			fmt.Printf("❌ Error encoding message to %s: %v\n", peerID, err)
 			s.Close()
 			continue
 		}
 		s.Close()
+		fmt.Printf("📤 Broadcast message type %d to peer %s\n", msg.Type, peerID)
 	}
 }
