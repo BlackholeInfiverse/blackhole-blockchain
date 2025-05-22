@@ -1,0 +1,52 @@
+{
+  "node_id": "node_3000",
+  "block_height": 10,
+  "latest_block": {
+    "Header": {
+      "index": 9,
+      "timestamp": "2025-05-22T11:34:11.3725756Z",
+      "previousHash": "12bc131d31db979f7e3b455874535e1058308bdf7f67acbd18c3cfbf526bab1f",
+      "validator": "node2",
+      "stakeSnapshot": 510,
+      "merkleRoot": "1b0e6f22eab95ad7dfe94d2d79a11967891af356c01a21548e51025722bd6731",
+      "stateRoot": "0x0",
+      "receiptsRoot": "0x0",
+      "consensusRound": 0
+    },
+    "Transactions": [
+      {
+        "id": "1b0e6f22eab95ad7dfe94d2d79a11967891af356c01a21548e51025722bd6731",
+        "type": "TOKEN_TRANSFER",
+        "from": "system",
+        "to": "node2",
+        "amount": 10,
+        "token": "BHX",
+        "fee": 0,
+        "nonce": 0,
+        "signature": null,
+        "data": "",
+        "timestamp": 1747913651
+      }
+    ],
+    "hash": "052f915d6d6dfac3b2d9424216920704897e22554b2701a1675a5ccde130fc91"
+  },
+  "pending_blocks": 0,
+  "total_supply": 1000000070,
+  "timestamp": "2025-05-22T17:04:11.8749278+05:30",
+  "fork_info": {
+    "has_fork": false,
+    "reason": "No forks detected"
+  },
+  "block_hashes": [
+    "043664d479adfe8943f36048bd0c351bc203cde55e9434ede586e04286ea0aba",
+    "af1c2869fc54ef0873d34783dded13c6dd5af516cb29801b5dda3d8bebc9c06b",
+    "b6659a25f8892913c05540df0f6fee43b1ab483acbb1d0b8d547deb609113729",
+    "6104648c9a69b97982b73fca3138ab29dcf7602aae1821302eaeb8fc128bfc53",
+    "6d337cd990e81a8302e87066876523a4c655e00fefda87dd5eb30e248ce098ca",
+    "bf37eceb8a03f6180c7e749abfb97341bfffd28838cbde3ae4122e8e44562af7",
+    "42c354c807430cf1d975b5136d2b46e5acbb77b857b49cf5b01d3fcc97e39fa8",
+    "2a29099e1a4977e1e84892be88fefadcf171b13a6a15f30d3e29dd9cee1dae94",
+    "12bc131d31db979f7e3b455874535e1058308bdf7f67acbd18c3cfbf526bab1f",
+    "052f915d6d6dfac3b2d9424216920704897e22554b2701a1675a5ccde130fc91"
+  ]
+}

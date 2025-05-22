@@ -100,12 +100,75 @@ func (n *Node) disconnectPeer(peerID peer.ID) {
 	n.Host.Network().ClosePeer(peerID)
 	fmt.Printf("🚫 Disconnected peer %s due to invalid blocks\n", peerID)
 }
+type BlockchainComparisonResult struct {
+	IsSameLength     bool
+	LocalAhead       bool
+	PeerAhead        bool
+	CommonPrefix     int
+	DivergencePoint  int
+	Conflict         bool
+	Notes            []string
+}
+func (bc *Blockchain) CompareWithPeer(peer *Blockchain) BlockchainComparisonResult {
+	bc.mu.RLock()
+	peer.mu.RLock()
+	defer bc.mu.RUnlock()
+	defer peer.mu.RUnlock()
+
+	result := BlockchainComparisonResult{}
+
+	localLen := len(bc.Blocks)
+	peerLen := len(peer.Blocks)
+
+	result.IsSameLength = localLen == peerLen
+	result.LocalAhead = localLen > peerLen
+	result.PeerAhead = peerLen > localLen
+
+	minLen := localLen
+	if peerLen < minLen {
+		minLen = peerLen
+	}
+
+	diverged := false
+	for i := 0; i < minLen; i++ {
+		if bc.Blocks[i].Hash != peer.Blocks[i].Hash {
+			result.DivergencePoint = i
+			result.CommonPrefix = i
+			result.Conflict = true
+			result.Notes = append(result.Notes, fmt.Sprintf("⚠️ Fork at block %d: local=%s, peer=%s", i, bc.Blocks[i].Hash[:8], peer.Blocks[i].Hash[:8]))
+			diverged = true
+			break
+		}
+	}
+
+	if !diverged {
+		result.CommonPrefix = minLen
+		result.DivergencePoint = -1
+		result.Conflict = false
+		result.Notes = append(result.Notes, "✅ Chains are consistent up to current block.")
+	}
+
+	if result.PeerAhead {
+		result.Notes = append(result.Notes, fmt.Sprintf("📥 Peer is ahead by %d blocks.", peerLen-localLen))
+	} else if result.LocalAhead {
+		result.Notes = append(result.Notes, fmt.Sprintf("📤 We are ahead by %d blocks.", localLen-peerLen))
+	}
+
+	if bc.Blocks[0].Hash != peer.Blocks[0].Hash {
+		result.Notes = append(result.Notes, "🚨 Genesis block mismatch! Completely different chains.")
+	}
+
+	return result
+}
+
 
 func (n *Node) handleStream(s network.Stream) {
 	defer s.Close()
 
 	peerID := s.Conn().RemotePeer()
 	fmt.Printf("📡 Received stream from peer: %s\n", peerID)
+
+
 
 	var msg Message
 	if err := msg.Decode(s); err != nil {

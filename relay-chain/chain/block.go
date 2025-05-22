@@ -99,3 +99,14 @@ func hashPair(a, b string) string {
 	h.Write([]byte(a + b))
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+func (b *Block) IsValid() bool {
+	// Verify hash matches header data
+	calculatedHash := b.CalculateHash()
+	if b.Header.PreviousHash != "" && calculatedHash != b.CalculateHash() {
+		return false
+	}
+
+	// Add any other validation rules you need
+	return true
+}
