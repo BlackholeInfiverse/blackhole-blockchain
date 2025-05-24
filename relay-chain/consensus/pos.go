@@ -81,20 +81,42 @@ func (v *Validator) SelectValidator() string {
 	return validators[0].address // fallback
 }
 
-// ValidateBlock checks consensus, Merkle root, timestamps, and stake
 func (v *Validator) ValidateBlock(block *chain.Block, blockchain *chain.Blockchain) bool {
-    // ... baaki checks
+	// 1. Time interval check
+	elapsed := time.Since(v.LastBlockTime)
+	const tolerance = 100 * time.Millisecond
+	if elapsed+tolerance < v.BlockInterval {
+		fmt.Printf("❌ Validation failed: Block mined too early.\n")
+		return false
+	}
 
-    elapsed := time.Since(v.LastBlockTime)
-    const tolerance = 100 * time.Millisecond  // 100ms buffer
+	// 2. Validate block structure
+	if !block.IsValid() {
+		fmt.Printf("❌ Validation failed: Invalid block structure\n")
+		return false
+	}
 
-    if elapsed + tolerance < v.BlockInterval {
-        fmt.Printf("❌ Validation failed: Block mined too early.\n   Required interval: %s\n   Elapsed: %s\n", v.BlockInterval, elapsed)
-        return false
-    }
+	// 3. Improved Longest Chain Rule
+	currentTip := blockchain.GetLatestBlock()
 
-    v.LastBlockTime = time.Now()
-    return true
+	// Case 1: Block extends our current tip
+	if currentTip != nil && block.Header.PreviousHash == currentTip.CalculateHash() {
+		v.LastBlockTime = time.Now()
+		return true
+	}
+
+	// Case 2: Block is part of a competing chain
+	competingChain := blockchain.GetChainEndingWith(block)
+	if competingChain != nil && len(competingChain) > len(blockchain.Blocks) {
+		// Found a longer valid chain - reorganize
+		if blockchain.Reorganize(competingChain) {
+			v.LastBlockTime = time.Now()
+			fmt.Printf("✅ Reorganized to longer chain\n")
+			return true
+		}
+	}
+
+	// Case 3: Block is stale or part of shorter fork
+	fmt.Printf("❌ Validation failed: Block doesn't extend any known chain\n")
+	return false
 }
-
-

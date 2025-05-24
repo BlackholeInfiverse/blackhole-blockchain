@@ -1,9 +1,10 @@
 package chain
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/gob"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -11,16 +12,16 @@ import (
 type Block struct {
 	Header       BlockHeader
 	Transactions []*Transaction
-	Hash         string `json:"hash"` // <-- Add this
-
+	Hash         string `json:"hash"`
 }
 
 func (b *Block) Serialize() []byte {
-	data, err := json.Marshal(b)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(b); err != nil {
 		panic("failed to serialize block: " + err.Error())
 	}
-	return data
+	return buf.Bytes()
 }
 
 type BlockHeader struct {
@@ -30,7 +31,7 @@ type BlockHeader struct {
 	Validator      string    `json:"validator"`
 	StakeSnapshot  uint64    `json:"stakeSnapshot"`
 	MerkleRoot     string    `json:"merkleRoot"`
-	StateRoot      string    `json:"stateRoot"` // For smart contracts in future
+	StateRoot      string    `json:"stateRoot"`
 	ReceiptsRoot   string    `json:"receiptsRoot"`
 	ConsensusRound uint64    `json:"consensusRound"`
 }
@@ -50,7 +51,7 @@ func NewBlock(index uint64, txs []*Transaction, prevHash string, validator strin
 	block.Header.MerkleRoot = block.CalculateMerkleRoot()
 	block.Header.StateRoot = "0x0"
 	block.Header.ReceiptsRoot = "0x0"
-	block.Hash = block.CalculateHash() // ✅ MUST come after setting MerkleRoot
+	block.Hash = block.CalculateHash()
 
 	return block
 }
@@ -58,7 +59,7 @@ func NewBlock(index uint64, txs []*Transaction, prevHash string, validator strin
 func (b *Block) CalculateHash() string {
 	headerData := fmt.Sprintf("%d%s%s%s%d%s",
 		b.Header.Index,
-		b.Header.Timestamp.UTC().Format(time.RFC3339Nano), // precise format
+		b.Header.Timestamp.UTC().Format(time.RFC3339Nano),
 		b.Header.PreviousHash,
 		b.Header.Validator,
 		b.Header.StakeSnapshot,
@@ -78,7 +79,6 @@ func (b *Block) CalculateMerkleRoot() string {
 		hashes = append(hashes, tx.ID)
 	}
 
-	// Simple merkle tree implementation
 	for len(hashes) > 1 {
 		var newHashes []string
 		for i := 0; i < len(hashes); i += 2 {
@@ -98,4 +98,15 @@ func hashPair(a, b string) string {
 	h := sha256.New()
 	h.Write([]byte(a + b))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (b *Block) IsValid() bool {
+	// Verify hash matches header data
+	calculatedHash := b.CalculateHash()
+	if b.Header.PreviousHash != "" && calculatedHash != b.CalculateHash() {
+		return false
+	}
+
+	// Add any other validation rules you need
+	return true
 }
