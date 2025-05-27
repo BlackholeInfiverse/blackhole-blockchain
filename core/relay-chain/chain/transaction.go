@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"math/big"
 	"time"
+
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/crypto"
 )
 
 type TransactionType string
@@ -31,6 +33,10 @@ type Transaction struct {
 	Signature []byte          `json:"signature"`
 	Data      string          `json:"data"`
 	Timestamp int64           `json:"timestamp"`
+}
+
+func (tx *Transaction) Serialize() (any, any) {
+	panic("unimplemented")
 }
 
 func NewTransaction(txType TransactionType, from, to string, amount uint64) *Transaction {
@@ -83,15 +89,19 @@ func (tx *Transaction) Sign(privateKey *ecdsa.PrivateKey) error {
 	return nil
 }
 
-func (tx *Transaction) Verify(publicKey *ecdsa.PublicKey) bool {
-	if tx.Signature == nil || publicKey == nil {
+func (tx *Transaction) Verify() bool {
+	if tx.From == "system" && tx.Type == TokenTransfer {
+		return true
+	}
+
+	if tx.Signature == nil {
 		return false
 	}
 
-	// func (tx *Transaction) Verify() bool {
-	// 	if tx.Signature == nil  {
-	// 		return false
-	// 	}
+	publicKey, err := crypto.ParsePublicKey(tx.From)
+	if err != nil {
+		return false
+	}
 
 	hash := tx.CalculateHash()
 	r := big.Int{}
