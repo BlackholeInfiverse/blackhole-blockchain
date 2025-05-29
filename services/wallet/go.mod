@@ -3,7 +3,7 @@ module github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet
 go 1.24.3
 
 require (
-	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250517054238-336aff203fd4
+	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250529113512-90f1506cc607
 	github.com/libp2p/go-libp2p v0.41.1
 	github.com/multiformats/go-multiaddr v0.15.0
 	go.mongodb.org/mongo-driver v1.17.3
@@ -110,7 +110,6 @@ require (
 )
 
 require (
-	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250524075417-5c786a2e73da
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
