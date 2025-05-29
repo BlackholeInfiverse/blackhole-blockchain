@@ -69,7 +69,7 @@ func main() {
 	validator := consensus.NewValidator(bc.StakeLedger)
 
 	// Generate test key pair for initial staking
-	privKey1, pubKey1, err := crypto.GenerateKeyPair()
+	_, pubKey1, err := crypto.GenerateKeyPair()
 	if err != nil {
 		log.Fatal(err)
 	}

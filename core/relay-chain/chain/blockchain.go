@@ -20,6 +20,10 @@ type Blockchain struct {
 	pendingBlocks map[uint64]*Block
 }
 
+func (bc *Blockchain) GetLatestBlockTime() time.Time {
+	panic("unimplemented")
+}
+
 func NewBlockchain(p2pPort int) (*Blockchain, error) {
 	genesis := createGenesisBlock()
 

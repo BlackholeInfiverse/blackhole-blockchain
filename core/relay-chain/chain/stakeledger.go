@@ -11,6 +11,10 @@ type StakeLedger struct {
 	mu     sync.RWMutex
 }
 
+func (sl *StakeLedger) RemoveStake(address string, slashAmount uint64) {
+	panic("unimplemented")
+}
+
 func NewStakeLedger() *StakeLedger {
 	sl := &StakeLedger{
 		Stakes: make(map[string]uint64),
