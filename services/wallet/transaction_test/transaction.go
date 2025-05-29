@@ -20,7 +20,7 @@ import (
 	// transaction "test/transaction"
 	transaction "github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/transaction"
 	// wallet_core "test/wallet"
-	wallet_core "github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet/wallet"
+	wallet_core "github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"github.com/btcsuite/btcd/btcec/v2"

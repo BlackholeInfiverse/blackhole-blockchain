@@ -1,4 +1,4 @@
-module github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/
+module github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet
 
 go 1.24.3
 
