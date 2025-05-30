@@ -11,16 +11,6 @@ type StakeLedger struct {
 	mu     sync.RWMutex
 }
 
-func (sl *StakeLedger) RemoveStake(address string, slashAmount uint64) {
-    sl.mu.Lock()
-    defer sl.mu.Unlock()
-    if currentStake, exists := sl.Stakes[address]; exists && currentStake >= slashAmount {
-        sl.Stakes[address] -= slashAmount
-    } else {
-        panic("insufficient stake or address not found")
-    }
-}
-
 func NewStakeLedger() *StakeLedger {
 	sl := &StakeLedger{
 		Stakes: make(map[string]uint64),

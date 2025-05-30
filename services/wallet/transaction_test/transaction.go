@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/gob"
 	"encoding/json"
+	"flag"
 
 	"fmt"
 	"log"
@@ -165,16 +166,21 @@ func main() {
 	// 	log.Println("Transaction failed to process", success)
 	// }
 
-	// Create a temporary libp2p host
+	// CLI flag for peer address
+	peerAddr := flag.String("peer", "", "Multiaddr of the peer to connect to")
+	flag.Parse()
+
+	if *peerAddr == "" {
+		log.Fatal("❌ Please provide the peer address using -peer flag")
+	}
+
 	ctx2 := context.Background()
 	host, err := libp2p.New()
 	if err != nil {
 		log.Fatal("Failed to create libp2p host:", err)
 	}
 
-	// Replace with the actual peer ID and address of your running node
-	peerAddr := "/ip4/192.168.0.73/tcp/3000/p2p/12D3KooWAJ7A2akZFNGzgwFKK3H78HydTozbkNmQjkKC82pAmTDN"
-	maddr, err := multiaddr.NewMultiaddr(peerAddr)
+	maddr, err := multiaddr.NewMultiaddr(*peerAddr)
 	if err != nil {
 		log.Fatal("Invalid multiaddr:", err)
 	}
@@ -184,9 +190,8 @@ func main() {
 		log.Fatal("Failed to get peer info:", err)
 	}
 
-	// Connect to peer
 	if err := host.Connect(ctx2, *info); err != nil {
-		log.Println("the info :", info)
+		log.Println("the info:", info)
 		log.Fatal("Failed to connect to peer:", err)
 	}
 

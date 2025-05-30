@@ -1,17 +1,16 @@
 package chain
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"log"
 	"math/big"
 	"time"
 
+	// "github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/crypto"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 
@@ -39,6 +38,10 @@ type Transaction struct {
 	PublicKey []byte          `json:"public_key"`
 }
 
+func (tx *Transaction) Serialize() (any, any) {
+	panic("unimplemented")
+}
+
 func NewTransaction(txType TransactionType, from, to string, amount uint64, publicKey []byte) *Transaction {
 	tx := &Transaction{
 		ID:        "",
@@ -50,7 +53,7 @@ func NewTransaction(txType TransactionType, from, to string, amount uint64, publ
 		Fee:       0,
 		Nonce:     0,
 		Timestamp: time.Now().Unix(),
-		PublicKey: publicKey,
+		PublicKey: publicKey, // ✅ include the public key
 	}
 	tx.ID = tx.CalculateHash()
 	return tx
@@ -65,16 +68,16 @@ func (tx *Transaction) CalculateHash() string {
 		Token     string          `json:"token"`
 		Nonce     uint64          `json:"nonce"`
 		Timestamp int64           `json:"timestamp"`
-		PublicKey []byte          `json:"public_key"`
+		PublicKey []byte          `json:"public_key"` // ✅ include this
 	}{
-		Type:      tx.Type,
-		From:      tx.From,
-		To:        tx.To,
-		Amount:    tx.Amount,
-		Token:     tx.Token,
-		Nonce:     tx.Nonce,
-		Timestamp: tx.Timestamp,
-		PublicKey: tx.PublicKey,
+		tx.Type,
+		tx.From,
+		tx.To,
+		tx.Amount,
+		tx.Token,
+		tx.Nonce,
+		tx.Timestamp,
+		tx.PublicKey, // ✅ pass actual value
 	})
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
@@ -86,6 +89,7 @@ func (tx *Transaction) Sign(privateKey *ecdsa.PrivateKey) error {
 	if err != nil {
 		return err
 	}
+
 	signature := append(r.Bytes(), s.Bytes()...)
 	tx.Signature = signature
 	return nil
@@ -93,6 +97,7 @@ func (tx *Transaction) Sign(privateKey *ecdsa.PrivateKey) error {
 
 func (tx *Transaction) Verify() bool {
 	if tx.From == "system" && tx.Type == TokenTransfer {
+		log.Println("Info: System token transfer - auto verified")
 		return true
 	}
 
@@ -106,8 +111,11 @@ func (tx *Transaction) Verify() bool {
 		log.Println("❌ Failed to parse public key:", err)
 		return false
 	}
+	log.Println("Info: Public key parsed successfully")
 
 	hashHex := tx.CalculateHash()
+	log.Printf("Info: Transaction hash (hex): %s\n", hashHex)
+
 	hashBytes, err := hex.DecodeString(hashHex)
 	if err != nil {
 		log.Println("❌ Failed to decode hash hex string:", err)
@@ -119,16 +127,11 @@ func (tx *Transaction) Verify() bool {
 	sigLen := len(tx.Signature)
 	r.SetBytes(tx.Signature[:sigLen/2])
 	s.SetBytes(tx.Signature[sigLen/2:])
+	log.Printf("Info: Signature components r: %s, s: %s\n", r.String(), s.String())
 
 	ecdsaPubKey := publicKey.ToECDSA()
-	return ecdsa.Verify(ecdsaPubKey, hashBytes, &r, &s)
-}
 
-func (tx *Transaction) Serialize() ([]byte, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(tx); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	verified := ecdsa.Verify(ecdsaPubKey, hashBytes, &r, &s)
+	log.Printf("Info: Signature verification result: %v\n", verified)
+	return verified
 }

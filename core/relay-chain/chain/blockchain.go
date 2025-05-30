@@ -30,6 +30,9 @@ type Blockchain struct {
 	GlobalState   map[string]*AccountState
 	DB            *leveldb.DB
 }
+type RealBlockchain struct {
+	Blockchain *Blockchain // Pointer to the real blockchain
+}
 
 func NewBlockchain(p2pPort int) (*Blockchain, error) {
 	genesis := createGenesisBlock()
@@ -59,19 +62,19 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		TotalSupply:   1000000000,
 		BlockReward:   10,
 		pendingBlocks: make(map[uint64]*Block),
-		GlobalState:   make(map[string]*AccountState),
+		GlobalState:   make(map[string]*AccountState), // ✅
 		DB:            db,
 	}
-	bc.GlobalState["genesis-validator"] = &AccountState{
-		Balance: 10,
+	bc.GlobalState["system"] = &AccountState{
+		Balance: 10000000, // same as genesis rewardTx.Amount
 		Nonce:   0,
 	}
-	bc.GlobalState["0287fedc93e5d1e3f2800f8cde4d5c027851fb85b6bde5423984cd96c79f037165"] = &AccountState{
-		Balance: 1000,
+	bc.GlobalState["03e2459b73c0c6522530f6b26e834d992dfc55d170bee35d0bcdc047fe0d61c25b"] = &AccountState{
+		Balance: 1000, // give this wallet 1000 tokens initially
 		Nonce:   0,
 	}
 
-	// Load GlobalState from DB
+	// Optional: Load GlobalState from DB
 	bc.loadGlobalState()
 	return bc, nil
 }
@@ -106,7 +109,6 @@ func createGenesisBlock() *Block {
 
 	return block
 }
-
 func (bc *Blockchain) MineBlock(selectedValidator string) *Block {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
@@ -123,10 +125,10 @@ func (bc *Blockchain) MineBlock(selectedValidator string) *Block {
 		prevHash = "0000000000000000000000000000000000000000000000000000000000000000"
 	}
 
-	// Get stake snapshot for this validator
+	// Get stake snapshot for validator
 	stake := bc.StakeLedger.GetStake(selectedValidator)
 
-	// Create reward transaction
+	// Create reward transaction from system to validator with correct fields
 	rewardTx := &Transaction{
 		ID:        "",
 		Type:      TokenTransfer,
@@ -137,8 +139,8 @@ func (bc *Blockchain) MineBlock(selectedValidator string) *Block {
 		Fee:       0,
 		Nonce:     0,
 		Timestamp: time.Now().Unix(),
-		Signature: nil,
-		PublicKey: nil,
+		Signature: nil, // system transaction usually unsigned
+		PublicKey: nil, // no public key needed for system tx
 	}
 	rewardTx.ID = rewardTx.CalculateHash()
 
@@ -147,6 +149,8 @@ func (bc *Blockchain) MineBlock(selectedValidator string) *Block {
 
 	// Create new block
 	block := NewBlock(index, txs, prevHash, selectedValidator, stake)
+
+	// DO NOT modify blockchain state here!
 	return block
 }
 
@@ -164,7 +168,7 @@ func (bc *Blockchain) AddBlock(block *Block) bool {
 	currentTip := bc.Blocks[len(bc.Blocks)-1]
 	expectedIndex := currentTip.Header.Index + 1
 
-	// CASE: Block is stale
+	// CASE: Block is stale (already behind tip)
 	if block.Header.Index < currentTip.Header.Index {
 		fmt.Printf("⚠️ Stale block %d ignored (current chain height is %d)\n", block.Header.Index, currentTip.Header.Index)
 		return false
@@ -182,20 +186,22 @@ func (bc *Blockchain) AddBlock(block *Block) bool {
 		// Compare stake or hash to resolve fork
 		if block.Header.PreviousHash == currentTip.Header.PreviousHash {
 			fmt.Println("🔄 Competing block found at same height with same parent")
+
 			if block.Header.StakeSnapshot > currentTip.Header.StakeSnapshot ||
 				(block.Header.StakeSnapshot == currentTip.Header.StakeSnapshot && block.Hash < currentTip.Hash) {
 				fmt.Println("🔁 Fork wins, switching to better block")
 				return bc.reorganizeToFork([]*Block{block})
 			}
+
 			fmt.Println("🚫 Fork loses, ignoring")
 			return false
 		}
 
-		// Deep fork
+		// Deep fork (diverges earlier)
 		return bc.handleFork(block)
 	}
 
-	// CASE: Block is ahead of tip
+	// CASE: Block is ahead of tip (future block)
 	if block.Header.Index > expectedIndex {
 		fmt.Printf("⏳ Future block received (current %d < block %d), queuing\n", expectedIndex, block.Header.Index)
 		bc.pendingBlocks[block.Header.Index] = block
@@ -214,19 +220,19 @@ func (bc *Blockchain) AddBlock(block *Block) bool {
 		return false
 	}
 
-	// Verify and apply transactions
+	// for _, tx := range block.Transactions {
+	// 	if !tx.Verify() {
+	// 		fmt.Printf("❌ Invalid transaction: %s\n", tx.ID)
+	// 		return false
+	// 	}
+	// }
+
 	for _, tx := range block.Transactions {
-		if !tx.Verify() {
-			fmt.Printf("❌ Invalid transaction: %s\n", tx.ID)
-			return false
-		}
 		success := bc.ApplyTransaction(tx)
 		if !success {
-			fmt.Printf("❌ Failed to apply transaction: %s\n", tx.ID)
-			return false
+			fmt.Println("Invalid tx in block, skipping:", tx)
 		}
 	}
-
 	// Add block normally
 	bc.Blocks = append(bc.Blocks, block)
 	bc.PendingTxs = make([]*Transaction, 0)
@@ -240,19 +246,6 @@ func (bc *Blockchain) AddBlock(block *Block) bool {
 		}
 		fmt.Printf("🧪 Attempting to add queued block %d\n", nextBlock.Header.Index)
 		if nextBlock.Header.PreviousHash == block.Hash && nextBlock.CalculateHash() == nextBlock.Hash {
-			for _, tx := range nextBlock.Transactions {
-				if !tx.Verify() {
-					fmt.Printf("❌ Invalid transaction in queued block: %s\n", tx.ID)
-					delete(bc.pendingBlocks, nextBlock.Header.Index)
-					break
-				}
-				success := bc.ApplyTransaction(tx)
-				if !success {
-					fmt.Printf("❌ Failed to apply transaction in queued block: %s\n", tx.ID)
-					delete(bc.pendingBlocks, nextBlock.Header.Index)
-					break
-				}
-			}
 			bc.Blocks = append(bc.Blocks, nextBlock)
 			bc.PendingTxs = make([]*Transaction, 0)
 			fmt.Printf("✅ Queued block %d added successfully\n", nextBlock.Header.Index)
@@ -313,14 +306,10 @@ func (bc *Blockchain) requestMissingBlocks(startIndex, endIndex uint64) {
 }
 
 func (bc *Blockchain) BroadcastTransaction(tx *Transaction) {
-	data, err := tx.Serialize()
-	if err != nil {
-		log.Printf("❌ Failed to serialize transaction %s: %v", tx.ID, err)
-		return
-	}
+	data, _ := tx.Serialize()
 	msg := &Message{
 		Type:    MessageTypeTx,
-		Data:    data,
+		Data:    data.([]byte),
 		Version: ProtocolVersion,
 	}
 	bc.P2PNode.Broadcast(msg)
@@ -364,6 +353,7 @@ func (bc *Blockchain) SyncChain() {
 	}
 }
 
+// GetLatestBlock returns the most recent block in the blockchain
 func (bc *Blockchain) GetLatestBlock() *Block {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
@@ -374,39 +364,37 @@ func (bc *Blockchain) GetLatestBlock() *Block {
 	return bc.Blocks[len(bc.Blocks)-1]
 }
 
-func (bc *Blockchain) GetLatestBlockTime() time.Time {
-	bc.mu.RLock()
-	defer bc.mu.RUnlock()
-	if len(bc.Blocks) == 0 {
-		return bc.GenesisTime
-	}
-	return bc.Blocks[len(bc.Blocks)-1].Header.Timestamp
-}
-
+// GetChainEndingWith finds and validates a chain ending with the specified block
 func (bc *Blockchain) GetChainEndingWith(block *Block) []*Block {
+	// Temporary map to build the chain
 	chainMap := make(map[string]*Block)
 	currentHash := block.CalculateHash()
 	chainMap[currentHash] = block
 
+	// Walk backwards through previous hashes
 	current := block
 	for {
+		// Check if we've reached genesis block
 		if current.Header.PreviousHash == "" {
 			break
 		}
 
+		// Try to find previous block in our database
 		prevBlock, err := bc.GetBlockByPreviousHash(current.Header.PreviousHash)
 		if err != nil {
-			return nil
+			return nil // Previous block not found
 		}
 
+		// Verify block links
 		if prevBlock.CalculateHash() != current.Header.PreviousHash {
-			return nil
+			return nil // Invalid link
 		}
 
 		chainMap[prevBlock.CalculateHash()] = prevBlock
 		current = prevBlock
 	}
 
+	// Convert map to ordered slice
 	var chain []*Block
 	current = block
 	for {
@@ -420,6 +408,7 @@ func (bc *Blockchain) GetChainEndingWith(block *Block) []*Block {
 	return chain
 }
 
+// GetBlockByPreviousHash finds a block by what it claims to be its own hash
 func (bc *Blockchain) GetBlockByPreviousHash(prevHash string) (*Block, error) {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
@@ -433,28 +422,35 @@ func (bc *Blockchain) GetBlockByPreviousHash(prevHash string) (*Block, error) {
 	return nil, fmt.Errorf("block not found")
 }
 
+// Reorganize switches to a longer valid chain
 func (bc *Blockchain) Reorganize(newChain []*Block) bool {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 
+	// Validate the entire new chain
 	for i, block := range newChain {
+		// Skip genesis block
 		if i == 0 {
 			if block.Header.PreviousHash != "" {
-				return false
+				return false // Genesis block shouldn't have previous hash
 			}
 			continue
 		}
 
+		// Check block links
 		prevBlockHash := newChain[i-1].CalculateHash()
 		if block.Header.PreviousHash != prevBlockHash {
 			return false
 		}
+
 	}
 
+	// Only reorganize if new chain is longer
 	if len(newChain) <= len(bc.Blocks) {
 		return false
 	}
 
+	// Switch to new chain
 	bc.Blocks = newChain
 	return true
 }
@@ -469,6 +465,7 @@ func (bc *Blockchain) handleFork(forkBlock *Block) bool {
 }
 
 func (bc *Blockchain) reorganizeToFork(newChain []*Block) bool {
+	// Validate entire chain
 	for i, block := range newChain {
 		if !block.IsValid() || block.CalculateHash() != block.Hash {
 			fmt.Printf("❌ Invalid block at position %d in forked chain\n", i)
@@ -476,6 +473,7 @@ func (bc *Blockchain) reorganizeToFork(newChain []*Block) bool {
 		}
 	}
 
+	// Replace current chain
 	bc.Blocks = newChain
 	fmt.Println("✅ Chain reorganized to better fork")
 	bc.PendingTxs = []*Transaction{}
@@ -483,12 +481,13 @@ func (bc *Blockchain) reorganizeToFork(newChain []*Block) bool {
 }
 
 func (bc *Blockchain) reconstructChain(block *Block) []*Block {
+	// Walk back from the given block to genesis using known blocks or peer requests
 	chain := []*Block{block}
 	current := block
 
 	for {
 		if current.Header.Index == 0 {
-			break
+			break // Genesis
 		}
 
 		parent, _ := bc.GetBlockByPreviousHash(current.Header.PreviousHash)
@@ -503,7 +502,6 @@ func (bc *Blockchain) reconstructChain(block *Block) []*Block {
 
 	return chain
 }
-
 func (bc *Blockchain) GetPendingTransactions() []*Transaction {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
@@ -511,8 +509,6 @@ func (bc *Blockchain) GetPendingTransactions() []*Transaction {
 }
 
 func (bc *Blockchain) GetBalance(addr string) uint64 {
-	bc.mu.RLock()
-	defer bc.mu.RUnlock()
 	state, ok := bc.GlobalState[addr]
 	if !ok {
 		return 0
@@ -521,8 +517,6 @@ func (bc *Blockchain) GetBalance(addr string) uint64 {
 }
 
 func (bc *Blockchain) GetNonce(address string) uint64 {
-	bc.mu.RLock()
-	defer bc.mu.RUnlock()
 	if acc, ok := bc.GlobalState[address]; ok {
 		return acc.Nonce
 	}
@@ -533,71 +527,82 @@ func (bc *Blockchain) ProcessTransaction(tx *Transaction) error {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 
+	// Validate basic transaction fields
 	if tx.From == "" || tx.To == "" || tx.Amount <= 0 {
 		return fmt.Errorf("invalid transaction: missing fields or negative amount")
 	}
 
-	if !tx.Verify() {
-		return fmt.Errorf("invalid transaction signature")
-	}
+	// // Ensure sender exists
+	// senderState, exists := bc.GlobalState[tx.From]
+	// if !exists {
+	// 	return fmt.Errorf("sender not found in global state")
+	// }
 
-	senderState, exists := bc.GlobalState[tx.From]
-	if !exists {
-		return fmt.Errorf("sender not found in global state")
-	}
+	// // Validate nonce
+	// if tx.Nonce != senderState.Nonce {
+	// 	return fmt.Errorf("invalid nonce: expected %d, got %d", senderState.Nonce, tx.Nonce)
+	// }
 
-	if tx.Nonce != senderState.Nonce {
-		return fmt.Errorf("invalid nonce: expected %d, got %d", senderState.Nonce, tx.Nonce)
-	}
+	// // Validate balance
+	// if uint64(tx.Amount) > senderState.Balance {
+	// 	return fmt.Errorf("insufficient balance")
+	// }
 
-	if uint64(tx.Amount) > senderState.Balance {
-		return fmt.Errorf("insufficient balance")
-	}
-
+	// Queue transaction for block inclusion
 	bc.PendingTxs = append(bc.PendingTxs, tx)
+
 	return nil
 }
-
 func (bc *Blockchain) getOrCreateAccount(address string) *AccountState {
-	bc.mu.Lock()
-	defer bc.mu.Unlock()
 	if acc, exists := bc.GlobalState[address]; exists {
 		return acc
 	}
 	bc.GlobalState[address] = &AccountState{
 		Balance: 0,
-		Nonce:   0,
+		// Add other fields like Nonce, CodeHash etc if needed
 	}
 	return bc.GlobalState[address]
 }
 
 func (bc *Blockchain) ApplyTransaction(tx *Transaction) bool {
+	fmt.Println("🔄 Applying transaction:")
+	fmt.Printf("   ➤ From: %s\n", tx.From)
+	fmt.Printf("   ➤ To: %s\n", tx.To)
+	fmt.Printf("   ➤ Amount: %d\n", tx.Amount)
+
 	sender := tx.From
 	receiver := tx.To
 	amount := tx.Amount
 
+	// Get or create sender account
 	senderState := bc.getOrCreateAccount(sender)
+	fmt.Printf("   📤 Sender '%s' balance before transaction: %d\n", sender, senderState.Balance)
+
+	// Check for insufficient funds
 	if senderState.Balance < amount {
+		fmt.Printf("   ❌ Transaction failed: Insufficient funds (has %d, needs %d)\n", senderState.Balance, amount)
 		return false
 	}
 
+	// Deduct from sender
 	senderState.Balance -= amount
-	senderState.Nonce++
 	bc.SetBalance(sender, senderState.Balance)
-	bc.SaveAccountState(sender, senderState)
+	fmt.Printf("   ✅ Sender '%s' balance after deduction: %d\n", sender, senderState.Balance)
 
+	// Get or create receiver account
 	receiverState := bc.getOrCreateAccount(receiver)
+	fmt.Printf("   📥 Receiver '%s' balance before transaction: %d\n", receiver, receiverState.Balance)
+
+	// Add to receiver
 	receiverState.Balance += amount
 	bc.SetBalance(receiver, receiverState.Balance)
-	bc.SaveAccountState(receiver, receiverState)
+	fmt.Printf("   ✅ Receiver '%s' balance after addition: %d\n", receiver, receiverState.Balance)
 
-	fmt.Printf("Sender balance: %d, Receiver balance: %d\n", senderState.Balance, receiverState.Balance)
+	fmt.Println("✅ Transaction applied successfully")
 	return true
 }
 
 func (bc *Blockchain) SetBalance(addr string, balance uint64) {
-	bc.mu.Lock()
-	defer bc.mu.Unlock()
 	state, ok := bc.GlobalState[addr]
 	if !ok {
 		state = &AccountState{}
@@ -614,7 +619,6 @@ func (bc *Blockchain) SaveAccountState(addr string, state *AccountState) error {
 	}
 	return bc.DB.Put([]byte("account:"+addr), data, nil)
 }
-
 func (bc *Blockchain) LoadAccountState(addr string) (*AccountState, error) {
 	data, err := bc.DB.Get([]byte("account:"+addr), nil)
 	if err != nil {

@@ -6,9 +6,8 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/hex"
-	
+
 	"errors"
-	"fmt"
 )
 
 func GenerateKeyPair() (*ecdsa.PrivateKey, string, error) {
@@ -24,30 +23,17 @@ func GenerateKeyPair() (*ecdsa.PrivateKey, string, error) {
 
 	return privateKey, hex.EncodeToString(pubKeyBytes), nil
 }
-
-func ParsePublicKey(pubKeyHex string) (*ecdsa.PublicKey, error) {
-	if pubKeyHex == "" {
-		return nil, errors.New("empty public key")
-	}
-
-	keyBytes, err := hex.DecodeString(pubKeyHex)
+func ParsePublicKey(pubKeyBytes []byte) (*ecdsa.PublicKey, error) {
+	pubInterface, err := x509.ParsePKIXPublicKey(pubKeyBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode public key: %v", err)
+		return nil, err
 	}
-
-	pubKey, err := x509.ParsePKIXPublicKey(keyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse public key: %v", err)
-	}
-
-	ecdsaPubKey, ok := pubKey.(*ecdsa.PublicKey)
+	pubKey, ok := pubInterface.(*ecdsa.PublicKey)
 	if !ok {
-		return nil, errors.New("not an ECDSA public key")
+		return nil, errors.New("not ECDSA public key")
 	}
-
-	return ecdsaPubKey, nil
+	return pubKey, nil
 }
-
 func PublicKeyToString(pubKey *ecdsa.PublicKey) (string, error) {
 	pubKeyBytes, err := x509.MarshalPKIXPublicKey(pubKey)
 	if err != nil {

@@ -3,7 +3,7 @@ module github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet
 go 1.24.3
 
 require (
-	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250529124425-629c5dfaf4c4
+	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250529102438-629c5dfaf4c4
 	github.com/libp2p/go-libp2p v0.41.1
 	github.com/multiformats/go-multiaddr v0.15.0
 	go.mongodb.org/mongo-driver v1.17.3
@@ -94,6 +94,7 @@ require (
 	github.com/quic-go/webtransport-go v0.8.1-0.20241018022711-4ac2c9250e66 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
+	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	go.uber.org/dig v1.18.0 // indirect
 	go.uber.org/fx v1.23.0 // indirect
