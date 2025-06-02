@@ -1,15 +1,27 @@
 package chain
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/gob"
 	"encoding/hex"
-	"encoding/json"
+	"fmt"
 	"time"
 )
 
 type Block struct {
 	Header       BlockHeader
 	Transactions []*Transaction
+	Hash         string `json:"hash"`
+}
+
+func (b *Block) Serialize() []byte {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(b); err != nil {
+		panic("failed to serialize block: " + err.Error())
+	}
+	return buf.Bytes()
 }
 
 type BlockHeader struct {
@@ -19,7 +31,7 @@ type BlockHeader struct {
 	Validator      string    `json:"validator"`
 	StakeSnapshot  uint64    `json:"stakeSnapshot"`
 	MerkleRoot     string    `json:"merkleRoot"`
-	StateRoot      string    `json:"stateRoot"` // For smart contracts in future
+	StateRoot      string    `json:"stateRoot"`
 	ReceiptsRoot   string    `json:"receiptsRoot"`
 	ConsensusRound uint64    `json:"consensusRound"`
 }
@@ -35,17 +47,25 @@ func NewBlock(index uint64, txs []*Transaction, prevHash string, validator strin
 		},
 		Transactions: txs,
 	}
-	
+
 	block.Header.MerkleRoot = block.CalculateMerkleRoot()
-	block.Header.StateRoot = "0x0" // Placeholder for future
-	block.Header.ReceiptsRoot = "0x0" // Placeholder for future
-	
+	block.Header.StateRoot = "0x0"
+	block.Header.ReceiptsRoot = "0x0"
+	block.Hash = block.CalculateHash()
+
 	return block
 }
 
 func (b *Block) CalculateHash() string {
-	headerData, _ := json.Marshal(b.Header)
-	hash := sha256.Sum256(headerData)
+	headerData := fmt.Sprintf("%d%s%s%s%d%s",
+		b.Header.Index,
+		b.Header.Timestamp.UTC().Format(time.RFC3339Nano),
+		b.Header.PreviousHash,
+		b.Header.Validator,
+		b.Header.StakeSnapshot,
+		b.Header.MerkleRoot,
+	)
+	hash := sha256.Sum256([]byte(headerData))
 	return hex.EncodeToString(hash[:])
 }
 
@@ -53,13 +73,12 @@ func (b *Block) CalculateMerkleRoot() string {
 	if len(b.Transactions) == 0 {
 		return ""
 	}
-	
+
 	var hashes []string
 	for _, tx := range b.Transactions {
 		hashes = append(hashes, tx.ID)
 	}
-	
-	// Simple merkle tree implementation
+
 	for len(hashes) > 1 {
 		var newHashes []string
 		for i := 0; i < len(hashes); i += 2 {
@@ -71,7 +90,7 @@ func (b *Block) CalculateMerkleRoot() string {
 		}
 		hashes = newHashes
 	}
-	
+
 	return hashes[0]
 }
 
@@ -79,4 +98,15 @@ func hashPair(a, b string) string {
 	h := sha256.New()
 	h.Write([]byte(a + b))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (b *Block) IsValid() bool {
+	// Verify hash matches header data
+	calculatedHash := b.CalculateHash()
+	if b.Header.PreviousHash != "" && calculatedHash != b.CalculateHash() {
+		return false
+	}
+
+	// Add any other validation rules you need
+	return true
 }

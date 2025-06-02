@@ -6,8 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"math/big"
 	"time"
+
+	// "github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/crypto"
+	"github.com/btcsuite/btcd/btcec/v2"
 )
 
 type TransactionType string
@@ -31,9 +35,14 @@ type Transaction struct {
 	Signature []byte          `json:"signature"`
 	Data      string          `json:"data"`
 	Timestamp int64           `json:"timestamp"`
+	PublicKey []byte          `json:"public_key"`
 }
 
-func NewTransaction(txType TransactionType, from, to string, amount uint64) *Transaction {
+func (tx *Transaction) Serialize() (any, any) {
+	panic("unimplemented")
+}
+
+func NewTransaction(txType TransactionType, from, to string, amount uint64, publicKey []byte) *Transaction {
 	tx := &Transaction{
 		ID:        "",
 		Type:      txType,
@@ -44,6 +53,7 @@ func NewTransaction(txType TransactionType, from, to string, amount uint64) *Tra
 		Fee:       0,
 		Nonce:     0,
 		Timestamp: time.Now().Unix(),
+		PublicKey: publicKey, // ✅ include the public key
 	}
 	tx.ID = tx.CalculateHash()
 	return tx
@@ -58,6 +68,7 @@ func (tx *Transaction) CalculateHash() string {
 		Token     string          `json:"token"`
 		Nonce     uint64          `json:"nonce"`
 		Timestamp int64           `json:"timestamp"`
+		PublicKey []byte          `json:"public_key"` // ✅ include this
 	}{
 		tx.Type,
 		tx.From,
@@ -66,6 +77,7 @@ func (tx *Transaction) CalculateHash() string {
 		tx.Token,
 		tx.Nonce,
 		tx.Timestamp,
+		tx.PublicKey, // ✅ pass actual value
 	})
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
@@ -83,22 +95,43 @@ func (tx *Transaction) Sign(privateKey *ecdsa.PrivateKey) error {
 	return nil
 }
 
-func (tx *Transaction) Verify(publicKey *ecdsa.PublicKey) bool {
-	if tx.Signature == nil || publicKey == nil {
+func (tx *Transaction) Verify() bool {
+	if tx.From == "system" && tx.Type == TokenTransfer {
+		log.Println("Info: System token transfer - auto verified")
+		return true
+	}
+
+	if tx.Signature == nil || len(tx.Signature) == 0 {
+		log.Println("Error: Empty signature")
 		return false
 	}
 
-	// func (tx *Transaction) Verify() bool {
-	// 	if tx.Signature == nil  {
-	// 		return false
-	// 	}
+	publicKey, err := btcec.ParsePubKey(tx.PublicKey)
+	if err != nil {
+		log.Println("❌ Failed to parse public key:", err)
+		return false
+	}
+	log.Println("Info: Public key parsed successfully")
 
-	hash := tx.CalculateHash()
+	hashHex := tx.CalculateHash()
+	log.Printf("Info: Transaction hash (hex): %s\n", hashHex)
+
+	hashBytes, err := hex.DecodeString(hashHex)
+	if err != nil {
+		log.Println("❌ Failed to decode hash hex string:", err)
+		return false
+	}
+
 	r := big.Int{}
 	s := big.Int{}
 	sigLen := len(tx.Signature)
-	r.SetBytes(tx.Signature[:(sigLen / 2)])
-	s.SetBytes(tx.Signature[(sigLen / 2):])
+	r.SetBytes(tx.Signature[:sigLen/2])
+	s.SetBytes(tx.Signature[sigLen/2:])
+	log.Printf("Info: Signature components r: %s, s: %s\n", r.String(), s.String())
 
-	return ecdsa.Verify(publicKey, []byte(hash), &r, &s)
+	ecdsaPubKey := publicKey.ToECDSA()
+
+	verified := ecdsa.Verify(ecdsaPubKey, hashBytes, &r, &s)
+	log.Printf("Info: Signature verification result: %v\n", verified)
+	return verified
 }

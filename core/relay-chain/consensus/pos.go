@@ -1,200 +1,122 @@
 package consensus
 
 import (
-	"errors"
-	"log"
+	"fmt"
+	"math/rand"
 	"sort"
+	"time"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 )
-
-type Stake struct {
-	Address string // User or validator address
-	Amount  uint64 // Staked TokenX amount
-	Type    string // "validator" or "delegator"
-	Target  string // Validator address (for delegators)
-}
 
 type Validator struct {
-	Address    string  // Validator address
-	TotalStake uint64  // Own stake + delegated stake
-	Delegators []Stake // List of delegator stakes
-	Commission float64 // Commission rate (e.g., 10%)
-	Active     bool    // Active in consensus
-	LastActive int64   // Last block validated (for downtime detection)
+	StakePool      *chain.StakeLedger
+	LastBlockTime  time.Time
+	BlockInterval  time.Duration
+	RewardStrategy RewardStrategy
 }
 
-type Reward struct {
-	Address string // Recipient address
-	Amount  uint64 // Reward in TokenX
-	Epoch   int64  // Epoch number
+type RewardStrategy interface {
+	CalculateReward(block *chain.Block) uint64
 }
 
-var (
-	Validators map[string]*Validator // Address -> Validator
-	Stakes     map[string]*Stake     // Address -> Stake
-	Rewards    []Reward              // List of all rewards
-)
-
-func StakeTokens(address, target string, amount uint64, stakeType string) error {
-	if amount == 0 {
-		return errors.New("stake amount must be positive")
-	}
-	if stakeType == "validator" && amount < 1000 {
-		return errors.New("minimum validator stake is 1000 TokenX")
-	}
-	stake := &Stake{
-		Address: address,
-		Amount:  amount,
-		Type:    stakeType,
-		Target:  target,
-	}
-	Stakes[address] = stake
-	if stakeType == "validator" {
-		Validators[address] = &Validator{
-			Address:    address,
-			TotalStake: amount,
-			Delegators: []Stake{},
-			Commission: 0.1, // 10% commission
-			Active:     true,
-		}
-	} else {
-		validator, exists := Validators[target]
-		if !exists {
-			return errors.New("validator not found")
-		}
-		validator.Delegators = append(validator.Delegators, *stake)
-		validator.TotalStake += amount
-	}
-	return nil
+type DefaultRewardStrategy struct {
+	BaseReward uint64
 }
 
-func SelectValidators() []*Validator {
-	var validatorList []*Validator
-	for _, v := range Validators {
-		validatorList = append(validatorList, v)
-	}
-	sort.Slice(validatorList, func(i, j int) bool {
-		return validatorList[i].TotalStake > validatorList[j].TotalStake
-	})
-	if len(validatorList) > 100 {
-		return validatorList[:100]
-	}
-	return validatorList
+// Default base reward logic
+func (d *DefaultRewardStrategy) CalculateReward(block *chain.Block) uint64 {
+	return d.BaseReward
 }
 
-func SlashValidator(address string, offense string) error {
-	validator, exists := Validators[address]
-	if !exists {
-		return errors.New("validator not found")
+// Constructor for Validator
+func NewValidator(stakeLedger *chain.StakeLedger) *Validator {
+	return &Validator{
+		StakePool:     stakeLedger,
+		BlockInterval: 5 * time.Second,
+		RewardStrategy: &DefaultRewardStrategy{
+			BaseReward: 10,
+		},
+		LastBlockTime: time.Now().Add(-10 * time.Second), // allow first block immediately
 	}
-	var penalty float64
-	switch offense {
-	case "downtime":
-		penalty = 0.01 // 1%
-	case "double-signing":
-		penalty = 0.05 // 5%
-	default:
-		return errors.New("unknown offense")
-	}
-	slashAmount := uint64(float64(validator.TotalStake) * penalty)
-	validator.TotalStake -= slashAmount
-	if validator.TotalStake == 0 {
-		validator.Active = false
-	}
-	return nil
+
 }
 
-func DistributeRewards(epoch int64, token *token.Token) []Reward {
+// Select a validator randomly weighted by stake
+func (v *Validator) SelectValidator() string {
+	stakes := v.StakePool.GetAllStakes()
+	if len(stakes) == 0 {
+		return ""
+	}
+
+	type validatorStake struct {
+		address string
+		stake   uint64
+	}
+
+	var validators []validatorStake
 	totalStake := uint64(0)
-	for _, v := range Validators {
-		totalStake += v.TotalStake
-	}
-	inflationRate := 0.05
-	newTokens := uint64(float64(totalStake) * inflationRate)
-	log.Printf("Total Stake: %d, New Tokens: %d", totalStake, newTokens)
 
-	var epochRewards []Reward
-	for _, v := range Validators {
-		validatorReward := uint64(float64(newTokens) * float64(v.TotalStake) / float64(totalStake) * (1 - v.Commission))
-		log.Printf("Validator %s: TotalStake=%d, Reward=%d", v.Address, v.TotalStake, validatorReward)
-		if validatorReward > 0 {
-			if err := token.Mint(v.Address, validatorReward); err != nil {
-				log.Printf("Mint failed for validator %s: %v", v.Address, err)
-				// For debugging: Append reward even if mint fails
-				reward := Reward{v.Address, validatorReward, epoch}
-				epochRewards = append(epochRewards, reward)
-				log.Printf("Appended reward despite mint failure for validator %s: %+v", v.Address, reward)
-				continue
-			}
-			reward := Reward{v.Address, validatorReward, epoch}
-			epochRewards = append(epochRewards, reward)
-			log.Printf("Added reward for validator %s: %+v", v.Address, reward)
-		}
-		for _, d := range v.Delegators {
-			delegatorReward := uint64(float64(newTokens) * float64(d.Amount) / float64(totalStake) * v.Commission)
-			log.Printf("Delegator %s: Amount=%d, Reward=%d", d.Address, d.Amount, delegatorReward)
-			if delegatorReward > 0 {
-				if err := token.Mint(d.Address, delegatorReward); err != nil {
-					log.Printf("Mint failed for delegator %s: %v", d.Address, err)
-					// For debugging: Append reward even if mint fails
-					reward := Reward{d.Address, delegatorReward, epoch}
-					epochRewards = append(epochRewards, reward)
-					log.Printf("Appended reward despite mint failure for delegator %s: %+v", d.Address, reward)
-					continue
-				}
-				reward := Reward{d.Address, delegatorReward, epoch}
-				epochRewards = append(epochRewards, reward)
-				log.Printf("Added reward for delegator %s: %+v", d.Address, reward)
-			}
+	for addr, stake := range stakes {
+		validators = append(validators, validatorStake{addr, stake})
+		totalStake += stake
+	}
+
+	// Sort by stake (desc)
+	sort.Slice(validators, func(i, j int) bool {
+		return validators[i].stake > validators[j].stake
+	})
+
+	rand.Seed(time.Now().UnixNano())
+	selection := rand.Uint64() % totalStake
+
+	runningTotal := uint64(0)
+	for _, vs := range validators {
+		runningTotal += vs.stake
+		if runningTotal > selection {
+			return vs.address
 		}
 	}
-	log.Printf("Epoch Rewards: %+v", epochRewards)
-	Rewards = append(Rewards, epochRewards...)
-	log.Printf("Global Rewards: %+v", Rewards)
-	return epochRewards
+
+	return validators[0].address // fallback
 }
 
-func UnstakeTokens(address string, amount uint64) error {
-	stake, exists := Stakes[address]
-	if !exists || stake.Amount < amount {
-		return errors.New("insufficient stake")
+func (v *Validator) ValidateBlock(block *chain.Block, blockchain *chain.Blockchain) bool {
+	// 1. Time interval check
+	elapsed := time.Since(v.LastBlockTime)
+	const tolerance = 100 * time.Millisecond
+	if elapsed+tolerance < v.BlockInterval {
+		fmt.Printf("❌ Validation failed: Block mined too early.\n")
+		return false
 	}
-	stake.Amount -= amount
-	if stake.Type == "delegator" {
-		validator := Validators[stake.Target]
-		validator.TotalStake -= amount
-	} else {
-		validator := Validators[address]
-		validator.TotalStake -= amount
-		if validator.TotalStake == 0 {
-			validator.Active = false
-		}
-	}
-	if stake.Amount == 0 {
-		delete(Stakes, address)
-	}
-	return nil
-}
 
-func ClaimRewards(address string) ([]Reward, error) {
-	var userRewards []Reward
-	for _, reward := range Rewards {
-		if reward.Address == address {
-			userRewards = append(userRewards, reward)
+	// 2. Validate block structure
+	if !block.IsValid() {
+		fmt.Printf("❌ Validation failed: Invalid block structure\n")
+		return false
+	}
+
+	// 3. Improved Longest Chain Rule
+	currentTip := blockchain.GetLatestBlock()
+
+	// Case 1: Block extends our current tip
+	if currentTip != nil && block.Header.PreviousHash == currentTip.CalculateHash() {
+		v.LastBlockTime = time.Now()
+		return true
+	}
+
+	// Case 2: Block is part of a competing chain
+	competingChain := blockchain.GetChainEndingWith(block)
+	if competingChain != nil && len(competingChain) > len(blockchain.Blocks) {
+		// Found a longer valid chain - reorganize
+		if blockchain.Reorganize(competingChain) {
+			v.LastBlockTime = time.Now()
+			fmt.Printf("✅ Reorganized to longer chain\n")
+			return true
 		}
 	}
-	log.Printf("Claiming rewards for %s: %+v", address, userRewards)
-	if len(userRewards) == 0 {
-		return nil, errors.New("no rewards available")
-	}
-	var remaining []Reward
-	for _, reward := range Rewards {
-		if reward.Address != address {
-			remaining = append(remaining, reward)
-		}
-	}
-	Rewards = remaining
-	log.Printf("Remaining rewards after claim: %+v", Rewards)
-	return userRewards, nil
+
+	// Case 3: Block is stale or part of shorter fork
+	fmt.Printf("❌ Validation failed: Block doesn't extend any known chain\n")
+	return false
 }

@@ -6,9 +6,8 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/hex"
-	//"encoding/pem"
+
 	"errors"
-	"fmt"
 )
 
 func GenerateKeyPair() (*ecdsa.PrivateKey, string, error) {
@@ -24,42 +23,21 @@ func GenerateKeyPair() (*ecdsa.PrivateKey, string, error) {
 
 	return privateKey, hex.EncodeToString(pubKeyBytes), nil
 }
-
-func ParsePublicKey(pubKeyHex string) (*ecdsa.PublicKey, error) {
-	if pubKeyHex == "" {
-		return nil, errors.New("empty public key")
-	}
-
-	keyBytes, err := hex.DecodeString(pubKeyHex)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode public key: %v", err)
-	}
-
-	pubKey, err := x509.ParsePKIXPublicKey(keyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse public key: %v", err)
-	}
-
-	ecdsaPubKey, ok := pubKey.(*ecdsa.PublicKey)
-	if !ok {
-		return nil, errors.New("not an ECDSA public key")
-	}
-
-	return ecdsaPubKey, nil
-}
-
-func PrivateKeyToString(privateKey *ecdsa.PrivateKey) (string, error) {
-	keyBytes, err := x509.MarshalECPrivateKey(privateKey)
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(keyBytes), nil
-}
-
-func StringToPrivateKey(keyStr string) (*ecdsa.PrivateKey, error) {
-	keyBytes, err := hex.DecodeString(keyStr)
+func ParsePublicKey(pubKeyBytes []byte) (*ecdsa.PublicKey, error) {
+	pubInterface, err := x509.ParsePKIXPublicKey(pubKeyBytes)
 	if err != nil {
 		return nil, err
 	}
-	return x509.ParseECPrivateKey(keyBytes)
+	pubKey, ok := pubInterface.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, errors.New("not ECDSA public key")
+	}
+	return pubKey, nil
+}
+func PublicKeyToString(pubKey *ecdsa.PublicKey) (string, error) {
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(pubKey)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(pubKeyBytes), nil
 }
