@@ -1,6 +1,8 @@
 go 1.24.3
 
 use (
-	./core/relay-chain
-	./services/wallet
+    ./core/relay-chain
+    ./libs
+    ./parachains
+    ./services/wallet
 )

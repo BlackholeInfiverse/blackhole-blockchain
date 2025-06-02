@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BlackholeInfiverse/blackhole-blockchain/core/relay-chain/chain"
-	"github.com/BlackholeInfiverse/blackhole-blockchain/core/relay-chain/consensus"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/consensus"
 )
 
 func main() {

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/BlackholeInfiverse/blackhole-blockchain/core/relay-chain/token"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
 )
 
 func main() {
