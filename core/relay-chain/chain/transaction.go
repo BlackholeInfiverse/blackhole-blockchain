@@ -10,7 +10,7 @@ import (
 	"math/big"
 	"time"
 
-	// "github.com/Shivam-Patel-G/blackhole-blockchain/relay-chain/crypto"
+	// "github.com/BlackholeInfiverse/blackhole-blockchain/relay-chain/crypto"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 

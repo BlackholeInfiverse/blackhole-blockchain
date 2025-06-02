@@ -1,9 +1,9 @@
-module github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet
+module github.com/BlackholeInfiverse/blackhole-blockchain/services/wallet
 
 go 1.24.3
 
 require (
-	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250529102438-629c5dfaf4c4
+	github.com/BlackholeInfiverse/blackhole-blockchain/core/relay-chain v0.0.0-20250529102438-629c5dfaf4c4
 	github.com/libp2p/go-libp2p v0.41.1
 	github.com/multiformats/go-multiaddr v0.15.0
 	go.mongodb.org/mongo-driver v1.17.3

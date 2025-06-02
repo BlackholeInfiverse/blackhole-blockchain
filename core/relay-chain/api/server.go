@@ -4,7 +4,7 @@ package api
 // 	"encoding/json"
 // 	"net/http"
 
-// 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/consensus"
+// 	"github.com/BlackholeInfiverse/blackhole-blockchain/core/relay-chain/consensus"
 // 	"github.com/gorilla/mux"
 // )
 

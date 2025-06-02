@@ -10,7 +10,7 @@ import (
 	// wallet "test/wallet"
 	"time"
 
-	wallet "github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet"
+	wallet "github.com/BlackholeInfiverse/blackhole-blockchain/services/wallet/wallet"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"

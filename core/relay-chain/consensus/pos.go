@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
+	"github.com/BlackholeInfiverse/blackhole-blockchain/core/relay-chain/chain"
 )
 
 type Validator struct {
