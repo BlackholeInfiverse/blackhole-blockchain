@@ -1,9 +1,12 @@
 package chain
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
+	
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
 )
 
 type StakeLedger struct {
@@ -106,4 +109,26 @@ func (sl *StakeLedger) GetHighestStakeValidator() string {
 		}
 	}
 	return maxAddr
+}
+
+// Integrate with token system
+func (sl *StakeLedger) StakeTokens(address string, amount uint64, tokenSystem *token.Token) error {
+	// Verify token balance
+	balance, err := tokenSystem.BalanceOf(address)
+	if err != nil {
+		return err
+	}
+	if balance < amount {
+		return errors.New("insufficient token balance for staking")
+	}
+	
+	// Lock tokens (could implement as internal transfer to staking contract address)
+	err = tokenSystem.Transfer(address, "staking_contract", amount)
+	if err != nil {
+		return err
+	}
+	
+	// Add stake
+	sl.AddStake(address, amount)
+	return nil
 }

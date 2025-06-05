@@ -23,14 +23,7 @@ import (
 )
 
 // Transaction represents an OTC-style transaction
-type Transaction struct {
-	From      string  `json:"from"`
-	To        string  `json:"to"`
-	Amount    float64 `json:"amount"`
-	Timestamp int64   `json:"timestamp"`
-	Nonce     uint64  `json:"nonce"`
-	Signature []byte  `json:"signature,omitempty"`
-}
+
 
 // SignTransaction signs a transaction using the sender's private key
 func SignTransaction(tx *chain.Transaction, privKey *btcec.PrivateKey) ([]byte, error) {
@@ -151,7 +144,7 @@ func (d DummyBlockchain) GetNonce(address string) int {
 	return 1 // dummy nonce
 }
 
-func (d DummyBlockchain) ProcessTransaction(tx Transaction) bool {
+func (d DummyBlockchain) ProcessTransaction(tx chain.Transaction) bool {
 	// In reality, broadcast tx to blockchain network and wait for success
 	fmt.Println("Processing transaction on blockchain network...")
 	time.Sleep(time.Second)

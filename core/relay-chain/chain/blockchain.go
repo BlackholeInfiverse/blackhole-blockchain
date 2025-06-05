@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
 )
 
 type AccountState struct {
@@ -18,17 +20,20 @@ type AccountState struct {
 }
 
 type Blockchain struct {
-	Blocks        []*Block
-	PendingTxs    []*Transaction
-	StakeLedger   *StakeLedger
-	P2PNode       *Node
-	mu            sync.RWMutex
-	GenesisTime   time.Time
-	TotalSupply   uint64
-	BlockReward   uint64
-	pendingBlocks map[uint64]*Block
-	GlobalState   map[string]*AccountState
-	DB            *leveldb.DB
+	Blocks           []*Block
+	PendingTxs       []*Transaction
+	StakeLedger      *StakeLedger
+	BlockReward      uint64
+	mu               sync.RWMutex
+	txPool           *TxPool
+	validatorManager *ValidatorManager
+	TokenRegistry    map[string]*token.Token
+	P2PNode          *Node
+	GenesisTime      time.Time
+	TotalSupply      uint64
+	pendingBlocks    map[uint64]*Block
+	GlobalState      map[string]*AccountState
+	DB               *leveldb.DB
 }
 type RealBlockchain struct {
 	Blockchain *Blockchain // Pointer to the real blockchain
@@ -54,16 +59,19 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 	stakeLedger.SetStake("genesis-validator", 1000)
 
 	bc := &Blockchain{
-		Blocks:        []*Block{genesis},
-		PendingTxs:    make([]*Transaction, 0),
-		StakeLedger:   stakeLedger,
-		P2PNode:       node,
-		GenesisTime:   time.Now().UTC(),
-		TotalSupply:   1000000000,
-		BlockReward:   10,
-		pendingBlocks: make(map[uint64]*Block),
-		GlobalState:   make(map[string]*AccountState), // ✅
-		DB:            db,
+		Blocks:           []*Block{genesis},
+		PendingTxs:       make([]*Transaction, 0),
+		StakeLedger:      stakeLedger,
+		P2PNode:          node,
+		GenesisTime:      time.Now().UTC(),
+		TotalSupply:      1000000000,
+		BlockReward:      10,
+		pendingBlocks:    make(map[uint64]*Block),
+		GlobalState:      make(map[string]*AccountState),
+		DB:               db,
+		txPool:           &TxPool{Transactions: make([]*Transaction, 0)},
+		validatorManager: NewValidatorManager(stakeLedger),
+		TokenRegistry:    make(map[string]*token.Token),
 	}
 	bc.GlobalState["system"] = &AccountState{
 		Balance: 10000000, // same as genesis rewardTx.Amount
@@ -73,6 +81,10 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		Balance: 1000, // give this wallet 1000 tokens initially
 		Nonce:   0,
 	}
+
+	// Create native token - fix the NewToken call to match the signature
+	nativeToken := token.NewToken("Blockchain Hex", "BHX", 18, 1000000000)
+	bc.TokenRegistry["BHX"] = nativeToken
 
 	// Optional: Load GlobalState from DB
 	bc.loadGlobalState()
@@ -86,7 +98,7 @@ func createGenesisBlock() *Block {
 		From:      "system",
 		To:        "genesis-validator",
 		Amount:    10,
-		Token:     "BHX",
+		TokenID:   "BHX", // Changed from Token to TokenID
 		Fee:       0,
 		Nonce:     0,
 		Timestamp: time.Date(2025, 5, 15, 7, 55, 0, 0, time.UTC).Unix(),
@@ -135,7 +147,7 @@ func (bc *Blockchain) MineBlock(selectedValidator string) *Block {
 		From:      "system",
 		To:        selectedValidator,
 		Amount:    bc.BlockReward,
-		Token:     "BHX",
+		TokenID:   "BHX",
 		Fee:       0,
 		Nonce:     0,
 		Timestamp: time.Now().Unix(),
@@ -554,14 +566,17 @@ func (bc *Blockchain) ProcessTransaction(tx *Transaction) error {
 	return nil
 }
 func (bc *Blockchain) getOrCreateAccount(address string) *AccountState {
-	if acc, exists := bc.GlobalState[address]; exists {
-		return acc
+	if state, exists := bc.GlobalState[address]; exists {
+		return state
 	}
-	bc.GlobalState[address] = &AccountState{
+	
+	// Create new account with zero balance
+	newState := &AccountState{
 		Balance: 0,
-		// Add other fields like Nonce, CodeHash etc if needed
+		Nonce:   0,
 	}
-	return bc.GlobalState[address]
+	bc.GlobalState[address] = newState
+	return newState
 }
 
 func (bc *Blockchain) ApplyTransaction(tx *Transaction) bool {
@@ -653,4 +668,58 @@ func (bc *Blockchain) loadGlobalState() {
 	if err := iter.Error(); err != nil {
 		log.Println("Error loading global state:", err)
 	}
+}
+
+func (bc *Blockchain) ValidateTransaction(tx *Transaction) error {
+	// Existing validation...
+	
+	// Token-specific validation
+	if tx.Type == TokenTransfer || tx.Type == StakeDeposit || tx.Type == StakeWithdraw {
+		token, exists := bc.TokenRegistry[tx.TokenID]
+		if !exists {
+			return errors.New("token not found")
+		}
+		
+		// Check token balance
+		balance, err := token.BalanceOf(tx.From)
+		if err != nil {
+			return err
+		}
+		
+		if balance < tx.Amount {
+			return errors.New("insufficient token balance")
+		}
+	}
+	
+	return nil
+}
+
+func (bc *Blockchain) processTransaction(tx *Transaction) error {
+	switch tx.Type {
+	case RegularTransfer:
+		// Process regular transfer
+		// ...
+	case TokenTransfer:
+		token, exists := bc.TokenRegistry[tx.TokenID]
+		if !exists {
+			return errors.New("token not found")
+		}
+		return token.Transfer(tx.From, tx.To, tx.Amount)
+	case StakeDeposit:
+		token, exists := bc.TokenRegistry[tx.TokenID]
+		if !exists {
+			return errors.New("token not found")
+		}
+		// Transfer tokens to staking contract
+		if err := token.Transfer(tx.From, "staking_contract", tx.Amount); err != nil {
+			return err
+		}
+		// Update stake ledger
+		bc.StakeLedger.AddStake(tx.From, tx.Amount)
+		return nil
+	case StakeWithdraw:
+		// Implement stake withdrawal logic
+		// ...
+	}
+	return nil
 }

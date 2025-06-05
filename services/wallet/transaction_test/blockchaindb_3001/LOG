@@ -157,3 +157,39 @@
 13:01:35.617382 version@stat F·[] S·0B[] Sc·[]
 13:01:35.623062 db@janitor F·2 G·0
 13:01:35.623062 db@open done T·6.8837ms
+=============== Jun 4, 2025 (IST) ===============
+11:30:13.269006 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:30:13.311938 version@stat F·[] S·0B[] Sc·[]
+11:30:13.311938 db@open opening
+11:30:13.311938 journal@recovery F·1
+11:30:13.312563 journal@recovery recovering @34
+11:30:13.343782 version@stat F·[] S·0B[] Sc·[]
+11:30:13.350381 db@janitor F·2 G·0
+11:30:13.350381 db@open done T·38.4431ms
+=============== Jun 4, 2025 (IST) ===============
+13:22:10.252044 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+13:22:10.253115 version@stat F·[] S·0B[] Sc·[]
+13:22:10.253115 db@open opening
+13:22:10.253115 journal@recovery F·1
+13:22:10.253115 journal@recovery recovering @36
+13:22:10.253795 version@stat F·[] S·0B[] Sc·[]
+13:22:10.268161 db@janitor F·2 G·0
+13:22:10.268161 db@open done T·15.0457ms
+=============== Jun 4, 2025 (IST) ===============
+15:10:58.970602 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+15:10:58.971194 version@stat F·[] S·0B[] Sc·[]
+15:10:58.971194 db@open opening
+15:10:58.971763 journal@recovery F·1
+15:10:58.971763 journal@recovery recovering @38
+15:10:58.972303 version@stat F·[] S·0B[] Sc·[]
+15:10:58.980698 db@janitor F·2 G·0
+15:10:58.980698 db@open done T·9.5038ms
+=============== Jun 4, 2025 (IST) ===============
+17:14:28.224039 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+17:14:28.254700 version@stat F·[] S·0B[] Sc·[]
+17:14:28.255905 db@open opening
+17:14:28.255905 journal@recovery F·1
+17:14:28.258262 journal@recovery recovering @40
+17:14:28.259673 version@stat F·[] S·0B[] Sc·[]
+17:14:28.296725 db@janitor F·2 G·0
+17:14:28.296725 db@open done T·40.8192ms
