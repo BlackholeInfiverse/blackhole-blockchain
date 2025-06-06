@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 type AccountState struct {
@@ -85,6 +85,11 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 	// Create native token - fix the NewToken call to match the signature
 	nativeToken := token.NewToken("Blockchain Hex", "BHX", 18, 1000000000)
 	bc.TokenRegistry["BHX"] = nativeToken
+
+	// Initialize some token balances for testing
+	nativeToken.Mint("system", 10000000)                                                         // System has 10M tokens
+	nativeToken.Mint("03e2459b73c0c6522530f6b26e834d992dfc55d170bee35d0bcdc047fe0d61c25b", 1000) // Test wallet
+	nativeToken.Mint("staking_contract", 0)                                                      // Initialize staking contract
 
 	// Optional: Load GlobalState from DB
 	bc.loadGlobalState()
@@ -544,24 +549,52 @@ func (bc *Blockchain) ProcessTransaction(tx *Transaction) error {
 		return fmt.Errorf("invalid transaction: missing fields or negative amount")
 	}
 
-	// // Ensure sender exists
-	// senderState, exists := bc.GlobalState[tx.From]
-	// if !exists {
-	// 	return fmt.Errorf("sender not found in global state")
-	// }
+	// Skip validation for system transactions (rewards, minting)
+	if tx.From == "system" {
+		bc.PendingTxs = append(bc.PendingTxs, tx)
+		return nil
+	}
 
-	// // Validate nonce
-	// if tx.Nonce != senderState.Nonce {
-	// 	return fmt.Errorf("invalid nonce: expected %d, got %d", senderState.Nonce, tx.Nonce)
-	// }
+	// Ensure sender exists and has sufficient balance
+	senderState := bc.getOrCreateAccount(tx.From)
 
-	// // Validate balance
-	// if uint64(tx.Amount) > senderState.Balance {
-	// 	return fmt.Errorf("insufficient balance")
-	// }
+	// Validate balance based on transaction type
+	switch tx.Type {
+	case RegularTransfer:
+		if senderState.Balance < tx.Amount {
+			return fmt.Errorf("insufficient balance: has %d, needs %d", senderState.Balance, tx.Amount)
+		}
+	case TokenTransfer:
+		// Check token balance
+		token, exists := bc.TokenRegistry[tx.TokenID]
+		if !exists {
+			return fmt.Errorf("token %s not found", tx.TokenID)
+		}
+		balance, err := token.BalanceOf(tx.From)
+		if err != nil {
+			return fmt.Errorf("failed to get token balance: %v", err)
+		}
+		if balance < tx.Amount {
+			return fmt.Errorf("insufficient token balance: has %d, needs %d", balance, tx.Amount)
+		}
+	case StakeDeposit:
+		// Check token balance for staking
+		token, exists := bc.TokenRegistry[tx.TokenID]
+		if !exists {
+			return fmt.Errorf("token %s not found", tx.TokenID)
+		}
+		balance, err := token.BalanceOf(tx.From)
+		if err != nil {
+			return fmt.Errorf("failed to get token balance: %v", err)
+		}
+		if balance < tx.Amount {
+			return fmt.Errorf("insufficient token balance for staking: has %d, needs %d", balance, tx.Amount)
+		}
+	}
 
 	// Queue transaction for block inclusion
 	bc.PendingTxs = append(bc.PendingTxs, tx)
+	fmt.Printf("✅ Transaction validated and added to pending pool\n")
 
 	return nil
 }
@@ -569,7 +602,7 @@ func (bc *Blockchain) getOrCreateAccount(address string) *AccountState {
 	if state, exists := bc.GlobalState[address]; exists {
 		return state
 	}
-	
+
 	// Create new account with zero balance
 	newState := &AccountState{
 		Balance: 0,
@@ -581,10 +614,28 @@ func (bc *Blockchain) getOrCreateAccount(address string) *AccountState {
 
 func (bc *Blockchain) ApplyTransaction(tx *Transaction) bool {
 	fmt.Println("🔄 Applying transaction:")
+	fmt.Printf("   ➤ Type: %d\n", tx.Type)
 	fmt.Printf("   ➤ From: %s\n", tx.From)
 	fmt.Printf("   ➤ To: %s\n", tx.To)
 	fmt.Printf("   ➤ Amount: %d\n", tx.Amount)
+	fmt.Printf("   ➤ TokenID: %s\n", tx.TokenID)
 
+	switch tx.Type {
+	case RegularTransfer:
+		return bc.applyRegularTransfer(tx)
+	case TokenTransfer:
+		return bc.applyTokenTransfer(tx)
+	case StakeDeposit:
+		return bc.applyStakeDeposit(tx)
+	case StakeWithdraw:
+		return bc.applyStakeWithdraw(tx)
+	default:
+		fmt.Printf("   ❌ Unknown transaction type: %d\n", tx.Type)
+		return false
+	}
+}
+
+func (bc *Blockchain) applyRegularTransfer(tx *Transaction) bool {
 	sender := tx.From
 	receiver := tx.To
 	amount := tx.Amount
@@ -593,16 +644,18 @@ func (bc *Blockchain) ApplyTransaction(tx *Transaction) bool {
 	senderState := bc.getOrCreateAccount(sender)
 	fmt.Printf("   📤 Sender '%s' balance before transaction: %d\n", sender, senderState.Balance)
 
-	// Check for insufficient funds
-	if senderState.Balance < amount {
+	// Check for insufficient funds (should already be validated, but double-check)
+	if sender != "system" && senderState.Balance < amount {
 		fmt.Printf("   ❌ Transaction failed: Insufficient funds (has %d, needs %d)\n", senderState.Balance, amount)
 		return false
 	}
 
-	// Deduct from sender
-	senderState.Balance -= amount
-	bc.SetBalance(sender, senderState.Balance)
-	fmt.Printf("   ✅ Sender '%s' balance after deduction: %d\n", sender, senderState.Balance)
+	// Deduct from sender (unless it's a system transaction)
+	if sender != "system" {
+		senderState.Balance -= amount
+		bc.SetBalance(sender, senderState.Balance)
+		fmt.Printf("   ✅ Sender '%s' balance after deduction: %d\n", sender, senderState.Balance)
+	}
 
 	// Get or create receiver account
 	receiverState := bc.getOrCreateAccount(receiver)
@@ -613,7 +666,78 @@ func (bc *Blockchain) ApplyTransaction(tx *Transaction) bool {
 	bc.SetBalance(receiver, receiverState.Balance)
 	fmt.Printf("   ✅ Receiver '%s' balance after addition: %d\n", receiver, receiverState.Balance)
 
-	fmt.Println("✅ Transaction applied successfully")
+	fmt.Println("✅ Regular transfer applied successfully")
+	return true
+}
+
+func (bc *Blockchain) applyTokenTransfer(tx *Transaction) bool {
+	token, exists := bc.TokenRegistry[tx.TokenID]
+	if !exists {
+		fmt.Printf("   ❌ Token %s not found\n", tx.TokenID)
+		return false
+	}
+
+	err := token.Transfer(tx.From, tx.To, tx.Amount)
+	if err != nil {
+		fmt.Printf("   ❌ Token transfer failed: %v\n", err)
+		return false
+	}
+
+	fmt.Printf("   ✅ Token transfer applied successfully: %d %s from %s to %s\n",
+		tx.Amount, tx.TokenID, tx.From, tx.To)
+	return true
+}
+
+func (bc *Blockchain) applyStakeDeposit(tx *Transaction) bool {
+	token, exists := bc.TokenRegistry[tx.TokenID]
+	if !exists {
+		fmt.Printf("   ❌ Token %s not found\n", tx.TokenID)
+		return false
+	}
+
+	// Transfer tokens to staking contract
+	err := token.Transfer(tx.From, "staking_contract", tx.Amount)
+	if err != nil {
+		fmt.Printf("   ❌ Stake deposit failed: %v\n", err)
+		return false
+	}
+
+	// Update stake ledger
+	bc.StakeLedger.AddStake(tx.From, tx.Amount)
+
+	fmt.Printf("   ✅ Stake deposit applied successfully: %d %s staked by %s\n",
+		tx.Amount, tx.TokenID, tx.From)
+	fmt.Printf("   📊 New stake for %s: %d\n", tx.From, bc.StakeLedger.GetStake(tx.From))
+	return true
+}
+
+func (bc *Blockchain) applyStakeWithdraw(tx *Transaction) bool {
+	// Check if user has enough stake
+	currentStake := bc.StakeLedger.GetStake(tx.From)
+	if currentStake < tx.Amount {
+		fmt.Printf("   ❌ Insufficient stake: has %d, trying to withdraw %d\n", currentStake, tx.Amount)
+		return false
+	}
+
+	token, exists := bc.TokenRegistry[tx.TokenID]
+	if !exists {
+		fmt.Printf("   ❌ Token %s not found\n", tx.TokenID)
+		return false
+	}
+
+	// Transfer tokens back from staking contract
+	err := token.Transfer("staking_contract", tx.From, tx.Amount)
+	if err != nil {
+		fmt.Printf("   ❌ Stake withdrawal failed: %v\n", err)
+		return false
+	}
+
+	// Update stake ledger
+	bc.StakeLedger.SetStake(tx.From, currentStake-tx.Amount)
+
+	fmt.Printf("   ✅ Stake withdrawal applied successfully: %d %s withdrawn by %s\n",
+		tx.Amount, tx.TokenID, tx.From)
+	fmt.Printf("   📊 New stake for %s: %d\n", tx.From, bc.StakeLedger.GetStake(tx.From))
 	return true
 }
 
@@ -672,25 +796,25 @@ func (bc *Blockchain) loadGlobalState() {
 
 func (bc *Blockchain) ValidateTransaction(tx *Transaction) error {
 	// Existing validation...
-	
+
 	// Token-specific validation
 	if tx.Type == TokenTransfer || tx.Type == StakeDeposit || tx.Type == StakeWithdraw {
 		token, exists := bc.TokenRegistry[tx.TokenID]
 		if !exists {
 			return errors.New("token not found")
 		}
-		
+
 		// Check token balance
 		balance, err := token.BalanceOf(tx.From)
 		if err != nil {
 			return err
 		}
-		
+
 		if balance < tx.Amount {
 			return errors.New("insufficient token balance")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -721,5 +845,101 @@ func (bc *Blockchain) processTransaction(tx *Transaction) error {
 		// Implement stake withdrawal logic
 		// ...
 	}
+	return nil
+}
+
+// GetBlockchainInfo returns comprehensive blockchain information for UI
+func (bc *Blockchain) GetBlockchainInfo() map[string]interface{} {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
+	// Get all account balances
+	accounts := make(map[string]interface{})
+	for addr, state := range bc.GlobalState {
+		accounts[addr] = map[string]interface{}{
+			"balance": state.Balance,
+			"nonce":   state.Nonce,
+		}
+	}
+
+	// Get token balances
+	tokenBalances := make(map[string]map[string]uint64)
+	for tokenSymbol, token := range bc.TokenRegistry {
+		tokenBalances[tokenSymbol] = make(map[string]uint64)
+		// Get balances for known addresses
+		for addr := range bc.GlobalState {
+			if balance, err := token.BalanceOf(addr); err == nil {
+				tokenBalances[tokenSymbol][addr] = balance
+			}
+		}
+		// Also check staking contract
+		if balance, err := token.BalanceOf("staking_contract"); err == nil {
+			tokenBalances[tokenSymbol]["staking_contract"] = balance
+		}
+	}
+
+	// Get stake information
+	stakes := bc.StakeLedger.GetAllStakes()
+
+	// Get recent blocks
+	recentBlocks := make([]map[string]interface{}, 0)
+	start := len(bc.Blocks) - 10
+	if start < 0 {
+		start = 0
+	}
+	for i := start; i < len(bc.Blocks); i++ {
+		block := bc.Blocks[i]
+		recentBlocks = append(recentBlocks, map[string]interface{}{
+			"index":        block.Header.Index,
+			"hash":         block.Hash,
+			"previousHash": block.Header.PreviousHash,
+			"timestamp":    block.Header.Timestamp,
+			"validator":    block.Header.Validator,
+			"txCount":      len(block.Transactions),
+		})
+	}
+
+	return map[string]interface{}{
+		"blockHeight":   len(bc.Blocks),
+		"pendingTxs":    len(bc.PendingTxs),
+		"totalSupply":   bc.TotalSupply,
+		"blockReward":   bc.BlockReward,
+		"accounts":      accounts,
+		"tokenBalances": tokenBalances,
+		"stakes":        stakes,
+		"recentBlocks":  recentBlocks,
+		"tokenRegistry": bc.getTokenRegistryInfo(),
+	}
+}
+
+func (bc *Blockchain) getTokenRegistryInfo() map[string]interface{} {
+	tokens := make(map[string]interface{})
+	for symbol, token := range bc.TokenRegistry {
+		tokens[symbol] = map[string]interface{}{
+			"name":        token.Name,
+			"symbol":      token.Symbol,
+			"decimals":    token.Decimals,
+			"totalSupply": token.TotalSupply(),
+		}
+	}
+	return tokens
+}
+
+// AddTokenBalance adds tokens to an address (admin function for testing)
+func (bc *Blockchain) AddTokenBalance(address, tokenSymbol string, amount uint64) error {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	token, exists := bc.TokenRegistry[tokenSymbol]
+	if !exists {
+		return fmt.Errorf("token %s not found", tokenSymbol)
+	}
+
+	err := token.Mint(address, amount)
+	if err != nil {
+		return fmt.Errorf("failed to mint tokens: %v", err)
+	}
+
+	fmt.Printf("✅ Added %d %s tokens to %s\n", amount, tokenSymbol, address)
 	return nil
 }

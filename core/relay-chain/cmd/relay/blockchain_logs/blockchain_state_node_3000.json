@@ -4,25 +4,25 @@
   "latest_block": {
     "Header": {
       "index": 1,
-      "timestamp": "2025-06-04T11:44:32.1916771Z",
+      "timestamp": "2025-06-06T06:45:20.6702006Z",
       "previousHash": "681c2b97ceb8e47b357c91f98f95cd3ef8725ee04523f5946f296d7310023fb1",
-      "validator": "node1",
+      "validator": "genesis-validator",
       "stakeSnapshot": 1000,
-      "merkleRoot": "9d3230d04af2aa0b376bb7e04b5b56a287d78c79959bd42924f905a883a755b3",
+      "merkleRoot": "cffabe69f8965c63ce403576d2c6928da65d067ddb3a7cf1623d64e6b20e7bea",
       "stateRoot": "0x0",
       "receiptsRoot": "0x0",
       "consensusRound": 0
     },
     "Transactions": [
       {
-        "ID": "2c9c375a206d7471a3bdf3951f78d0bf064f417a5622419e192c14154e46b8f3",
+        "ID": "f3dfdbf10f528b23c25db96790d5be712b22a1419a2fa6e496d544ca1eeae79d",
         "Type": 1,
         "From": "system",
-        "To": "node1",
+        "To": "genesis-validator",
         "Amount": 10,
         "TokenID": "BHX",
         "Data": null,
-        "Timestamp": 1749037472,
+        "Timestamp": 1749192320,
         "Nonce": 0,
         "Signature": null,
         "Fee": 0,
@@ -31,33 +31,33 @@
         "PublicKey": null
       },
       {
-        "ID": "",
-        "Type": 0,
-        "From": "023280c81c29d3835fbb072b9565065db6c886f7d91f73798ffe40d17b7385d58c",
-        "To": "024e20518e02f545d51c5a6295c4d488c31283c1f5e568dacee4eadac283a76482",
-        "Amount": 123,
-        "TokenID": "",
+        "ID": "d72c4cc5de2b82cdc2afd6b7d37c1041aad027e5b3e60e69e1332a3be02434dd",
+        "Type": 1,
+        "From": "0235e2a98aa93ade4f0e0615c1fd234eeb76217de89ab60a4c57fe2dd6ce165dde",
+        "To": "03a83049366432a7eab220f44f7206e078bc0943af4afa318fd5f1e080562e4bce",
+        "Amount": 30,
+        "TokenID": "BHX",
         "Data": null,
-        "Timestamp": 1749037468,
-        "Nonce": 0,
-        "Signature": "MEUCIQCYjJv9FHzaVY/LrAhBEoV2uDaEcdxemNdM9RNhzVu8ggIgQs7PGDKsV9ISl/dfe0qbLCca03jAMZkMEjetKQ9bJzo=",
+        "Timestamp": 1749192317,
+        "Nonce": 1749192317344325400,
+        "Signature": null,
         "Fee": 0,
         "GasLimit": 0,
         "GasPrice": 0,
-        "PublicKey": "AjKAyBwp04NfuwcrlWUGXbbIhvfZH3N5j/5A0XtzhdWM"
+        "PublicKey": null
       }
     ],
-    "hash": "0072bce14f83417222febfe0a24f95dc38e98ac071b6c78423151ae8df60a3b1"
+    "hash": "3050abcfda9fc20c3ad80c104631267dbd4245ec6ed9be91c6e3618a5072bc11"
   },
   "pending_blocks": 0,
   "total_supply": 1000000000,
-  "timestamp": "2025-06-04T17:17:12.1901722+05:30",
+  "timestamp": "2025-06-06T12:19:16.6700184+05:30",
   "fork_info": {
     "has_fork": false,
     "reason": "No forks detected"
   },
   "block_hashes": [
     "681c2b97ceb8e47b357c91f98f95cd3ef8725ee04523f5946f296d7310023fb1",
-    "0072bce14f83417222febfe0a24f95dc38e98ac071b6c78423151ae8df60a3b1"
+    "3050abcfda9fc20c3ad80c104631267dbd4245ec6ed9be91c6e3618a5072bc11"
   ]
 }

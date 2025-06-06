@@ -46,8 +46,19 @@ func main() {
 	wallet.WalletCollection = db.Collection("wallets")
 
 	// Initialize blockchain client
-	if err := wallet.InitBlockchainClient(3000); err != nil {
+	if err := wallet.InitBlockchainClient(4000); err != nil { // Use different port for wallet
 		log.Fatalf("Failed to initialize blockchain client: %v", err)
+	}
+
+	// Connect to blockchain node (assuming it's running on port 3000)
+	blockchainPeerAddr := "/ip4/25.2.105.97/tcp/3000/p2p/12D3KooWLNz4GcCqkKcsjWrcV5RixrrBneeEByAKULyoTN9fevxy" // Replace with actual peer ID
+	fmt.Println("⚠️ Please start the blockchain node first and update the peer address above")
+	fmt.Printf("Attempting to connect to blockchain node: %s\n", blockchainPeerAddr)
+
+	// Try to connect to blockchain node (this will fail if node is not running)
+	if err := wallet.DefaultBlockchainClient.ConnectToBlockchain(blockchainPeerAddr); err != nil {
+		fmt.Printf("⚠️ Failed to connect to blockchain node: %v\n", err)
+		fmt.Println("⚠️ Wallet will work in offline mode. Start blockchain node and restart wallet for full functionality.")
 	}
 
 	fmt.Println("Welcome to the Wallet CLI")
@@ -206,47 +217,47 @@ func main() {
 
 func checkTokenBalance(ctx context.Context, user *wallet.User) {
 	fmt.Println("=== Check Token Balance ===")
-	
+
 	// Get wallet name
 	fmt.Print("Enter wallet name: ")
 	walletName := readLine()
-	
+
 	// Get password
 	fmt.Print("Enter password: ")
 	password := readLine()
-	
+
 	// Get token symbol
 	fmt.Print("Enter token symbol (e.g., BHX): ")
 	tokenSymbol := readLine()
-	
+
 	balance, err := wallet.CheckTokenBalance(ctx, user, walletName, password, tokenSymbol)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
-	
+
 	fmt.Printf("Balance of %s: %d tokens\n", tokenSymbol, balance)
 }
 
 func transferTokens(ctx context.Context, user *wallet.User) {
 	fmt.Println("=== Transfer Tokens ===")
-	
+
 	// Get wallet name
 	fmt.Print("Enter your wallet name: ")
 	walletName := readLine()
-	
+
 	// Get password
 	fmt.Print("Enter password: ")
 	password := readLine()
-	
+
 	// Get recipient address
 	fmt.Print("Enter recipient address: ")
 	toAddress := readLine()
-	
+
 	// Get token symbol
 	fmt.Print("Enter token symbol (e.g., BHX): ")
 	tokenSymbol := readLine()
-	
+
 	// Get amount
 	fmt.Print("Enter amount to transfer: ")
 	amountStr := readLine()
@@ -255,31 +266,31 @@ func transferTokens(ctx context.Context, user *wallet.User) {
 		fmt.Printf("Invalid amount: %v\n", err)
 		return
 	}
-	
+
 	err = wallet.TransferTokens(ctx, user, walletName, password, toAddress, tokenSymbol, amount)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
-	
+
 	fmt.Printf("Successfully transferred %d %s tokens to %s\n", amount, tokenSymbol, toAddress)
 }
 
 func stakeTokens(ctx context.Context, user *wallet.User) {
 	fmt.Println("=== Stake Tokens ===")
-	
+
 	// Get wallet name
 	fmt.Print("Enter your wallet name: ")
 	walletName := readLine()
-	
+
 	// Get password
 	fmt.Print("Enter password: ")
 	password := readLine()
-	
+
 	// Get token symbol
 	fmt.Print("Enter token symbol (e.g., BHX): ")
 	tokenSymbol := readLine()
-	
+
 	// Get amount
 	fmt.Print("Enter amount to stake: ")
 	amountStr := readLine()
@@ -288,12 +299,12 @@ func stakeTokens(ctx context.Context, user *wallet.User) {
 		fmt.Printf("Invalid amount: %v\n", err)
 		return
 	}
-	
+
 	err = wallet.StakeTokens(ctx, user, walletName, password, tokenSymbol, amount)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
-	
+
 	fmt.Printf("Successfully staked %d %s tokens\n", amount, tokenSymbol)
 }

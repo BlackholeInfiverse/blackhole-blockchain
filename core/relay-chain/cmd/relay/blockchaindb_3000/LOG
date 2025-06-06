@@ -173,3 +173,42 @@
 17:08:32.120276 db@open done T·52.321ms
 17:08:32.123291 table@move L0@24 -> L1
 17:08:32.123291 version@stat F·[3 2] S·7KiB[552B 7KiB] Sc·[0.75 0.00]
+=============== Jun 6, 2025 (IST) ===============
+11:33:22.627362 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:33:22.653405 version@stat F·[3 2] S·7KiB[552B 7KiB] Sc·[0.75 0.00]
+11:33:22.653405 db@open opening
+11:33:22.653405 journal@recovery F·1
+11:33:22.654005 journal@recovery recovering @42
+11:33:22.670515 memdb@flush created L0@44 N·2 S·178B "acc..de1,v53":"acc..tem,v52"
+11:33:22.671023 version@stat F·[4 2] S·7KiB[730B 7KiB] Sc·[1.00 0.00]
+11:33:22.675251 db@janitor F·8 G·0
+11:33:22.675251 db@open done T·21.8461ms
+11:33:22.675808 table@compaction L0·4 -> L1·1 S·1KiB Q·54
+11:33:22.726442 table@build created L1@47 N·9 S·618B "acc..ee4,v41":"acc..tem,v52"
+11:33:22.726442 version@stat F·[0 2] S·7KiB[0B 7KiB] Sc·[0.00 0.00]
+11:33:22.728018 table@compaction committed F-4 S-689B Ke·0 D·6 T·51.603ms
+11:33:22.728588 table@remove removed @44
+11:33:22.729122 table@remove removed @41
+11:33:22.729648 table@remove removed @38
+11:33:22.729648 table@remove removed @35
+11:33:22.729648 table@remove removed @32
+=============== Jun 6, 2025 (IST) ===============
+11:52:49.698097 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:52:49.698631 version@stat F·[0 2] S·7KiB[0B 7KiB] Sc·[0.00 0.00]
+11:52:49.698631 db@open opening
+11:52:49.698631 journal@recovery F·1
+11:52:49.700308 journal@recovery recovering @45
+11:52:49.703075 memdb@flush created L0@48 N·2 S·189B "acc..tor,v56":"acc..tem,v55"
+11:52:49.703617 version@stat F·[1 2] S·7KiB[189B 7KiB] Sc·[0.25 0.00]
+11:52:49.709535 db@janitor F·5 G·0
+11:52:49.709535 db@open done T·10.9033ms
+=============== Jun 6, 2025 (IST) ===============
+12:09:26.608843 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:09:26.609403 version@stat F·[1 2] S·7KiB[189B 7KiB] Sc·[0.25 0.00]
+12:09:26.609403 db@open opening
+12:09:26.609941 journal@recovery F·1
+12:09:26.609941 journal@recovery recovering @49
+12:09:26.612730 memdb@flush created L0@51 N·2 S·177B "acc..de1,v59":"acc..tem,v58"
+12:09:26.612730 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+12:09:26.618124 db@janitor F·6 G·0
+12:09:26.618124 db@open done T·8.7205ms

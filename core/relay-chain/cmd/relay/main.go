@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/api"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/consensus"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
@@ -91,6 +92,10 @@ func main() {
 
 	go miningLoop(ctx, bc, validator, nodeID)
 
+	// Start API server for UI
+	apiServer := api.NewAPIServer(bc, 8080)
+	go apiServer.Start()
+
 	startCLI(ctx, bc, nodeID)
 }
 func miningLoop(ctx context.Context, bc *chain.Blockchain, validator *consensus.Validator, nodeID string) {
@@ -126,10 +131,10 @@ func miningLoop(ctx context.Context, bc *chain.Blockchain, validator *consensus.
 						bc.TokenRegistry["BHX"] = tokenSystem
 					}
 					tokenSystem.Mint(block.Header.Validator, bc.BlockReward)
-					
+
 					// Update stake ledger
 					bc.StakeLedger.AddStake(block.Header.Validator, bc.BlockReward)
-					
+
 					log.Printf("✅ Block %d added with %d transactions", block.Header.Index, len(block.Transactions))
 				}
 			}
