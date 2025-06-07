@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -25,6 +26,10 @@ func readLine() string {
 }
 
 func main() {
+	// Parse command-line flags
+	var peerAddr = flag.String("peerAddr", "", "Blockchain node peer address (e.g., /ip4/127.0.0.1/tcp/3000/p2p/12D3KooWEHMeACYKmddCU7yvY7FSN78CnhC3bENFmkCcouwu1z8R)")
+	flag.Parse()
+
 	reader := bufio.NewReader(os.Stdin)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -44,21 +49,26 @@ func main() {
 	db := client.Database("walletdb") // Use your DB name
 	wallet.UserCollection = db.Collection("users")
 	wallet.WalletCollection = db.Collection("wallets")
+	wallet.TransactionCollection = db.Collection("transactions")
 
 	// Initialize blockchain client
 	if err := wallet.InitBlockchainClient(4000); err != nil { // Use different port for wallet
 		log.Fatalf("Failed to initialize blockchain client: %v", err)
 	}
 
-	// Connect to blockchain node (assuming it's running on port 3000)
-	blockchainPeerAddr := "/ip4/25.2.105.97/tcp/3000/p2p/12D3KooWLNz4GcCqkKcsjWrcV5RixrrBneeEByAKULyoTN9fevxy" // Replace with actual peer ID
-	fmt.Println("⚠️ Please start the blockchain node first and update the peer address above")
-	fmt.Printf("Attempting to connect to blockchain node: %s\n", blockchainPeerAddr)
-
-	// Try to connect to blockchain node (this will fail if node is not running)
-	if err := wallet.DefaultBlockchainClient.ConnectToBlockchain(blockchainPeerAddr); err != nil {
-		fmt.Printf("⚠️ Failed to connect to blockchain node: %v\n", err)
-		fmt.Println("⚠️ Wallet will work in offline mode. Start blockchain node and restart wallet for full functionality.")
+	// Connect to blockchain node
+	if *peerAddr != "" {
+		fmt.Printf("🔗 Connecting to blockchain node: %s\n", *peerAddr)
+		if err := wallet.DefaultBlockchainClient.ConnectToBlockchain(*peerAddr); err != nil {
+			fmt.Printf("⚠️ Failed to connect to blockchain node: %v\n", err)
+			fmt.Println("⚠️ Wallet will work in offline mode. Check the peer address and try again.")
+		} else {
+			fmt.Println("✅ Successfully connected to blockchain node!")
+		}
+	} else {
+		fmt.Println("⚠️ No peer address provided. Use -peerAddr flag to connect to blockchain node.")
+		fmt.Println("⚠️ Example: go run main.go -peerAddr /ip4/127.0.0.1/tcp/3000/p2p/12D3KooWEHMeACYKmddCU7yvY7FSN78CnhC3bENFmkCcouwu1z8R")
+		fmt.Println("⚠️ Wallet will work in offline mode.")
 	}
 
 	fmt.Println("Welcome to the Wallet CLI")
@@ -84,6 +94,10 @@ func main() {
 			fmt.Println("6. Check Token Balance")
 			fmt.Println("7. Transfer Tokens")
 			fmt.Println("8. Stake Tokens")
+			fmt.Println("9. Import Wallet from Private Key")
+			fmt.Println("10. Export Wallet Private Key")
+			fmt.Println("11. View Transaction History")
+			fmt.Println("12. List All Wallets")
 		}
 
 		fmt.Print("Enter your choice: ")
@@ -208,8 +222,20 @@ func main() {
 			case "8":
 				stakeTokens(ctx, loggedInUser)
 
+			case "9":
+				importWalletFromPrivateKey(ctx, loggedInUser)
+
+			case "10":
+				exportWalletPrivateKey(ctx, loggedInUser)
+
+			case "11":
+				viewTransactionHistory(ctx, loggedInUser)
+
+			case "12":
+				listAllWallets(ctx, loggedInUser)
+
 			default:
-				fmt.Println("Invalid choice. Please enter 1, 2, or 3.")
+				fmt.Println("Invalid choice. Please enter a valid option.")
 			}
 		}
 	}
@@ -267,7 +293,7 @@ func transferTokens(ctx context.Context, user *wallet.User) {
 		return
 	}
 
-	err = wallet.TransferTokens(ctx, user, walletName, password, toAddress, tokenSymbol, amount)
+	err = wallet.TransferTokensWithHistory(ctx, user, walletName, password, toAddress, tokenSymbol, amount)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
@@ -300,11 +326,115 @@ func stakeTokens(ctx context.Context, user *wallet.User) {
 		return
 	}
 
-	err = wallet.StakeTokens(ctx, user, walletName, password, tokenSymbol, amount)
+	err = wallet.StakeTokensWithHistory(ctx, user, walletName, password, tokenSymbol, amount)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
 
 	fmt.Printf("Successfully staked %d %s tokens\n", amount, tokenSymbol)
+}
+
+func importWalletFromPrivateKey(ctx context.Context, user *wallet.User) {
+	fmt.Println("=== Import Wallet from Private Key ===")
+
+	fmt.Print("Enter wallet name: ")
+	walletName := readLine()
+
+	fmt.Print("Enter password to secure the wallet: ")
+	password := readLine()
+
+	fmt.Print("Enter private key (hex): ")
+	privateKeyHex := readLine()
+
+	wallet, err := wallet.ImportWalletFromPrivateKey(ctx, user, password, walletName, privateKeyHex)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Successfully imported wallet: %s\n", wallet.WalletName)
+	fmt.Printf("Address: %s\n", wallet.Address)
+}
+
+func exportWalletPrivateKey(ctx context.Context, user *wallet.User) {
+	fmt.Println("=== Export Wallet Private Key ===")
+
+	fmt.Print("Enter wallet name: ")
+	walletName := readLine()
+
+	fmt.Print("Enter password: ")
+	password := readLine()
+
+	privateKeyHex, err := wallet.ExportWalletPrivateKey(ctx, user, walletName, password)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Private Key: %s\n", privateKeyHex)
+	fmt.Println("⚠️ Keep this private key secure and never share it!")
+}
+
+func viewTransactionHistory(ctx context.Context, user *wallet.User) {
+	fmt.Println("=== Transaction History ===")
+
+	fmt.Print("Enter wallet address (or press Enter for all transactions): ")
+	walletAddr := readLine()
+
+	var transactions []*wallet.TransactionRecord
+	var err error
+
+	if walletAddr == "" {
+		transactions, err = wallet.GetAllUserTransactions(ctx, user.ID.Hex(), 50)
+	} else {
+		transactions, err = wallet.GetWalletTransactionHistory(ctx, user.ID.Hex(), walletAddr, 50)
+	}
+
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	if len(transactions) == 0 {
+		fmt.Println("No transactions found.")
+		return
+	}
+
+	fmt.Printf("Found %d transactions:\n\n", len(transactions))
+	for i, tx := range transactions {
+		fmt.Printf("%d. %s\n", i+1, tx.Type)
+		fmt.Printf("   From: %s\n", tx.From)
+		fmt.Printf("   To: %s\n", tx.To)
+		fmt.Printf("   Amount: %d %s\n", tx.Amount, tx.TokenSymbol)
+		fmt.Printf("   Status: %s\n", tx.Status)
+		fmt.Printf("   Time: %s\n", tx.Timestamp.Format(time.RFC3339))
+		if tx.BlockHeight > 0 {
+			fmt.Printf("   Block: %d\n", tx.BlockHeight)
+		}
+		fmt.Println()
+	}
+}
+
+func listAllWallets(ctx context.Context, user *wallet.User) {
+	fmt.Println("=== All User Wallets ===")
+
+	wallets, err := wallet.ListUserWallets(ctx, user)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	if len(wallets) == 0 {
+		fmt.Println("No wallets found.")
+		return
+	}
+
+	fmt.Printf("Found %d wallets:\n\n", len(wallets))
+	for i, w := range wallets {
+		fmt.Printf("%d. %s\n", i+1, w.WalletName)
+		fmt.Printf("   Address: %s\n", w.Address)
+		fmt.Printf("   Created: %s\n", w.CreatedAt.Format(time.RFC3339))
+		fmt.Println()
+	}
 }

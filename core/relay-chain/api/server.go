@@ -27,6 +27,7 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/blockchain/info", s.enableCORS(s.getBlockchainInfo))
 	http.HandleFunc("/api/admin/add-tokens", s.enableCORS(s.addTokens))
 	http.HandleFunc("/api/wallets", s.enableCORS(s.getWallets))
+	http.HandleFunc("/api/node/info", s.enableCORS(s.getNodeInfo))
 
 	fmt.Printf("🌐 API Server starting on port %d\n", s.port)
 	fmt.Printf("🌐 Open http://localhost:%d in your browser\n", s.port)
@@ -350,4 +351,28 @@ func (s *APIServer) getWallets(w http.ResponseWriter, r *http.Request) {
 		"accounts":      info["accounts"],
 		"tokenBalances": info["tokenBalances"],
 	})
+}
+
+func (s *APIServer) getNodeInfo(w http.ResponseWriter, r *http.Request) {
+	// Get P2P node information
+	p2pNode := s.blockchain.P2PNode
+	if p2pNode == nil {
+		http.Error(w, "P2P node not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Build multiaddresses
+	addresses := make([]string, 0)
+	for _, addr := range p2pNode.Host.Addrs() {
+		fullAddr := fmt.Sprintf("%s/p2p/%s", addr.String(), p2pNode.Host.ID().String())
+		addresses = append(addresses, fullAddr)
+	}
+
+	nodeInfo := map[string]interface{}{
+		"peer_id":   p2pNode.Host.ID().String(),
+		"addresses": addresses,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(nodeInfo)
 }

@@ -182,3 +182,13 @@ func (client *BlockchainClient) sendMessageToPeer(peerAddr string, msg *chain.Me
 
 	return nil
 }
+
+// GetConnectedPeers returns the list of connected peer addresses
+func (client *BlockchainClient) GetConnectedPeers() []string {
+	return client.ConnectedPeers
+}
+
+// IsConnected returns true if the client is connected to at least one blockchain node
+func (client *BlockchainClient) IsConnected() bool {
+	return len(client.ConnectedPeers) > 0
+}

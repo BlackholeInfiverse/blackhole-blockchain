@@ -265,6 +265,51 @@ func GenerateWalletFromMnemonic(ctx context.Context, user *User, password string
 	return CreateWallet(ctx, user, password, walletName, publicKeyHex, publicKeyHex, privateKeyBytes, []byte(mnemonic))
 }
 
+// ImportWalletFromPrivateKey imports a wallet from a private key
+func ImportWalletFromPrivateKey(ctx context.Context, user *User, password, walletName, privateKeyHex string) (*Wallet, error) {
+	// Decode private key from hex
+	privateKeyBytes, err := hex.DecodeString(privateKeyHex)
+	if err != nil {
+		return nil, fmt.Errorf("invalid private key format: %v", err)
+	}
+
+	// Generate key pair from private key
+	privKey, _ := btcec.PrivKeyFromBytes(privateKeyBytes)
+	pubKey := privKey.PubKey()
+
+	// Generate address from public key
+	publicKeyHex := SerializeCompressedHex(pubKey)
+	address := publicKeyHex // Using public key as address for simplicity
+
+	return CreateWallet(ctx, user, password, walletName, address, publicKeyHex, privateKeyBytes, nil)
+}
+
+// ExportWalletPrivateKey exports the private key of a wallet
+func ExportWalletPrivateKey(ctx context.Context, user *User, walletName, password string) (string, error) {
+	_, privKeyBytes, _, err := GetWalletDetails(ctx, user, walletName, password)
+	if err != nil {
+		return "", fmt.Errorf("failed to get wallet details: %v", err)
+	}
+
+	return hex.EncodeToString(privKeyBytes), nil
+}
+
+// ListUserWallets returns all wallets for a user
+func ListUserWallets(ctx context.Context, user *User) ([]*Wallet, error) {
+	cursor, err := WalletCollection.Find(ctx, bson.M{"user_id": user.ID})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query wallets: %v", err)
+	}
+	defer cursor.Close(ctx)
+
+	var wallets []*Wallet
+	if err := cursor.All(ctx, &wallets); err != nil {
+		return nil, fmt.Errorf("failed to decode wallets: %v", err)
+	}
+
+	return wallets, nil
+}
+
 // CreateWallet creates and stores a new wallet encrypted with key derived from password + salt
 func CreateWallet(ctx context.Context, user *User, password string, walletName string, address string, publicKey string, privKey []byte, mnemonic []byte) (*Wallet, error) {
 	// Derive a separate encryption key using user's password and user's password salt + some wallet-specific salt (for demo, use user salt)

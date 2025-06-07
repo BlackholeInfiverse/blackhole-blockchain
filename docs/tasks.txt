@@ -1,109 +1,99 @@
-BlackHole Blockchain – 9-Day Sprint
-Focus: Integrate wallet, token, staking, OTC, and DEX. Prepare for
-testnet-level readiness with all systems talking to each other.
-Day 1 – Integration Kickoff
-(Already Defined Above)
-Target: Wallet + Token integration, key management, staking module setup.
-(See previous message.)
-Day 2 – Token Flow + Wallet API Completion
-Jay:
+
+ – Token Flow + Wallet API Completion
+:
 • Finish all wallet APIs (send, receive, view tx, create/import).
 • Secure private key encryption/decryption in local memory or backend.
-Shivam:
+:
 • Complete mint/burn/transfer logic in TokenX.
 • Integrate token into wallet flow with simulated balances.
-SaiRam:
+:
 • Build staking contract interface and stub functions (stake(), unstake()).
 • Begin staking reward calculation prototype.
-Nihal:
+:
 • Set up swap module: quote, calculatePriceImpact(), getSwapRate().
 • Implement token-to-token swap (simple fixed liquidity pool).
-Day 3 – Functional Wallet + Token & Stake Preview
-Jay:
+ – Functional Wallet + Token & Stake Preview
+:
 • Connect staking interface to wallet frontend.
 • Implement transaction history logs in wallet.
-Shivam:
+:
 • Enable token allowance + approve logic.
 • Ensure internal testnet balance and metadata visible.
-SaiRam:
+:
 • Link staking actions to TokenX contract calls.
 • Begin validator registration and basic PoS staking logic.
-Nihal:
+:
 • Create DEX pair creation logic (TokenX / TokenY).
 • Link basic pool operations: addLiquidity(), getPoolStatus().
-Day 4 – OTC + Multi-Signature & Escrow
-Jay:
+ – OTC + Multi-Signature & Escrow
+:
 • Design and build multisig wallet structure.
 • Implement API to initiate OTC tx with signatures.
-Shivam:
+:
 • Add transferFrom + escrow lock to TokenX.
 • Begin documenting smart contract structure.
-SaiRam:
+:
 • Build escrow flow: hold token, confirm tx, release token.
 • Implement basic slashing logic for validator violations.
-Nihal:
+:
 • Add OTC handling to DEX interface.
 • Begin adding transaction validation rules.
-Day 5 – Cross-Chain Interop Research & Mock Relay
-Jay:
+ – Cross-Chain Interop Research & Mock Relay
+:
 • Begin implementing mock multi-chain wallet switch.
 • Handle wallet address formats for 2 chains.
-Shivam:
+:
 • Create sample TokenX wrapper for bridge simulation.
 • Generate test tx JSON for bridge communication.
-SaiRam:
+:
 • Build mock relay handler to relay messages (event → crossChainHandler).
 • Prepare interface for bridging tokens between parachains.
-Nihal:
+:
 • Design bridge DEX interface logic (selectChain, swapTokenXtoY).
 • Link mock relay to DEX backend for chain-switch simulation.
-Day 6 – DEX + Staking Testing
-Jay:
+ – DEX + Staking Testing
+:
 • Create test suite for wallet interactions.
 • Start writing integration documentation.
-Shivam:
+:
 • Finalise token supply logic (cap, inflation).
 • Simulate token farming scenario for DEX incentives.
-SaiRam:
+:
 • Integrate staking with token supply (mint as reward).
 • Start staking event listeners (block, tx, wallet-based).
-Nihal:
+:
 • Finalise AMM-based pool logic: swap, slippage, price update.
 • Create test environment for pool stress testing.
-Day 7 – UI Integration Prep + Debugging
-Jay:
+ – UI Integration Prep + Debugging
+:
 • Prepare Swagger or Postman collection for wallet API.
 • Build template API docs for frontend UI/UX dev.
-Shivam:
+:
 • Final testing of all token methods.
 • Begin writing deployment scripts.
-SaiRam:
+:
 • Debug staking contracts.
 • Simulate validator registration and stake claim cycles.
-Nihal:
+:
 • Final testing of swap pairs and pools.
 • Link pool contract to DEX frontend stub.
-Day 8 – Full Chain Flow Test
-All Devs Together:
+ – Full Chain Flow Test
+
 • Conduct full chain simulation:
 Create Wallet → Receive Token → Stake → Trade on DEX → OTC TX → Cross Chain
 Mock
 • Each dev takes ownership of their module during E2E test.
 • Record screen, log bugs, and assign.
-Day 9 – Final Optimisation + Deployment Ready
-Jay:
+ – Final Optimisation + Deployment Ready
+:
 • Finalise UI handoff pack (API + sample JSON responses).
 • Compress wallet API calls and improve security.
-Shivam:
+:
 • Merge token contract into single smart contract suite.
 • Final deploy test of TokenX + interactions.
-SaiRam:
+:
 • Run performance and security audit on staking and OTC.
 • Prepare validator docs.
-Nihal:
+:
 • Integrate UI elements with functional DEX backend.
 • Setup stress test script for swap + pool actions.
-Notes:
-• Daily standup (4:00 PM) + EOD updates (5:30 PM).
-• Use the task manager to tick off progress as daily aim.
-• Push code to GitHub daily with commits tagged per task. 

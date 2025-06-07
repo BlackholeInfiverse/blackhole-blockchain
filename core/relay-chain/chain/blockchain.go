@@ -34,6 +34,9 @@ type Blockchain struct {
 	pendingBlocks    map[uint64]*Block
 	GlobalState      map[string]*AccountState
 	DB               *leveldb.DB
+	DEX              interface{}
+	EscrowManager    interface{}
+	MultiSigManager  interface{}
 }
 type RealBlockchain struct {
 	Blockchain *Blockchain // Pointer to the real blockchain

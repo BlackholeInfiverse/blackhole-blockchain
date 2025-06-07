@@ -82,10 +82,15 @@ go run main.go 3000
 ### 3. Start Wallet Service
 ```bash
 cd services/wallet
+# With peer address (recommended)
+go run main.go -peerAddr /ip4/127.0.0.1/tcp/3000/p2p/12D3KooWEHMeACYKmddCU7yvY7FSN78CnhC3bENFmkCcouwu1z8R
+
+# Or in offline mode
 go run main.go
 ```
-- Update peer address in main.go (line 54) with blockchain node's multiaddr
-- Connect to blockchain via P2P
+- Copy the peer multiaddr from blockchain node output
+- Use -peerAddr flag to connect to blockchain via P2P
+- Wallet works in offline mode without peer address
 
 ### 4. Test Operations
 1. **Create wallets** via CLI
