@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
@@ -19,6 +23,20 @@ type BlockchainClient struct {
 	Blockchain     *chain.Blockchain
 	P2PHost        host.Host
 	ConnectedPeers []string
+	APIEndpoint    string // HTTP API endpoint for balance queries
+}
+
+// BalanceQuery represents a balance query request
+type BalanceQuery struct {
+	Address     string `json:"address"`
+	TokenSymbol string `json:"token_symbol"`
+}
+
+// BalanceResponse represents a balance query response
+type BalanceResponse struct {
+	Success bool   `json:"success"`
+	Balance uint64 `json:"balance"`
+	Error   string `json:"error,omitempty"`
 }
 
 // NewBlockchainClient creates a new client to interact with the blockchain
@@ -34,6 +52,7 @@ func NewBlockchainClient(port int) (*BlockchainClient, error) {
 	return &BlockchainClient{
 		P2PHost:        h,
 		ConnectedPeers: make([]string, 0),
+		APIEndpoint:    "", // Will be set when connecting to peers
 	}, nil
 }
 
@@ -63,10 +82,33 @@ func (client *BlockchainClient) ConnectToBlockchain(peerAddr string) error {
 
 // GetTokenBalance returns the balance of a specific token for an address
 func (client *BlockchainClient) GetTokenBalance(address, tokenSymbol string) (uint64, error) {
-	// For now, return a placeholder balance since we don't have direct access to blockchain state
-	// In a real implementation, this would query the blockchain node via RPC
-	fmt.Printf("⚠️ GetTokenBalance not fully implemented for P2P client. Returning placeholder balance.\n")
-	return 1000, nil // Placeholder balance
+	// Try to query balance via HTTP API first
+	if client.APIEndpoint != "" {
+		balance, err := client.queryBalanceViaHTTP(address, tokenSymbol)
+		if err == nil {
+			fmt.Printf("✅ Retrieved balance from blockchain API: %d %s for address %s\n", balance, tokenSymbol, address)
+			return balance, nil
+		}
+		fmt.Printf("⚠️ Failed to query balance via HTTP API: %v\n", err)
+	}
+
+	// If no API endpoint or HTTP query failed, try to extract port from peer address
+	if len(client.ConnectedPeers) > 0 {
+		for _, peerAddr := range client.ConnectedPeers {
+			// Extract port from peer address and try HTTP API
+			if apiPort := client.extractAPIPortFromPeer(peerAddr); apiPort != "" {
+				balance, err := client.queryBalanceViaHTTPPort(address, tokenSymbol, apiPort)
+				if err == nil {
+					fmt.Printf("✅ Retrieved balance from peer API: %d %s for address %s\n", balance, tokenSymbol, address)
+					return balance, nil
+				}
+				fmt.Printf("⚠️ Failed to query balance from peer API: %v\n", err)
+			}
+		}
+	}
+
+	fmt.Printf("⚠️ No blockchain connection available. Returning placeholder balance.\n")
+	return 1000, nil // Fallback placeholder
 }
 
 // TransferTokens transfers tokens from one address to another
@@ -191,4 +233,98 @@ func (client *BlockchainClient) GetConnectedPeers() []string {
 // IsConnected returns true if the client is connected to at least one blockchain node
 func (client *BlockchainClient) IsConnected() bool {
 	return len(client.ConnectedPeers) > 0
+}
+
+// queryBalanceViaHTTP queries balance using HTTP API
+func (client *BlockchainClient) queryBalanceViaHTTP(address, tokenSymbol string) (uint64, error) {
+	url := fmt.Sprintf("%s/api/blockchain/info", client.APIEndpoint)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query blockchain API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read response: %v", err)
+	}
+
+	var blockchainInfo map[string]interface{}
+	if err := json.Unmarshal(body, &blockchainInfo); err != nil {
+		return 0, fmt.Errorf("failed to parse response: %v", err)
+	}
+
+	// Extract token balances
+	tokenBalances, ok := blockchainInfo["tokenBalances"].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("token balances not found in response")
+	}
+
+	tokenData, ok := tokenBalances[tokenSymbol].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("token %s not found", tokenSymbol)
+	}
+
+	balance, ok := tokenData[address].(float64)
+	if !ok {
+		return 0, nil // Address not found, balance is 0
+	}
+
+	return uint64(balance), nil
+}
+
+// extractAPIPortFromPeer extracts the API port from a peer address
+func (client *BlockchainClient) extractAPIPortFromPeer(peerAddr string) string {
+	// Parse peer address like /ip4/127.0.0.1/tcp/3000/p2p/12D3KooW...
+	// The API server typically runs on port 8080 when blockchain runs on 3000
+	if strings.Contains(peerAddr, "/tcp/3000/") {
+		return "8080"
+	}
+	if strings.Contains(peerAddr, "/tcp/3001/") {
+		return "8081"
+	}
+	if strings.Contains(peerAddr, "/tcp/3002/") {
+		return "8082"
+	}
+	return ""
+}
+
+// queryBalanceViaHTTPPort queries balance using HTTP API on specific port
+func (client *BlockchainClient) queryBalanceViaHTTPPort(address, tokenSymbol, port string) (uint64, error) {
+	url := fmt.Sprintf("http://localhost:%s/api/blockchain/info", port)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query blockchain API on port %s: %v", port, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read response: %v", err)
+	}
+
+	var blockchainInfo map[string]interface{}
+	if err := json.Unmarshal(body, &blockchainInfo); err != nil {
+		return 0, fmt.Errorf("failed to parse response: %v", err)
+	}
+
+	// Extract token balances
+	tokenBalances, ok := blockchainInfo["tokenBalances"].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("token balances not found in response")
+	}
+
+	tokenData, ok := tokenBalances[tokenSymbol].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("token %s not found", tokenSymbol)
+	}
+
+	balance, ok := tokenData[address].(float64)
+	if !ok {
+		return 0, nil // Address not found, balance is 0
+	}
+
+	return uint64(balance), nil
 }
