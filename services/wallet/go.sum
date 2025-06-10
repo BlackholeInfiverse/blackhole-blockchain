@@ -12,8 +12,8 @@ github.com/FactomProject/basen v0.0.0-20150613233007-fe3947df716e h1:ahyvB3q25Yn
 github.com/FactomProject/basen v0.0.0-20150613233007-fe3947df716e/go.mod h1:kGUqhHd//musdITWjFvNTHn90WG9bMLBEPQZ17Cmlpw=
 github.com/FactomProject/btcutilecc v0.0.0-20130527213604-d3a63a5752ec h1:1Qb69mGp/UtRPn422BH4/Y4Q3SLUrD9KHuDkm8iodFc=
 github.com/FactomProject/btcutilecc v0.0.0-20130527213604-d3a63a5752ec/go.mod h1:CD8UlnlLDiqb36L110uqiP2iSflVjx9g/3U9hCI4q2U=
-github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250529102438-629c5dfaf4c4 h1:uM0tZGnybhFjBznIguoMbQf5Ba8PtaVPFmIhPFNjrPE=
-github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250529102438-629c5dfaf4c4/go.mod h1:y2vZkZ4X57dqwgixuaRn3OqhCIdnnjPzOKAgeIlB4fo=
+github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250609113141-d130529d969a h1:wvy+3l5GiseitTbHdkModUp/hb3BXW1yHQm2dRDgAG0=
+github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250609113141-d130529d969a/go.mod h1:QcFpP3KVN7dZUYIJIXJyRGddN4iSNfaZQBCnUCfEDzA=
 github.com/anmitsu/go-shlex v0.0.0-20161002113705-648efa622239/go.mod h1:2FmKhYUyUczH0OGQWaF5ceTx0UBShxjsH6f8oGKYe2c=
 github.com/benbjohnson/clock v1.1.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
 github.com/benbjohnson/clock v1.3.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=

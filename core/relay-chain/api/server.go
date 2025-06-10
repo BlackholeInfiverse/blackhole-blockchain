@@ -8,18 +8,33 @@ import (
 	"time"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/escrow"
 )
 
 type APIServer struct {
-	blockchain *chain.Blockchain
-	port       int
+	blockchain    *chain.Blockchain
+	port          int
+	escrowManager interface{} // Will be initialized as *escrow.EscrowManager
 }
 
 func NewAPIServer(blockchain *chain.Blockchain, port int) *APIServer {
+	// Initialize proper escrow manager using dependency injection
+	escrowManager := NewEscrowManagerForBlockchain(blockchain)
+
+	// Inject the escrow manager into the blockchain
+	blockchain.EscrowManager = escrowManager
+
 	return &APIServer{
-		blockchain: blockchain,
-		port:       port,
+		blockchain:    blockchain,
+		port:          port,
+		escrowManager: escrowManager,
 	}
+}
+
+// NewEscrowManagerForBlockchain creates a new escrow manager for the blockchain
+func NewEscrowManagerForBlockchain(blockchain *chain.Blockchain) interface{} {
+	// Create a real escrow manager using dependency injection
+	return escrow.NewEscrowManager(blockchain)
 }
 
 func (s *APIServer) Start() {
@@ -36,6 +51,8 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/dev/test-multisig", s.enableCORS(s.testMultisig))
 	http.HandleFunc("/api/dev/test-otc", s.enableCORS(s.testOTC))
 	http.HandleFunc("/api/dev/test-escrow", s.enableCORS(s.testEscrow))
+	http.HandleFunc("/api/escrow/request", s.enableCORS(s.handleEscrowRequest))
+	http.HandleFunc("/api/balance/query", s.enableCORS(s.handleBalanceQuery))
 
 	fmt.Printf("🌐 API Server starting on port %d\n", s.port)
 	fmt.Printf("🌐 Open http://localhost:%d in your browser\n", s.port)
@@ -121,7 +138,15 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
                     </div>
                     <div class="stat">
                         <div class="stat-value" id="total-supply">-</div>
-                        <div class="stat-label">Total Supply</div>
+                        <div class="stat-label">Circulating Supply</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="max-supply">-</div>
+                        <div class="stat-label">Max Supply</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="supply-utilization">-</div>
+                        <div class="stat-label">Supply Used</div>
                     </div>
                     <div class="stat">
                         <div class="stat-value" id="block-reward">-</div>
@@ -200,6 +225,8 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
             document.getElementById('block-height').textContent = data.blockHeight;
             document.getElementById('pending-txs').textContent = data.pendingTxs;
             document.getElementById('total-supply').textContent = data.totalSupply.toLocaleString();
+            document.getElementById('max-supply').textContent = data.maxSupply ? data.maxSupply.toLocaleString() : 'Unlimited';
+            document.getElementById('supply-utilization').textContent = data.supplyUtilization ? data.supplyUtilization.toFixed(2) + '%' : '0%';
             document.getElementById('block-reward').textContent = data.blockReward;
 
             // Update token balances
@@ -561,6 +588,59 @@ func (s *APIServer) serveDevMode(w http.ResponseWriter, r *http.Request) {
                 <div id="stakingResult" class="result" style="display: none;"></div>
             </div>
 
+            <!-- Escrow Testing -->
+            <div class="card">
+                <h3>🔒 Escrow System Testing</h3>
+                <form id="escrowForm">
+                    <div class="form-group">
+                        <label>Action:</label>
+                        <select id="escrowAction">
+                            <option value="create_escrow">Create Escrow</option>
+                            <option value="confirm_escrow">Confirm Escrow</option>
+                            <option value="release_escrow">Release Escrow</option>
+                            <option value="cancel_escrow">Cancel Escrow</option>
+                            <option value="dispute_escrow">Dispute Escrow</option>
+                            <option value="get_escrow">Get Escrow Details</option>
+                            <option value="get_user_escrows">Get User Escrows</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Sender Address:</label>
+                        <input type="text" id="escrowSender" placeholder="Sender wallet address">
+                    </div>
+                    <div class="form-group">
+                        <label>Receiver Address:</label>
+                        <input type="text" id="escrowReceiver" placeholder="Receiver wallet address">
+                    </div>
+                    <div class="form-group">
+                        <label>Arbitrator Address:</label>
+                        <input type="text" id="escrowArbitrator" placeholder="Arbitrator address (optional)">
+                    </div>
+                    <div class="form-group">
+                        <label>Token Symbol:</label>
+                        <input type="text" id="escrowToken" value="BHX" placeholder="e.g., BHX">
+                    </div>
+                    <div class="form-group">
+                        <label>Amount:</label>
+                        <input type="number" id="escrowAmount" value="100" placeholder="Amount to escrow">
+                    </div>
+                    <div class="form-group">
+                        <label>Escrow ID (for actions on existing escrow):</label>
+                        <input type="text" id="escrowID" placeholder="Escrow ID">
+                    </div>
+                    <div class="form-group">
+                        <label>Expiration Hours:</label>
+                        <input type="number" id="escrowExpiration" value="24" placeholder="Hours until expiration">
+                    </div>
+                    <div class="form-group">
+                        <label>Description:</label>
+                        <textarea id="escrowDescription" placeholder="Escrow description" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-danger">Test Escrow Function</button>
+                </form>
+                <div id="escrowResult" class="result" style="display: none;"></div>
+            </div>
+
             <!-- Continue with more testing modules... -->
         </div>
     </div>
@@ -600,6 +680,22 @@ func (s *APIServer) serveDevMode(w http.ResponseWriter, r *http.Request) {
                 address: document.getElementById('stakingAddress').value,
                 token_symbol: document.getElementById('stakingToken').value,
                 amount: parseInt(document.getElementById('stakingAmount').value) || 0
+            });
+        });
+
+        // Escrow Testing
+        document.getElementById('escrowForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await testFunction('escrow', 'escrowResult', {
+                action: document.getElementById('escrowAction').value,
+                sender: document.getElementById('escrowSender').value,
+                receiver: document.getElementById('escrowReceiver').value,
+                arbitrator: document.getElementById('escrowArbitrator').value,
+                token_symbol: document.getElementById('escrowToken').value,
+                amount: parseInt(document.getElementById('escrowAmount').value) || 0,
+                escrow_id: document.getElementById('escrowID').value,
+                expiration_hours: parseInt(document.getElementById('escrowExpiration').value) || 24,
+                description: document.getElementById('escrowDescription').value
             });
         });
 
@@ -999,4 +1095,386 @@ func (s *APIServer) testEscrow(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// handleEscrowRequest handles real escrow operations from the blockchain client
+func (s *APIServer) handleEscrowRequest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	action, ok := req["action"].(string)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Missing or invalid action",
+		})
+		return
+	}
+
+	// Log the escrow request
+	fmt.Printf("🔒 ESCROW REQUEST: %s\n", action)
+
+	// Check if escrow manager is initialized
+	if s.escrowManager == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Escrow manager not initialized",
+		})
+		return
+	}
+
+	var result map[string]interface{}
+	var err error
+
+	switch action {
+	case "create_escrow":
+		result, err = s.handleCreateEscrow(req)
+	case "confirm_escrow":
+		result, err = s.handleConfirmEscrow(req)
+	case "release_escrow":
+		result, err = s.handleReleaseEscrow(req)
+	case "cancel_escrow":
+		result, err = s.handleCancelEscrow(req)
+	case "get_escrow":
+		result, err = s.handleGetEscrow(req)
+	case "get_user_escrows":
+		result, err = s.handleGetUserEscrows(req)
+	default:
+		err = fmt.Errorf("unknown action: %s", action)
+	}
+
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// handleCreateEscrow handles escrow creation requests
+func (s *APIServer) handleCreateEscrow(req map[string]interface{}) (map[string]interface{}, error) {
+	sender, ok := req["sender"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid sender")
+	}
+
+	receiver, ok := req["receiver"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid receiver")
+	}
+
+	tokenSymbol, ok := req["token_symbol"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid token_symbol")
+	}
+
+	amount, ok := req["amount"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid amount")
+	}
+
+	expirationHours, ok := req["expiration_hours"].(float64)
+	if !ok {
+		expirationHours = 24 // Default to 24 hours
+	}
+
+	arbitrator, _ := req["arbitrator"].(string)   // Optional
+	description, _ := req["description"].(string) // Optional
+
+	// Create escrow using the real escrow manager
+	escrowManager := s.escrowManager.(*escrow.EscrowManager)
+
+	contract, err := escrowManager.CreateEscrow(
+		sender,
+		receiver,
+		arbitrator,
+		tokenSymbol,
+		uint64(amount),
+		int(expirationHours),
+		description,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"success":   true,
+		"escrow_id": contract.ID,
+		"message":   fmt.Sprintf("Escrow created successfully: %s", contract.ID),
+		"data": map[string]interface{}{
+			"id":            contract.ID,
+			"sender":        contract.Sender,
+			"receiver":      contract.Receiver,
+			"arbitrator":    contract.Arbitrator,
+			"token_symbol":  contract.TokenSymbol,
+			"amount":        contract.Amount,
+			"status":        contract.Status.String(),
+			"created_at":    contract.CreatedAt,
+			"expires_at":    contract.ExpiresAt,
+			"required_sigs": contract.RequiredSigs,
+			"description":   contract.Description,
+		},
+	}, nil
+}
+
+// handleConfirmEscrow handles escrow confirmation requests
+func (s *APIServer) handleConfirmEscrow(req map[string]interface{}) (map[string]interface{}, error) {
+	escrowID, ok := req["escrow_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid escrow_id")
+	}
+
+	confirmer, ok := req["confirmer"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid confirmer")
+	}
+
+	// Use the real escrow manager
+	escrowManager := s.escrowManager.(*escrow.EscrowManager)
+
+	err := escrowManager.ConfirmEscrow(escrowID, confirmer)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Escrow %s confirmed successfully", escrowID),
+		"data": map[string]interface{}{
+			"escrow_id": escrowID,
+			"confirmer": confirmer,
+			"status":    "confirmed",
+		},
+	}, nil
+}
+
+// handleReleaseEscrow handles escrow release requests
+func (s *APIServer) handleReleaseEscrow(req map[string]interface{}) (map[string]interface{}, error) {
+	escrowID, ok := req["escrow_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid escrow_id")
+	}
+
+	releaser, ok := req["releaser"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid releaser")
+	}
+
+	// Use the real escrow manager
+	escrowManager := s.escrowManager.(*escrow.EscrowManager)
+
+	err := escrowManager.ReleaseEscrow(escrowID, releaser)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Escrow %s released successfully", escrowID),
+		"data": map[string]interface{}{
+			"escrow_id": escrowID,
+			"releaser":  releaser,
+			"status":    "released",
+		},
+	}, nil
+}
+
+// handleCancelEscrow handles escrow cancellation requests
+func (s *APIServer) handleCancelEscrow(req map[string]interface{}) (map[string]interface{}, error) {
+	escrowID, ok := req["escrow_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid escrow_id")
+	}
+
+	canceller, ok := req["canceller"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid canceller")
+	}
+
+	// Use the real escrow manager
+	escrowManager := s.escrowManager.(*escrow.EscrowManager)
+
+	err := escrowManager.CancelEscrow(escrowID, canceller)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Escrow %s cancelled successfully", escrowID),
+		"data": map[string]interface{}{
+			"escrow_id": escrowID,
+			"canceller": canceller,
+			"status":    "cancelled",
+		},
+	}, nil
+}
+
+// handleGetEscrow handles getting escrow details
+func (s *APIServer) handleGetEscrow(req map[string]interface{}) (map[string]interface{}, error) {
+	escrowID, ok := req["escrow_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid escrow_id")
+	}
+
+	// Use the real escrow manager
+	escrowManager := s.escrowManager.(*escrow.EscrowManager)
+
+	contract, exists := escrowManager.Contracts[escrowID]
+	if !exists {
+		return nil, fmt.Errorf("escrow %s not found", escrowID)
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Escrow %s details retrieved", escrowID),
+		"data": map[string]interface{}{
+			"id":            contract.ID,
+			"sender":        contract.Sender,
+			"receiver":      contract.Receiver,
+			"arbitrator":    contract.Arbitrator,
+			"token_symbol":  contract.TokenSymbol,
+			"amount":        contract.Amount,
+			"status":        contract.Status.String(),
+			"created_at":    contract.CreatedAt,
+			"expires_at":    contract.ExpiresAt,
+			"required_sigs": contract.RequiredSigs,
+			"description":   contract.Description,
+		},
+	}, nil
+}
+
+// handleGetUserEscrows handles getting all escrows for a user
+func (s *APIServer) handleGetUserEscrows(req map[string]interface{}) (map[string]interface{}, error) {
+	userAddress, ok := req["user_address"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid user_address")
+	}
+
+	// Use the real escrow manager
+	escrowManager := s.escrowManager.(*escrow.EscrowManager)
+
+	var userEscrows []interface{}
+
+	// Filter escrows where user is involved
+	for _, contract := range escrowManager.Contracts {
+		// Check if user is involved in this escrow
+		if contract.Sender == userAddress || contract.Receiver == userAddress || contract.Arbitrator == userAddress {
+			escrowData := map[string]interface{}{
+				"id":            contract.ID,
+				"sender":        contract.Sender,
+				"receiver":      contract.Receiver,
+				"arbitrator":    contract.Arbitrator,
+				"token_symbol":  contract.TokenSymbol,
+				"amount":        contract.Amount,
+				"status":        contract.Status.String(),
+				"created_at":    contract.CreatedAt,
+				"expires_at":    contract.ExpiresAt,
+				"required_sigs": contract.RequiredSigs,
+				"description":   contract.Description,
+			}
+			userEscrows = append(userEscrows, escrowData)
+		}
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Found %d escrows for user %s", len(userEscrows), userAddress),
+		"data": map[string]interface{}{
+			"escrows": userEscrows,
+			"count":   len(userEscrows),
+		},
+	}, nil
+}
+
+// handleBalanceQuery handles dedicated balance query requests
+func (s *APIServer) handleBalanceQuery(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Address     string `json:"address"`
+		TokenSymbol string `json:"token_symbol"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	// Validate inputs
+	if req.Address == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Address is required",
+		})
+		return
+	}
+
+	if req.TokenSymbol == "" {
+		req.TokenSymbol = "BHX" // Default to BHX
+	}
+
+	fmt.Printf("🔍 Balance query: address=%s, token=%s\n", req.Address, req.TokenSymbol)
+
+	// Get token from blockchain
+	token, exists := s.blockchain.TokenRegistry[req.TokenSymbol]
+
+	if !exists {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Token %s not found", req.TokenSymbol),
+		})
+		return
+	}
+
+	// Get balance
+	balance, err := token.BalanceOf(req.Address)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Failed to get balance: %v", err),
+		})
+		return
+	}
+
+	fmt.Printf("✅ Balance found: %d %s for address %s\n", balance, req.TokenSymbol, req.Address)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"address":      req.Address,
+			"token_symbol": req.TokenSymbol,
+			"balance":      balance,
+		},
+	})
 }

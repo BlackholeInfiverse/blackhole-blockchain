@@ -76,15 +76,21 @@ func (em *EscrowManager) CreateEscrow(sender, receiver, arbitrator, tokenSymbol 
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
+	// Validate addresses
+	if sender == "" || receiver == "" {
+		return nil, fmt.Errorf("invalid sender or receiver address")
+	}
+
 	// Generate unique ID
 	escrowID := fmt.Sprintf("escrow_%d_%s", time.Now().UnixNano(), sender[:8])
 
-	// Check if sender has sufficient balance
+	// Check if token exists
 	token, exists := em.Blockchain.TokenRegistry[tokenSymbol]
 	if !exists {
 		return nil, fmt.Errorf("token %s not found", tokenSymbol)
 	}
 
+	// Check if sender has sufficient balance
 	balance, err := token.BalanceOf(sender)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check balance: %v", err)
@@ -108,6 +114,7 @@ func (em *EscrowManager) CreateEscrow(sender, receiver, arbitrator, tokenSymbol 
 		Signatures:   make(map[string]bool),
 		RequiredSigs: 2, // Sender and receiver by default
 		Description:  description,
+		Conditions:   make(map[string]interface{}),
 	}
 
 	if arbitrator != "" {
@@ -317,3 +324,4 @@ func (em *EscrowManager) releaseTokensToSender(contract *EscrowContract) error {
 
 	return token.Transfer("escrow_contract", contract.Sender, contract.Amount)
 }
+

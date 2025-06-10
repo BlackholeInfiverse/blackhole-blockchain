@@ -4,25 +4,25 @@
   "latest_block": {
     "Header": {
       "index": 1,
-      "timestamp": "2025-06-09T11:07:42.151347Z",
+      "timestamp": "2025-06-10T08:38:52.0693154Z",
       "previousHash": "681c2b97ceb8e47b357c91f98f95cd3ef8725ee04523f5946f296d7310023fb1",
-      "validator": "node2",
-      "stakeSnapshot": 500,
-      "merkleRoot": "dd6028f9cde070864cabdad8f2a014976284905b9a86c7d776f2527093dc5f01",
+      "validator": "genesis-validator",
+      "stakeSnapshot": 1000,
+      "merkleRoot": "7ab4a24268ef273ce77a167acd2df9c0111618b093b6761cae74ed6f0465f958",
       "stateRoot": "0x0",
       "receiptsRoot": "0x0",
       "consensusRound": 0
     },
     "Transactions": [
       {
-        "ID": "72619b09916ce2c4ab53d05c8932a3006e11a8cf14a6b8ea1132196c0ce4b668",
+        "ID": "e97ae6aea2a5e82ef52c949d102178a428a9d3e106411858c0029c3379af600a",
         "Type": 1,
         "From": "system",
-        "To": "node2",
+        "To": "genesis-validator",
         "Amount": 10,
         "TokenID": "BHX",
         "Data": null,
-        "Timestamp": 1749467262,
+        "Timestamp": 1749544732,
         "Nonce": 0,
         "Signature": null,
         "Fee": 0,
@@ -31,15 +31,15 @@
         "PublicKey": null
       },
       {
-        "ID": "980a83d5797f25e6b984bca63a7a61bd703550384760fe4c42d5e877031e8345",
+        "ID": "d67c4dda50408abaeae9ec12544924923577358ead1239c0ba0d990a0d5c495a",
         "Type": 1,
-        "From": "023683862bf2d602005028ed3013868571f368393ed71cd4a2b25cbae0f156d5ab",
-        "To": "03d0f85fe18231c5aa28cb3b405652a9f3ee1e9ef08aad36ad4c850c52f7bed10f",
-        "Amount": 100,
+        "From": "03a83049366432a7eab220f44f7206e078bc0943af4afa318fd5f1e080562e4bce",
+        "To": "0235e2a98aa93ade4f0e0615c1fd234eeb76217de89ab60a4c57fe2dd6ce165dde",
+        "Amount": 50,
         "TokenID": "BHX",
         "Data": null,
-        "Timestamp": 1749467259,
-        "Nonce": 1749467259759478100,
+        "Timestamp": 1749544726,
+        "Nonce": 1749544726261354600,
         "Signature": null,
         "Fee": 0,
         "GasLimit": 0,
@@ -47,17 +47,17 @@
         "PublicKey": null
       }
     ],
-    "hash": "545381d57471d43015f932a6020d29acb36a9ec1958b474a9135331309d0fff2"
+    "hash": "066c73420cc3595086cb86e84737304889a22109a27e1a84dff2f82629406292"
   },
   "pending_blocks": 0,
   "total_supply": 1000000000,
-  "timestamp": "2025-06-09T16:58:26.1510885+05:30",
+  "timestamp": "2025-06-10T15:01:56.0690853+05:30",
   "fork_info": {
     "has_fork": false,
     "reason": "No forks detected"
   },
   "block_hashes": [
     "681c2b97ceb8e47b357c91f98f95cd3ef8725ee04523f5946f296d7310023fb1",
-    "545381d57471d43015f932a6020d29acb36a9ec1958b474a9135331309d0fff2"
+    "066c73420cc3595086cb86e84737304889a22109a27e1a84dff2f82629406292"
   ]
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/api"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/consensus"
-	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
 )
 
 func main() {
@@ -124,13 +123,21 @@ func miningLoop(ctx context.Context, bc *chain.Blockchain, validator *consensus.
 				time.Sleep(500 * time.Millisecond)
 
 				if bc.AddBlock(block) {
-					// Get or create token for rewards
+					// Get token system for rewards
 					tokenSystem := bc.TokenRegistry["BHX"]
 					if tokenSystem == nil {
-						tokenSystem = token.NewToken("BlackHole", "BHX", 18, 0)
-						bc.TokenRegistry["BHX"] = tokenSystem
+						log.Printf("❌ BHX token not found in registry")
+						return
 					}
-					tokenSystem.Mint(block.Header.Validator, bc.BlockReward)
+
+					// Try to mint block reward (respects max supply)
+					err := tokenSystem.Mint(block.Header.Validator, bc.BlockReward)
+					if err != nil {
+						log.Printf("⚠️ Failed to mint block reward: %v", err)
+						// Continue without reward if supply limit reached
+					} else {
+						log.Printf("💰 Block reward of %d BHX minted to %s", bc.BlockReward, block.Header.Validator)
+					}
 
 					// Update stake ledger
 					bc.StakeLedger.AddStake(block.Header.Validator, bc.BlockReward)
@@ -256,9 +263,19 @@ func MineOnce(ctx context.Context, bc *chain.Blockchain, validator *consensus.Va
 
 		// Then try to add it to our chain
 		if bc.AddBlock(block) {
-			// Only update stake ledger and total supply if we successfully added the block
+			// Try to mint block reward (respects max supply)
+			tokenSystem := bc.TokenRegistry["BHX"]
+			if tokenSystem != nil {
+				err := tokenSystem.Mint(block.Header.Validator, bc.BlockReward)
+				if err != nil {
+					log.Printf("⚠️ Failed to mint block reward: %v", err)
+				} else {
+					log.Printf("💰 Block reward of %d BHX minted to %s", bc.BlockReward, block.Header.Validator)
+				}
+			}
+
+			// Update stake ledger
 			bc.StakeLedger.AddStake(block.Header.Validator, bc.BlockReward)
-			bc.TotalSupply += bc.BlockReward
 
 			log.Println("=====================================")
 			log.Printf("✅ Block %d added successfully", block.Header.Index)

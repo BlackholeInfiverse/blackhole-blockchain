@@ -59,7 +59,7 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 
 	// Initialize stake ledger
 	stakeLedger := NewStakeLedger()
-	stakeLedger.SetStake("genesis-validator", 1000)
+	// Genesis validator starts with 1000 stake (will get tokens minted to match)
 
 	bc := &Blockchain{
 		Blocks:           []*Block{genesis},
@@ -76,6 +76,7 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		validatorManager: NewValidatorManager(stakeLedger),
 		TokenRegistry:    make(map[string]*token.Token),
 	}
+
 	bc.GlobalState["system"] = &AccountState{
 		Balance: 10000000, // same as genesis rewardTx.Amount
 		Nonce:   0,
@@ -85,14 +86,35 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		Nonce:   0,
 	}
 
-	// Create native token - fix the NewToken call to match the signature
-	nativeToken := token.NewToken("Blockchain Hex", "BHX", 18, 1000000000)
+	// Create native token with proper supply management
+	nativeToken := token.NewTokenWithMaxSupply("Blockchain Hex", "BHX", 18, 1000000000) // 1B max supply
 	bc.TokenRegistry["BHX"] = nativeToken
 
-	// Initialize some token balances for testing
-	nativeToken.Mint("system", 10000000)                                                         // System has 10M tokens
-	nativeToken.Mint("03e2459b73c0c6522530f6b26e834d992dfc55d170bee35d0bcdc047fe0d61c25b", 1000) // Test wallet
-	nativeToken.Mint("staking_contract", 0)                                                      // Initialize staking contract
+	// Initialize controlled token distribution
+	// System gets initial allocation for rewards and operations
+	err = nativeToken.Mint("system", 10000000) // 10M tokens (1% of max supply)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mint system tokens: %v", err)
+	}
+
+	// Test wallet gets small allocation
+	err = nativeToken.Mint("03e2459b73c0c6522530f6b26e834d992dfc55d170bee35d0bcdc047fe0d61c25b", 1000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mint test tokens: %v", err)
+	}
+
+	// Initialize genesis validator with consistent stake and tokens
+	genesisValidatorStake := uint64(1000)
+	stakeLedger.SetStake("genesis-validator", genesisValidatorStake)
+
+	// Mint tokens to genesis validator to match their stake
+	err = nativeToken.Mint("genesis-validator", genesisValidatorStake)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mint genesis validator tokens: %v", err)
+	}
+
+	fmt.Printf("✅ Genesis validator initialized with %d stake and %d BHX tokens\n",
+		genesisValidatorStake, genesisValidatorStake)
 
 	// Optional: Load GlobalState from DB
 	bc.loadGlobalState()
@@ -869,15 +891,30 @@ func (bc *Blockchain) GetBlockchainInfo() map[string]interface{} {
 	tokenBalances := make(map[string]map[string]uint64)
 	for tokenSymbol, token := range bc.TokenRegistry {
 		tokenBalances[tokenSymbol] = make(map[string]uint64)
-		// Get balances for known addresses
+
+		// Get ALL addresses that have token balances (not just GlobalState addresses)
+		allAddresses := make(map[string]bool)
+
+		// Add addresses from GlobalState
 		for addr := range bc.GlobalState {
-			if balance, err := token.BalanceOf(addr); err == nil {
+			allAddresses[addr] = true
+		}
+
+		// Add addresses that have token balances
+		tokenAddresses := token.GetAllAddressesWithBalances()
+		for _, addr := range tokenAddresses {
+			allAddresses[addr] = true
+		}
+
+		// Add special addresses
+		allAddresses["staking_contract"] = true
+		allAddresses["system"] = true
+
+		// Get balances for all known addresses
+		for addr := range allAddresses {
+			if balance, err := token.BalanceOf(addr); err == nil && balance > 0 {
 				tokenBalances[tokenSymbol][addr] = balance
 			}
-		}
-		// Also check staking contract
-		if balance, err := token.BalanceOf("staking_contract"); err == nil {
-			tokenBalances[tokenSymbol]["staking_contract"] = balance
 		}
 	}
 
@@ -902,16 +939,26 @@ func (bc *Blockchain) GetBlockchainInfo() map[string]interface{} {
 		})
 	}
 
+	// Calculate actual circulating supply from BHX token
+	circulatingSupply := uint64(0)
+	maxSupply := uint64(0)
+	if bhxToken, exists := bc.TokenRegistry["BHX"]; exists {
+		circulatingSupply = bhxToken.CirculatingSupply()
+		maxSupply = bhxToken.MaxSupply()
+	}
+
 	return map[string]interface{}{
-		"blockHeight":   len(bc.Blocks),
-		"pendingTxs":    len(bc.PendingTxs),
-		"totalSupply":   bc.TotalSupply,
-		"blockReward":   bc.BlockReward,
-		"accounts":      accounts,
-		"tokenBalances": tokenBalances,
-		"stakes":        stakes,
-		"recentBlocks":  recentBlocks,
-		"tokenRegistry": bc.getTokenRegistryInfo(),
+		"blockHeight":       len(bc.Blocks),
+		"pendingTxs":        len(bc.PendingTxs),
+		"totalSupply":       circulatingSupply, // Use actual circulating supply
+		"maxSupply":         maxSupply,         // Show maximum supply
+		"blockReward":       bc.BlockReward,
+		"accounts":          accounts,
+		"tokenBalances":     tokenBalances,
+		"stakes":            stakes,
+		"recentBlocks":      recentBlocks,
+		"tokenRegistry":     bc.getTokenRegistryInfo(),
+		"supplyUtilization": float64(circulatingSupply) / float64(maxSupply) * 100, // Percentage used
 	}
 }
 
@@ -919,10 +966,12 @@ func (bc *Blockchain) getTokenRegistryInfo() map[string]interface{} {
 	tokens := make(map[string]interface{})
 	for symbol, token := range bc.TokenRegistry {
 		tokens[symbol] = map[string]interface{}{
-			"name":        token.Name,
-			"symbol":      token.Symbol,
-			"decimals":    token.Decimals,
-			"totalSupply": token.TotalSupply(),
+			"name":              token.Name,
+			"symbol":            token.Symbol,
+			"decimals":          token.Decimals,
+			"circulatingSupply": token.CirculatingSupply(),
+			"maxSupply":         token.MaxSupply(),
+			"utilization":       float64(token.CirculatingSupply()) / float64(token.MaxSupply()) * 100,
 		}
 	}
 	return tokens
