@@ -496,6 +496,12 @@ func startWebServer(port int) {
 	http.HandleFunc("/api/wallets/stake", enableCORS(requireAuth(handleStakeTokens)))
 	http.HandleFunc("/api/wallets/transactions", enableCORS(requireAuth(handleTransactions)))
 
+	// OTC Trading endpoints
+	http.HandleFunc("/api/otc/create", enableCORS(requireAuth(handleCreateOTCOrder)))
+	http.HandleFunc("/api/otc/orders", enableCORS(requireAuth(handleGetOTCOrders)))
+	http.HandleFunc("/api/otc/match", enableCORS(requireAuth(handleMatchOTCOrder)))
+	http.HandleFunc("/api/otc/cancel", enableCORS(requireAuth(handleCancelOTCOrder)))
+
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 }
 
@@ -895,6 +901,44 @@ func serveDashboard(w http.ResponseWriter, r *http.Request) {
         .success { color: #28a745; margin-top: 10px; }
         .loading { color: #666; font-style: italic; }
         .hidden { display: none; }
+
+        /* Advanced Transaction Styles */
+        .transaction-form {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+
+        .alert-info {
+            color: #31708f;
+            background-color: #d9edf7;
+            border-color: #bce8f1;
+        }
+
+        .btn-small {
+            padding: 5px 10px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
@@ -926,6 +970,8 @@ func serveDashboard(w http.ResponseWriter, r *http.Request) {
                 <button class="btn" onclick="showCheckBalance()">Check Balance</button>
                 <button class="btn btn-success" onclick="showTransferTokens()">Transfer Tokens</button>
                 <button class="btn btn-warning" onclick="showStakeTokens()">Stake Tokens</button>
+                <button class="btn btn-primary" onclick="showAdvancedTransactions()">🚀 Advanced Transactions</button>
+                <button class="btn btn-primary" onclick="showAdvancedTransactions()">Advanced Transactions</button>
                 <button class="btn" onclick="showTransactionHistory()">Transaction History</button>
             </div>
         </div>
@@ -1106,6 +1152,289 @@ func serveDashboard(w http.ResponseWriter, r *http.Request) {
         </div>
     </div>
 
+    <!-- Advanced Transactions Modal -->
+    <div id="advancedTransactionsModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <span class="close" onclick="closeModal('advancedTransactionsModal')">&times;</span>
+            <h3>🚀 Advanced Transactions</h3>
+
+            <!-- Transaction Type Selector -->
+            <div class="form-group">
+                <label>Transaction Type:</label>
+                <select id="transactionType" onchange="showTransactionForm()" required>
+                    <option value="">Select transaction type...</option>
+                    <option value="otc">🤝 OTC Trading</option>
+                    <option value="token_transfer">💸 Token Transfer</option>
+                    <option value="dex">🔄 DEX Swap</option>
+                    <option value="staking">🥩 Staking</option>
+                    <option value="governance">🗳️ Governance</option>
+                    <option value="cross_chain">🌉 Cross-Chain</option>
+                </select>
+            </div>
+
+            <!-- OTC Trading Form -->
+            <div id="otcForm" class="transaction-form" style="display: none;">
+                <h4>🤝 Over-The-Counter Trading</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Your Wallet:</label>
+                        <select id="otcWalletSelect" required>
+                            <option value="">Select wallet...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Password:</label>
+                        <input type="password" id="otcPassword" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Token You're Offering:</label>
+                        <input type="text" id="otcTokenOffered" required placeholder="e.g., BHX">
+                    </div>
+                    <div class="form-group">
+                        <label>Amount Offering:</label>
+                        <input type="number" id="otcAmountOffered" required min="1">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Token You Want:</label>
+                        <input type="text" id="otcTokenRequested" required placeholder="e.g., ETH">
+                    </div>
+                    <div class="form-group">
+                        <label>Amount Requested:</label>
+                        <input type="number" id="otcAmountRequested" required min="1">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Expiration (hours):</label>
+                        <input type="number" id="otcExpiration" value="24" min="1" max="168">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="otcMultiSig"> Multi-Signature Required
+                        </label>
+                    </div>
+                </div>
+
+                <div id="otcMultiSigSection" style="display: none;">
+                    <label>Required Signers (comma-separated addresses):</label>
+                    <textarea id="otcRequiredSigs" placeholder="addr1,addr2,addr3"></textarea>
+                </div>
+
+                <button type="button" class="btn btn-primary" onclick="createOTCOrder()">Create OTC Order</button>
+            </div>
+
+            <!-- Token Transfer Form -->
+            <div id="tokenTransferForm" class="transaction-form" style="display: none;">
+                <h4>💸 Enhanced Token Transfer</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>From Wallet:</label>
+                        <select id="transferFromWallet" required>
+                            <option value="">Select wallet...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Password:</label>
+                        <input type="password" id="transferFromPassword" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>To Address:</label>
+                    <input type="text" id="transferToAddr" required placeholder="Recipient address">
+                    <button type="button" class="btn btn-small" onclick="detectAddress()">🔍 Auto-Detect</button>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Token:</label>
+                        <input type="text" id="transferTokenType" required placeholder="e.g., BHX">
+                    </div>
+                    <div class="form-group">
+                        <label>Amount:</label>
+                        <input type="number" id="transferTokenAmount" required min="1">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="transferWithEscrow"> Use Escrow Service
+                    </label>
+                </div>
+
+                <button type="button" class="btn btn-success" onclick="executeTokenTransfer()">Execute Transfer</button>
+            </div>
+
+            <!-- DEX Swap Form -->
+            <div id="dexForm" class="transaction-form" style="display: none;">
+                <h4>🔄 DEX Token Swap</h4>
+                <div class="alert alert-info">
+                    <strong>Coming Soon!</strong> DEX functionality will be available in the next update.
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>From Token:</label>
+                        <input type="text" placeholder="e.g., BHX" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label>To Token:</label>
+                        <input type="text" placeholder="e.g., ETH" disabled>
+                    </div>
+                </div>
+                <button type="button" class="btn" disabled>Swap Tokens (Coming Soon)</button>
+            </div>
+
+            <!-- Staking Form -->
+            <div id="stakingForm" class="transaction-form" style="display: none;">
+                <h4>🥩 Enhanced Staking</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Wallet:</label>
+                        <select id="stakingWallet" required>
+                            <option value="">Select wallet...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Password:</label>
+                        <input type="password" id="stakingPassword" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Token:</label>
+                        <input type="text" id="stakingToken" value="BHX" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Amount:</label>
+                        <input type="number" id="stakingAmount" required min="1">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Staking Duration:</label>
+                    <select id="stakingDuration">
+                        <option value="30">30 Days (5% APY)</option>
+                        <option value="90">90 Days (8% APY)</option>
+                        <option value="180">180 Days (12% APY)</option>
+                        <option value="365">1 Year (15% APY)</option>
+                    </select>
+                </div>
+
+                <button type="button" class="btn btn-warning" onclick="executeStaking()">Stake Tokens</button>
+            </div>
+
+            <!-- Governance Form -->
+            <div id="governanceForm" class="transaction-form" style="display: none;">
+                <h4>🗳️ Governance Voting</h4>
+                <div class="alert alert-info">
+                    <strong>Coming Soon!</strong> Governance features will be available in the next update.
+                </div>
+                <button type="button" class="btn" disabled>Vote (Coming Soon)</button>
+            </div>
+
+            <!-- Cross-Chain Form -->
+            <div id="crossChainForm" class="transaction-form" style="display: none;">
+                <h4>🌉 Cross-Chain Transfer</h4>
+                <div class="alert alert-info">
+                    <strong>Coming Soon!</strong> Cross-chain functionality will be available in the next update.
+                </div>
+                <button type="button" class="btn" disabled>Transfer Cross-Chain (Coming Soon)</button>
+            </div>
+
+            <div id="advancedTransactionMessage"></div>
+        </div>
+    </div>
+
+    <!-- Advanced Transactions Modal -->
+    <div id="advancedTransactionsModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <span class="close" onclick="closeModal('advancedTransactionsModal')">&times;</span>
+            <h3>🚀 Advanced Transactions</h3>
+
+            <!-- Transaction Type Selector -->
+            <div class="form-group">
+                <label>Transaction Type:</label>
+                <select id="transactionType" onchange="showTransactionForm()" required>
+                    <option value="">Select transaction type...</option>
+                    <option value="otc">🤝 OTC Trading</option>
+                    <option value="token_transfer">💸 Enhanced Token Transfer</option>
+                    <option value="dex">🔄 DEX Swap (Coming Soon)</option>
+                    <option value="staking">🥩 Enhanced Staking</option>
+                    <option value="governance">🗳️ Governance (Coming Soon)</option>
+                    <option value="cross_chain">🌉 Cross-Chain (Coming Soon)</option>
+                </select>
+            </div>
+
+            <!-- OTC Trading Form -->
+            <div id="otcForm" class="transaction-form" style="display: none;">
+                <h4>🤝 Over-The-Counter Trading</h4>
+                <div class="form-row" style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Your Wallet:</label>
+                        <select id="otcWalletSelect" required>
+                            <option value="">Select wallet...</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Password:</label>
+                        <input type="password" id="otcPassword" required>
+                    </div>
+                </div>
+
+                <div class="form-row" style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Token You're Offering:</label>
+                        <input type="text" id="otcTokenOffered" required placeholder="e.g., BHX">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Amount Offering:</label>
+                        <input type="number" id="otcAmountOffered" required min="1">
+                    </div>
+                </div>
+
+                <div class="form-row" style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Token You Want:</label>
+                        <input type="text" id="otcTokenRequested" required placeholder="e.g., ETH">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Amount Requested:</label>
+                        <input type="number" id="otcAmountRequested" required min="1">
+                    </div>
+                </div>
+
+                <div class="form-row" style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Expiration (hours):</label>
+                        <input type="number" id="otcExpiration" value="24" min="1" max="168">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>
+                            <input type="checkbox" id="otcMultiSig"> Multi-Signature Required
+                        </label>
+                    </div>
+                </div>
+
+                <div id="otcMultiSigSection" style="display: none;">
+                    <label>Required Signers (comma-separated addresses):</label>
+                    <textarea id="otcRequiredSigs" placeholder="addr1,addr2,addr3" style="width: 100%; height: 60px;"></textarea>
+                </div>
+
+                <button type="button" class="btn btn-primary" onclick="createOTCOrder()">Create OTC Order</button>
+            </div>
+
+            <div id="advancedTransactionMessage"></div>
+        </div>
+    </div>
+
     <script>
         let userWallets = [];
 
@@ -1280,6 +1609,93 @@ func serveDashboard(w http.ResponseWriter, r *http.Request) {
             populateWalletSelect('stakeWalletSelect');
             showModal('stakeModal');
         }
+
+        // Advanced Transactions Functions
+        function showAdvancedTransactions() {
+            populateWalletSelect('otcWalletSelect');
+            showModal('advancedTransactionsModal');
+        }
+
+        function showTransactionForm() {
+            const transactionType = document.getElementById('transactionType').value;
+
+            // Hide all forms
+            const forms = document.querySelectorAll('.transaction-form');
+            forms.forEach(form => form.style.display = 'none');
+
+            // Show selected form
+            if (transactionType) {
+                const formId = transactionType + 'Form';
+                const form = document.getElementById(formId);
+                if (form) {
+                    form.style.display = 'block';
+
+                    // Populate wallet selects for the active form
+                    if (transactionType === 'otc') {
+                        populateWalletSelect('otcWalletSelect');
+                    }
+                }
+            }
+        }
+
+        // OTC Trading Functions
+        async function createOTCOrder() {
+            const walletName = document.getElementById('otcWalletSelect').value;
+            const password = document.getElementById('otcPassword').value;
+            const tokenOffered = document.getElementById('otcTokenOffered').value;
+            const amountOffered = parseInt(document.getElementById('otcAmountOffered').value);
+            const tokenRequested = document.getElementById('otcTokenRequested').value;
+            const amountRequested = parseInt(document.getElementById('otcAmountRequested').value);
+            const expiration = parseInt(document.getElementById('otcExpiration').value);
+            const isMultiSig = document.getElementById('otcMultiSig').checked;
+
+            let requiredSigs = [];
+            if (isMultiSig) {
+                const sigsText = document.getElementById('otcRequiredSigs').value;
+                requiredSigs = sigsText.split(',').map(s => s.trim()).filter(s => s);
+            }
+
+            try {
+                const response = await fetch('/api/otc/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        wallet_name: walletName,
+                        password: password,
+                        token_offered: tokenOffered,
+                        amount_offered: amountOffered,
+                        token_requested: tokenRequested,
+                        amount_requested: amountRequested,
+                        expiration_hours: expiration,
+                        is_multi_sig: isMultiSig,
+                        required_sigs: requiredSigs
+                    })
+                });
+
+                const result = await response.json();
+                const messageDiv = document.getElementById('advancedTransactionMessage');
+
+                if (result.success) {
+                    messageDiv.innerHTML = '<div class="success">✅ OTC Order created successfully!<br>Order ID: ' + result.data.order_id + '</div>';
+                    setTimeout(() => closeModal('advancedTransactionsModal'), 3000);
+                } else {
+                    messageDiv.innerHTML = '<div class="error">❌ ' + result.message + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('advancedTransactionMessage').innerHTML = '<div class="error">❌ Error: ' + error.message + '</div>';
+            }
+        }
+
+        // Toggle multi-sig section
+        document.addEventListener('DOMContentLoaded', function() {
+            const multiSigCheckbox = document.getElementById('otcMultiSig');
+            if (multiSigCheckbox) {
+                multiSigCheckbox.addEventListener('change', function() {
+                    const section = document.getElementById('otcMultiSigSection');
+                    section.style.display = this.checked ? 'block' : 'none';
+                });
+            }
+        });
 
         async function stakeTokens(walletName, password, tokenSymbol, amount) {
             try {
@@ -1899,4 +2315,146 @@ func handleTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendJSONResponse(w, APIResponse{Success: true, Data: txData}, http.StatusOK)
+}
+
+// OTC Trading Handlers
+func handleCreateOTCOrder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Method not allowed"}, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		WalletName      string   `json:"wallet_name"`
+		Password        string   `json:"password"`
+		TokenOffered    string   `json:"token_offered"`
+		AmountOffered   uint64   `json:"amount_offered"`
+		TokenRequested  string   `json:"token_requested"`
+		AmountRequested uint64   `json:"amount_requested"`
+		ExpirationHours int      `json:"expiration_hours"`
+		IsMultiSig      bool     `json:"is_multi_sig"`
+		RequiredSigs    []string `json:"required_sigs"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Invalid request format"}, http.StatusBadRequest)
+		return
+	}
+
+	// Get user from session
+	user, err := getUserFromSession(r)
+	if err != nil {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Authentication required"}, http.StatusUnauthorized)
+		return
+	}
+
+	// Get wallet details to get the address
+	ctx := context.Background()
+	walletDoc, _, _, err := wallet.GetWalletDetails(ctx, user, req.WalletName, req.Password)
+	if err != nil {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Failed to access wallet: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	// For now, we'll simulate OTC order creation
+	// In a real implementation, this would interact with the blockchain's OTC manager
+	orderID := fmt.Sprintf("otc_%d_%s", time.Now().UnixNano(), walletDoc.Address[:8])
+
+	logSuccess("OTC_ORDER_CREATE", fmt.Sprintf("Order %s created by %s", orderID, user.Username))
+
+	sendJSONResponse(w, APIResponse{
+		Success: true,
+		Message: "OTC order created successfully",
+		Data: map[string]interface{}{
+			"order_id":         orderID,
+			"creator":          walletDoc.Address,
+			"token_offered":    req.TokenOffered,
+			"amount_offered":   req.AmountOffered,
+			"token_requested":  req.TokenRequested,
+			"amount_requested": req.AmountRequested,
+			"expiration_hours": req.ExpirationHours,
+			"is_multi_sig":     req.IsMultiSig,
+			"status":           "open",
+		},
+	}, http.StatusOK)
+}
+
+func handleGetOTCOrders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Method not allowed"}, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// For now, return mock data
+	// In a real implementation, this would query the blockchain's OTC manager
+	orders := []map[string]interface{}{
+		{
+			"order_id":         "otc_example_1",
+			"creator":          "0x1234...5678",
+			"token_offered":    "BHX",
+			"amount_offered":   1000,
+			"token_requested":  "ETH",
+			"amount_requested": 1,
+			"status":           "open",
+			"created_at":       time.Now().Unix(),
+		},
+	}
+
+	sendJSONResponse(w, APIResponse{Success: true, Data: orders}, http.StatusOK)
+}
+
+func handleMatchOTCOrder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Method not allowed"}, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		OrderID    string `json:"order_id"`
+		WalletName string `json:"wallet_name"`
+		Password   string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Invalid request format"}, http.StatusBadRequest)
+		return
+	}
+
+	// Implementation would match the order with blockchain OTC manager
+	sendJSONResponse(w, APIResponse{
+		Success: true,
+		Message: "OTC order matched successfully",
+		Data: map[string]interface{}{
+			"order_id": req.OrderID,
+			"status":   "matched",
+		},
+	}, http.StatusOK)
+}
+
+func handleCancelOTCOrder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Method not allowed"}, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		OrderID    string `json:"order_id"`
+		WalletName string `json:"wallet_name"`
+		Password   string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Invalid request format"}, http.StatusBadRequest)
+		return
+	}
+
+	// Implementation would cancel the order with blockchain OTC manager
+	sendJSONResponse(w, APIResponse{
+		Success: true,
+		Message: "OTC order cancelled successfully",
+		Data: map[string]interface{}{
+			"order_id": req.OrderID,
+			"status":   "cancelled",
+		},
+	}, http.StatusOK)
 }

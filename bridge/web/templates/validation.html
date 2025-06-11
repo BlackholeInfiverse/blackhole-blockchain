@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Validation Results</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body style="gap: 10px; display: flex; flex-direction: column; align-items: center; color: aliceblue;">
+    <div style="
+        display: flex;
+        width: 50%;
+        gap: 10px;
+        align-items: center;
+"
+        >
+        <button 
+        onclick="location.href='/'"
+        style="
+            
+            background-color: #f0f0f0;
+            border: none;
+            padding: 15px;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: background-color 0.3s, transform 0.3s;
+            
+        ">
+       &circlearrowleft;
+    </button> 
+        <h1 style="color: aliceblue;">Validation Results</h1>
+    </div>
+    <table border="1">
+        <tr>
+            <th style="background-color: black;">Index</th>
+            <th style="background-color: black;">Hash</th>
+            <th style="background-color: black;">Status</th>
+            <th style="background-color: black;">Reason</th>
+        </tr>
+        {{range .Validations}}
+<tr>
+    <td>{{.Index}}</td>
+    <td>{{.Hash}}</td>
+    <td>{{.Status}}</td>
+    <td>{{.Reason}}</td>
+</tr>
+{{else}}
+<tr>
+    <td colspan="4">No validation results found.</td>
+</tr>
+{{end}}
+    </table>
+    
+</body>
+</html>

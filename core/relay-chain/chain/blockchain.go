@@ -37,6 +37,7 @@ type Blockchain struct {
 	DEX              interface{}
 	EscrowManager    interface{}
 	MultiSigManager  interface{}
+	OTCManager       interface{} // Will be *otc.OTCManager
 }
 type RealBlockchain struct {
 	Blockchain *Blockchain // Pointer to the real blockchain
