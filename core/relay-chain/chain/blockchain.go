@@ -35,9 +35,11 @@ type Blockchain struct {
 	GlobalState      map[string]*AccountState
 	DB               *leveldb.DB
 	DEX              interface{}
+	CrossChainDEX    interface{} // Will be *dex.CrossChainDEX
 	EscrowManager    interface{}
 	MultiSigManager  interface{}
 	OTCManager       interface{} // Will be *otc.OTCManager
+	SlashingManager  *SlashingManager
 }
 type RealBlockchain struct {
 	Blockchain *Blockchain // Pointer to the real blockchain
@@ -78,6 +80,12 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		TokenRegistry:    make(map[string]*token.Token),
 	}
 
+	// Initialize slashing manager after TokenRegistry is created
+	bc.SlashingManager = NewSlashingManager(stakeLedger, bc.TokenRegistry)
+
+	// Initialize Cross-Chain DEX (will be properly initialized later with bridge)
+	// bc.CrossChainDEX = dex.NewCrossChainDEX(localDEX, bridge, bc)
+
 	bc.GlobalState["system"] = &AccountState{
 		Balance: 10000000, // same as genesis rewardTx.Amount
 		Nonce:   0,
@@ -116,6 +124,14 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 
 	fmt.Printf("✅ Genesis validator initialized with %d stake and %d BHX tokens\n",
 		genesisValidatorStake, genesisValidatorStake)
+
+	// Start validator monitoring in background
+	go bc.MonitorValidatorPerformance()
+	fmt.Printf("⚡ Slashing manager initialized and monitoring started\n")
+
+	// Initialize OTC Manager
+	// bc.OTCManager = otc.NewOTCManager(bc)
+	// fmt.Printf("✅ OTC Manager initialized\n")
 
 	// Optional: Load GlobalState from DB
 	bc.loadGlobalState()
@@ -260,6 +276,13 @@ func (bc *Blockchain) AddBlock(block *Block) bool {
 
 	if block.CalculateHash() != block.Hash {
 		fmt.Printf("❌ Invalid block hash at height %d\n", block.Header.Index)
+
+		// Report invalid block violation
+		if block.Header.Validator != "" {
+			bc.SlashingManager.AutoSlash(block.Header.Validator, InvalidBlock,
+				fmt.Sprintf("Invalid block hash at height %d", block.Header.Index),
+				block.Header.Index)
+		}
 		return false
 	}
 
@@ -271,6 +294,17 @@ func (bc *Blockchain) AddBlock(block *Block) bool {
 	// }
 
 	for _, tx := range block.Transactions {
+		// Validate transaction security before applying
+		if !bc.validateTransactionSecurity(tx) {
+			fmt.Printf("❌ Malicious transaction detected: %s\n", tx.ID)
+			if block.Header.Validator != "" {
+				bc.SlashingManager.AutoSlash(block.Header.Validator, MaliciousTransaction,
+					fmt.Sprintf("Malicious transaction %s in block %d", tx.ID, block.Header.Index),
+					block.Header.Index)
+			}
+			return false
+		}
+
 		success := bc.ApplyTransaction(tx)
 		if !success {
 			fmt.Println("Invalid tx in block, skipping:", tx)
@@ -995,4 +1029,137 @@ func (bc *Blockchain) AddTokenBalance(address, tokenSymbol string, amount uint64
 
 	fmt.Printf("✅ Added %d %s tokens to %s\n", amount, tokenSymbol, address)
 	return nil
+}
+
+// Slashing-related validation functions
+func (bc *Blockchain) validateTransactionSecurity(tx *Transaction) bool {
+	// Check for malicious transaction patterns
+
+	// 1. Check for excessive amounts (potential drain attack)
+	if tx.Amount > 1000000 { // Arbitrary large amount threshold
+		fmt.Printf("🚨 Suspicious large amount transaction: %d\n", tx.Amount)
+		return false
+	}
+
+	// 2. Check for invalid addresses
+	if tx.From == tx.To && tx.Type != StakeDeposit {
+		fmt.Printf("🚨 Self-transfer detected (non-staking): %s\n", tx.ID)
+		return false
+	}
+
+	// 3. Check for timestamp manipulation
+	currentTime := time.Now().Unix()
+	if tx.Timestamp > currentTime+300 { // 5 minutes in future
+		fmt.Printf("🚨 Future timestamp detected: %d vs %d\n", tx.Timestamp, currentTime)
+		return false
+	}
+
+	// 4. Check for duplicate nonce (replay attack)
+	if bc.isDuplicateNonce(tx) {
+		fmt.Printf("🚨 Duplicate nonce detected: %s\n", tx.ID)
+		return false
+	}
+
+	return true
+}
+
+func (bc *Blockchain) detectDoubleSign(block *Block) bool {
+	// Check if validator has already signed a block at this height
+	for _, existingBlock := range bc.Blocks {
+		if existingBlock.Header.Index == block.Header.Index &&
+			existingBlock.Header.Validator == block.Header.Validator &&
+			existingBlock.Hash != block.Hash {
+			fmt.Printf("🚨 Double signing detected: validator %s signed multiple blocks at height %d\n",
+				block.Header.Validator, block.Header.Index)
+			return true
+		}
+	}
+	return false
+}
+
+func (bc *Blockchain) isDuplicateNonce(tx *Transaction) bool {
+	// Check if this nonce has been used before by this address
+	for _, block := range bc.Blocks {
+		for _, existingTx := range block.Transactions {
+			if existingTx.From == tx.From &&
+				existingTx.Nonce == tx.Nonce &&
+				existingTx.ID != tx.ID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Validator monitoring functions
+func (bc *Blockchain) MonitorValidatorPerformance() {
+	// This would run as a goroutine to monitor validator behavior
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			bc.checkValidatorDowntime()
+		}
+	}
+}
+
+func (bc *Blockchain) checkValidatorDowntime() {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
+	// Check if any validators haven't produced blocks recently
+	currentTime := time.Now().Unix()
+	downtimeThreshold := int64(300) // 5 minutes
+
+	validators := bc.StakeLedger.GetAllStakes()
+	for validator := range validators {
+		if bc.SlashingManager.IsValidatorJailed(validator) {
+			continue // Skip jailed validators
+		}
+
+		lastBlockTime := bc.getLastBlockTimeForValidator(validator)
+		downtime := currentTime - lastBlockTime
+
+		// Only report if downtime is reasonable (not years!)
+		if downtime > downtimeThreshold && downtime < 86400 { // Between 5 minutes and 24 hours
+			fmt.Printf("⏰ Validator %s has been down for %d seconds\n", validator, downtime)
+
+			// Only report once per hour to avoid spam
+			if bc.shouldReportDowntime(validator, downtime) {
+				bc.SlashingManager.ReportViolation(validator, Downtime,
+					fmt.Sprintf("Validator down for %d seconds", downtime),
+					bc.GetLatestBlock().Header.Index)
+			}
+		}
+	}
+}
+
+// Track last downtime report to avoid spam
+var lastDowntimeReport = make(map[string]int64)
+
+func (bc *Blockchain) shouldReportDowntime(validator string, downtime int64) bool {
+	lastReport, exists := lastDowntimeReport[validator]
+	currentTime := time.Now().Unix()
+
+	// Report if never reported before, or if 1 hour has passed since last report
+	if !exists || currentTime-lastReport > 3600 {
+		lastDowntimeReport[validator] = currentTime
+		return true
+	}
+
+	return false
+}
+
+func (bc *Blockchain) getLastBlockTimeForValidator(validator string) int64 {
+	// Find the most recent block produced by this validator
+	for i := len(bc.Blocks) - 1; i >= 0; i-- {
+		if bc.Blocks[i].Header.Validator == validator {
+			return bc.Blocks[i].Header.Timestamp.Unix()
+		}
+	}
+	// If validator never produced a block, return current time minus a reasonable period
+	// This prevents the massive downtime calculation error
+	return time.Now().Unix() - 300 // 5 minutes ago
 }

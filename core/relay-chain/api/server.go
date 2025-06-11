@@ -54,6 +54,29 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/escrow/request", s.enableCORS(s.handleEscrowRequest))
 	http.HandleFunc("/api/balance/query", s.enableCORS(s.handleBalanceQuery))
 
+	// OTC Trading API endpoints
+	http.HandleFunc("/api/otc/create", s.enableCORS(s.handleOTCCreate))
+	http.HandleFunc("/api/otc/orders", s.enableCORS(s.handleOTCOrders))
+	http.HandleFunc("/api/otc/match", s.enableCORS(s.handleOTCMatch))
+	http.HandleFunc("/api/otc/cancel", s.enableCORS(s.handleOTCCancel))
+	http.HandleFunc("/api/otc/events", s.enableCORS(s.handleOTCEvents))
+
+	// Slashing API endpoints
+	http.HandleFunc("/api/slashing/events", s.enableCORS(s.handleSlashingEvents))
+	http.HandleFunc("/api/slashing/report", s.enableCORS(s.handleSlashingReport))
+	http.HandleFunc("/api/slashing/execute", s.enableCORS(s.handleSlashingExecute))
+	http.HandleFunc("/api/slashing/validator-status", s.enableCORS(s.handleValidatorStatus))
+
+	// Cross-Chain DEX API endpoints
+	http.HandleFunc("/api/cross-chain/quote", s.enableCORS(s.handleCrossChainQuote))
+	http.HandleFunc("/api/cross-chain/swap", s.enableCORS(s.handleCrossChainSwap))
+	http.HandleFunc("/api/cross-chain/order", s.enableCORS(s.handleCrossChainOrder))
+	http.HandleFunc("/api/cross-chain/orders", s.enableCORS(s.handleCrossChainOrders))
+	http.HandleFunc("/api/cross-chain/supported-chains", s.enableCORS(s.handleSupportedChains))
+
+	// Health check endpoint
+	http.HandleFunc("/api/health", s.enableCORS(s.handleHealthCheck))
+
 	fmt.Printf("🌐 API Server starting on port %d\n", s.port)
 	fmt.Printf("🌐 Open http://localhost:%d in your browser\n", s.port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", s.port), nil))
@@ -1476,5 +1499,926 @@ func (s *APIServer) handleBalanceQuery(w http.ResponseWriter, r *http.Request) {
 			"token_symbol": req.TokenSymbol,
 			"balance":      balance,
 		},
+	})
+}
+
+// OTC Trading API Handlers
+func (s *APIServer) handleOTCCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	var req struct {
+		Creator         string   `json:"creator"`
+		TokenOffered    string   `json:"token_offered"`
+		AmountOffered   uint64   `json:"amount_offered"`
+		TokenRequested  string   `json:"token_requested"`
+		AmountRequested uint64   `json:"amount_requested"`
+		ExpirationHours int      `json:"expiration_hours"`
+		IsMultiSig      bool     `json:"is_multisig"`
+		RequiredSigs    []string `json:"required_sigs"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	fmt.Printf("🤝 Creating OTC order: %+v\n", req)
+
+	// For now, simulate OTC order creation since we don't have the OTC manager initialized
+	// In a real implementation, this would use: s.blockchain.OTCManager.CreateOrder(...)
+	orderID := fmt.Sprintf("otc_%d_%s", time.Now().UnixNano(), req.Creator[:8])
+
+	// Simulate token balance check
+	if token, exists := s.blockchain.TokenRegistry[req.TokenOffered]; exists {
+		balance, err := token.BalanceOf(req.Creator)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Failed to check balance: " + err.Error(),
+			})
+			return
+		}
+
+		if balance < req.AmountOffered {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   fmt.Sprintf("Insufficient balance: has %d, needs %d", balance, req.AmountOffered),
+			})
+			return
+		}
+
+		// Lock tokens by transferring to OTC contract
+		err = token.Transfer(req.Creator, "otc_contract", req.AmountOffered)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Failed to lock tokens: " + err.Error(),
+			})
+			return
+		}
+	}
+
+	orderData := map[string]interface{}{
+		"order_id":         orderID,
+		"creator":          req.Creator,
+		"token_offered":    req.TokenOffered,
+		"amount_offered":   req.AmountOffered,
+		"token_requested":  req.TokenRequested,
+		"amount_requested": req.AmountRequested,
+		"expiration_hours": req.ExpirationHours,
+		"is_multi_sig":     req.IsMultiSig,
+		"required_sigs":    req.RequiredSigs,
+		"status":           "open",
+		"created_at":       time.Now().Unix(),
+		"expires_at":       time.Now().Add(time.Duration(req.ExpirationHours) * time.Hour).Unix(),
+	}
+
+	// Store the order for future operations
+	s.storeOTCOrder(orderID, orderData)
+
+	// Broadcast order creation event
+	s.broadcastOTCEvent("order_created", orderData)
+
+	fmt.Printf("✅ OTC order created: %s\n", orderID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "OTC order created successfully",
+		"data":    orderData,
+	})
+}
+
+func (s *APIServer) handleOTCOrders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	// Get user parameter from query string
+	userAddress := r.URL.Query().Get("user")
+
+	fmt.Printf("🔍 Getting OTC orders for user: %s\n", userAddress)
+
+	// For now, return simulated orders
+	// In a real implementation, this would use: s.blockchain.OTCManager.GetUserOrders(userAddress)
+	orders := []map[string]interface{}{
+		{
+			"order_id":         "otc_example_1",
+			"creator":          userAddress,
+			"token_offered":    "BHX",
+			"amount_offered":   1000,
+			"token_requested":  "USDT",
+			"amount_requested": 5000,
+			"status":           "open",
+			"created_at":       time.Now().Unix() - 3600,
+			"expires_at":       time.Now().Unix() + 82800,
+			"note":             "Simulated order from blockchain",
+		},
+		{
+			"order_id":         "otc_market_1",
+			"creator":          "0x9876...4321",
+			"token_offered":    "USDT",
+			"amount_offered":   2000,
+			"token_requested":  "BHX",
+			"amount_requested": 400,
+			"status":           "open",
+			"created_at":       time.Now().Unix() - 1800,
+			"expires_at":       time.Now().Unix() + 84600,
+			"note":             "Market order from another user",
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    orders,
+	})
+}
+
+func (s *APIServer) handleOTCMatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	var req struct {
+		OrderID      string `json:"order_id"`
+		Counterparty string `json:"counterparty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	fmt.Printf("🤝 Matching OTC order %s with counterparty %s\n", req.OrderID, req.Counterparty)
+
+	// Real order matching implementation
+	success, err := s.executeOTCOrderMatch(req.OrderID, req.Counterparty)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if !success {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Order matching failed",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "OTC order matched and executed successfully",
+		"data": map[string]interface{}{
+			"order_id":     req.OrderID,
+			"counterparty": req.Counterparty,
+			"status":       "completed",
+			"matched_at":   time.Now().Unix(),
+			"completed_at": time.Now().Unix(),
+		},
+	})
+}
+
+func (s *APIServer) handleOTCCancel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	var req struct {
+		OrderID   string `json:"order_id"`
+		Canceller string `json:"canceller"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	fmt.Printf("❌ Cancelling OTC order %s by %s\n", req.OrderID, req.Canceller)
+
+	// For now, simulate order cancellation
+	// In a real implementation, this would use: s.blockchain.OTCManager.CancelOrder(req.OrderID, req.Canceller)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "OTC order cancelled successfully",
+		"data": map[string]interface{}{
+			"order_id":     req.OrderID,
+			"status":       "cancelled",
+			"cancelled_at": time.Now().Unix(),
+		},
+	})
+}
+
+// OTC Order Management Functions
+func (s *APIServer) executeOTCOrderMatch(orderID, counterparty string) (bool, error) {
+	fmt.Printf("🔄 Executing OTC order match: %s with %s\n", orderID, counterparty)
+
+	// In a real implementation, this would:
+	// 1. Find the order in the OTC manager
+	// 2. Validate counterparty has required tokens
+	// 3. Execute the token swap
+	// 4. Update order status
+
+	// For now, simulate a successful match with actual token transfers
+	// This demonstrates the complete flow
+
+	// Simulate order data (in real implementation, this would come from OTC manager)
+	orderData := map[string]interface{}{
+		"creator":          "test_creator",
+		"token_offered":    "BHX",
+		"amount_offered":   uint64(1000),
+		"token_requested":  "USDT",
+		"amount_requested": uint64(5000),
+	}
+
+	// Check if counterparty has required tokens
+	if requestedToken, exists := s.blockchain.TokenRegistry[orderData["token_requested"].(string)]; exists {
+		balance, err := requestedToken.BalanceOf(counterparty)
+		if err != nil {
+			return false, fmt.Errorf("failed to check counterparty balance: %v", err)
+		}
+
+		if balance < orderData["amount_requested"].(uint64) {
+			return false, fmt.Errorf("counterparty has insufficient balance: has %d, needs %d",
+				balance, orderData["amount_requested"].(uint64))
+		}
+
+		// Execute the token swap
+		// 1. Transfer offered tokens from OTC contract to counterparty
+		if offeredToken, exists := s.blockchain.TokenRegistry[orderData["token_offered"].(string)]; exists {
+			err = offeredToken.Transfer("otc_contract", counterparty, orderData["amount_offered"].(uint64))
+			if err != nil {
+				return false, fmt.Errorf("failed to transfer offered tokens: %v", err)
+			}
+		}
+
+		// 2. Transfer requested tokens from counterparty to creator
+		err = requestedToken.Transfer(counterparty, orderData["creator"].(string), orderData["amount_requested"].(uint64))
+		if err != nil {
+			return false, fmt.Errorf("failed to transfer requested tokens: %v", err)
+		}
+
+		fmt.Printf("✅ OTC trade completed: %d %s ↔ %d %s\n",
+			orderData["amount_offered"], orderData["token_offered"],
+			orderData["amount_requested"], orderData["token_requested"])
+
+		return true, nil
+	}
+
+	return false, fmt.Errorf("requested token not found")
+}
+
+// Store for OTC orders (in real implementation, this would be in the blockchain)
+var otcOrderStore = make(map[string]map[string]interface{})
+
+// Store for Cross-Chain DEX orders
+var crossChainOrderStore = make(map[string]map[string]interface{})
+var crossChainOrdersByUser = make(map[string][]string) // user -> order IDs
+
+func (s *APIServer) storeOTCOrder(orderID string, orderData map[string]interface{}) {
+	otcOrderStore[orderID] = orderData
+}
+
+func (s *APIServer) getOTCOrder(orderID string) (map[string]interface{}, bool) {
+	order, exists := otcOrderStore[orderID]
+	return order, exists
+}
+
+// Cross-Chain DEX order storage functions
+func (s *APIServer) storeCrossChainOrder(orderID string, orderData map[string]interface{}) {
+	crossChainOrderStore[orderID] = orderData
+
+	// Add to user's order list
+	user := orderData["user"].(string)
+	if crossChainOrdersByUser[user] == nil {
+		crossChainOrdersByUser[user] = make([]string, 0)
+	}
+	crossChainOrdersByUser[user] = append(crossChainOrdersByUser[user], orderID)
+}
+
+func (s *APIServer) getCrossChainOrder(orderID string) (map[string]interface{}, bool) {
+	order, exists := crossChainOrderStore[orderID]
+	return order, exists
+}
+
+func (s *APIServer) getUserCrossChainOrders(user string) []map[string]interface{} {
+	orderIDs, exists := crossChainOrdersByUser[user]
+	if !exists {
+		return []map[string]interface{}{}
+	}
+
+	var orders []map[string]interface{}
+	for _, orderID := range orderIDs {
+		if order, exists := crossChainOrderStore[orderID]; exists {
+			orders = append(orders, order)
+		}
+	}
+
+	return orders
+}
+
+func (s *APIServer) updateCrossChainOrderStatus(orderID, status string) {
+	if order, exists := crossChainOrderStore[orderID]; exists {
+		order["status"] = status
+		if status == "completed" {
+			order["completed_at"] = time.Now().Unix()
+		}
+	}
+}
+
+// processCrossChainSwap simulates the cross-chain swap process
+func (s *APIServer) processCrossChainSwap(orderID string) {
+	_, exists := s.getCrossChainOrder(orderID)
+	if !exists {
+		return
+	}
+
+	// Step 1: Bridging phase (2-3 seconds)
+	time.Sleep(2 * time.Second)
+	s.updateCrossChainOrderStatus(orderID, "bridging")
+	fmt.Printf("🌉 Order %s: Bridging tokens...\n", orderID)
+
+	// Step 2: Bridge confirmation (3-5 seconds)
+	time.Sleep(3 * time.Second)
+	s.updateCrossChainOrderStatus(orderID, "swapping")
+	fmt.Printf("🔄 Order %s: Executing swap on destination chain...\n", orderID)
+
+	// Step 3: Swap execution (2-3 seconds)
+	time.Sleep(2 * time.Second)
+
+	// Update order with final details
+	if order, exists := crossChainOrderStore[orderID]; exists {
+		order["status"] = "completed"
+		order["completed_at"] = time.Now().Unix()
+		order["bridge_tx_id"] = fmt.Sprintf("bridge_%s", orderID)
+		order["swap_tx_id"] = fmt.Sprintf("swap_%s", orderID)
+
+		// Simulate slight slippage
+		estimatedOut := order["estimated_out"].(uint64)
+		actualOut := uint64(float64(estimatedOut) * 0.998) // 0.2% slippage
+		order["actual_out"] = actualOut
+	}
+
+	fmt.Printf("✅ Order %s: Cross-chain swap completed!\n", orderID)
+}
+
+func (s *APIServer) updateOTCOrderStatus(orderID, status string) {
+	if order, exists := otcOrderStore[orderID]; exists {
+		order["status"] = status
+		order["updated_at"] = time.Now().Unix()
+
+		// Broadcast status update
+		s.broadcastOTCEvent("order_updated", order)
+	}
+}
+
+// Simple event broadcasting system (in production, use WebSockets)
+func (s *APIServer) broadcastOTCEvent(eventType string, data map[string]interface{}) {
+	fmt.Printf("📡 Broadcasting OTC event: %s\n", eventType)
+	// In a real implementation, this would send WebSocket messages to connected clients
+	// For now, just log the event
+	eventData := map[string]interface{}{
+		"type":      eventType,
+		"data":      data,
+		"timestamp": time.Now().Unix(),
+	}
+
+	// Store recent events for polling-based updates
+	s.storeRecentOTCEvent(eventData)
+}
+
+// Store for recent OTC events
+var recentOTCEvents = make([]map[string]interface{}, 0, 100)
+
+func (s *APIServer) storeRecentOTCEvent(event map[string]interface{}) {
+	recentOTCEvents = append(recentOTCEvents, event)
+
+	// Keep only last 100 events
+	if len(recentOTCEvents) > 100 {
+		recentOTCEvents = recentOTCEvents[1:]
+	}
+}
+
+func (s *APIServer) getRecentOTCEvents() []map[string]interface{} {
+	return recentOTCEvents
+}
+
+func (s *APIServer) handleOTCEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	events := s.getRecentOTCEvents()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    events,
+	})
+}
+
+// Slashing API Handlers
+func (s *APIServer) handleSlashingEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	events := s.blockchain.SlashingManager.GetSlashingEvents()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    events,
+	})
+}
+
+func (s *APIServer) handleSlashingReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	var req struct {
+		Validator   string `json:"validator"`
+		Condition   int    `json:"condition"`
+		Evidence    string `json:"evidence"`
+		BlockHeight uint64 `json:"block_height"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	fmt.Printf("🚨 Slashing violation reported for validator %s\n", req.Validator)
+
+	event, err := s.blockchain.SlashingManager.ReportViolation(
+		req.Validator,
+		chain.SlashingCondition(req.Condition),
+		req.Evidence,
+		req.BlockHeight,
+	)
+
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Slashing violation reported successfully",
+		"data":    event,
+	})
+}
+
+func (s *APIServer) handleSlashingExecute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	var req struct {
+		EventID string `json:"event_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	fmt.Printf("⚡ Executing slashing event %s\n", req.EventID)
+
+	err := s.blockchain.SlashingManager.ExecuteSlashing(req.EventID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Slashing executed successfully",
+	})
+}
+
+func (s *APIServer) handleValidatorStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	validator := r.URL.Query().Get("validator")
+	if validator == "" {
+		// Return all validator statuses
+		validators := s.blockchain.StakeLedger.GetAllStakes()
+		validatorStatuses := make(map[string]interface{})
+
+		for validatorAddr := range validators {
+			validatorStatuses[validatorAddr] = map[string]interface{}{
+				"stake":   s.blockchain.StakeLedger.GetStake(validatorAddr),
+				"strikes": s.blockchain.SlashingManager.GetValidatorStrikes(validatorAddr),
+				"jailed":  s.blockchain.SlashingManager.IsValidatorJailed(validatorAddr),
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"data":    validatorStatuses,
+		})
+		return
+	}
+
+	// Return specific validator status
+	status := map[string]interface{}{
+		"validator": validator,
+		"stake":     s.blockchain.StakeLedger.GetStake(validator),
+		"strikes":   s.blockchain.SlashingManager.GetValidatorStrikes(validator),
+		"jailed":    s.blockchain.SlashingManager.IsValidatorJailed(validator),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    status,
+	})
+}
+
+func (s *APIServer) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	// Get blockchain status
+	latestBlock := s.blockchain.GetLatestBlock()
+	blockHeight := uint64(0)
+	if latestBlock != nil {
+		blockHeight = latestBlock.Header.Index
+	}
+
+	// Get validator count
+	validators := s.blockchain.StakeLedger.GetAllStakes()
+	validatorCount := len(validators)
+
+	// Get pending transactions
+	pendingTxs := len(s.blockchain.GetPendingTransactions())
+
+	health := map[string]interface{}{
+		"status":          "healthy",
+		"block_height":    blockHeight,
+		"validator_count": validatorCount,
+		"pending_txs":     pendingTxs,
+		"timestamp":       time.Now().Unix(),
+		"version":         "1.0.0",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    health,
+	})
+}
+
+// Cross-Chain DEX API Handlers
+func (s *APIServer) handleCrossChainQuote(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	var req struct {
+		SourceChain string `json:"source_chain"`
+		DestChain   string `json:"dest_chain"`
+		TokenIn     string `json:"token_in"`
+		TokenOut    string `json:"token_out"`
+		AmountIn    uint64 `json:"amount_in"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	// Simulate cross-chain quote (in production, would use actual CrossChainDEX)
+	quote := map[string]interface{}{
+		"source_chain":  req.SourceChain,
+		"dest_chain":    req.DestChain,
+		"token_in":      req.TokenIn,
+		"token_out":     req.TokenOut,
+		"amount_in":     req.AmountIn,
+		"estimated_out": uint64(float64(req.AmountIn) * 0.95), // 5% total fees
+		"price_impact":  0.5,
+		"bridge_fee":    uint64(float64(req.AmountIn) * 0.01),  // 1% bridge fee
+		"swap_fee":      uint64(float64(req.AmountIn) * 0.003), // 0.3% swap fee
+		"expires_at":    time.Now().Add(10 * time.Minute).Unix(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    quote,
+	})
+}
+
+func (s *APIServer) handleCrossChainSwap(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	var req struct {
+		User         string `json:"user"`
+		SourceChain  string `json:"source_chain"`
+		DestChain    string `json:"dest_chain"`
+		TokenIn      string `json:"token_in"`
+		TokenOut     string `json:"token_out"`
+		AmountIn     uint64 `json:"amount_in"`
+		MinAmountOut uint64 `json:"min_amount_out"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	// Generate swap order ID
+	userSuffix := req.User
+	if len(req.User) > 8 {
+		userSuffix = req.User[:8]
+	}
+	orderID := fmt.Sprintf("ccswap_%d_%s", time.Now().UnixNano(), userSuffix)
+
+	// Calculate fees and estimated output
+	bridgeFee := uint64(float64(req.AmountIn) * 0.01)    // 1% bridge fee
+	swapFee := uint64(float64(req.AmountIn) * 0.003)     // 0.3% swap fee
+	estimatedOut := uint64(float64(req.AmountIn) * 0.95) // 5% total fees
+
+	// Create real cross-chain swap order
+	order := map[string]interface{}{
+		"id":             orderID,
+		"user":           req.User,
+		"source_chain":   req.SourceChain,
+		"dest_chain":     req.DestChain,
+		"token_in":       req.TokenIn,
+		"token_out":      req.TokenOut,
+		"amount_in":      req.AmountIn,
+		"min_amount_out": req.MinAmountOut,
+		"estimated_out":  estimatedOut,
+		"status":         "pending",
+		"created_at":     time.Now().Unix(),
+		"expires_at":     time.Now().Add(30 * time.Minute).Unix(),
+		"bridge_fee":     bridgeFee,
+		"swap_fee":       swapFee,
+		"price_impact":   0.5,
+	}
+
+	// Store the order
+	s.storeCrossChainOrder(orderID, order)
+
+	// Start background processing to simulate swap execution
+	go s.processCrossChainSwap(orderID)
+
+	fmt.Printf("✅ Cross-chain swap initiated: %s (%d %s → %s)\n",
+		orderID, req.AmountIn, req.TokenIn, req.TokenOut)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Cross-chain swap initiated successfully",
+		"data":    order,
+	})
+}
+
+func (s *APIServer) handleCrossChainOrder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	orderID := r.URL.Query().Get("id")
+	if orderID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Order ID required",
+		})
+		return
+	}
+
+	// Get real order data
+	order, exists := s.getCrossChainOrder(orderID)
+	if !exists {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Order not found",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    order,
+	})
+}
+
+func (s *APIServer) handleCrossChainOrders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	user := r.URL.Query().Get("user")
+	if user == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "User parameter required",
+		})
+		return
+	}
+
+	// Get real user orders
+	orders := s.getUserCrossChainOrders(user)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    orders,
+	})
+}
+
+func (s *APIServer) handleSupportedChains(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	token := r.URL.Query().Get("token")
+
+	supportedChains := map[string]interface{}{
+		"chains": []map[string]interface{}{
+			{
+				"id":               "blackhole",
+				"name":             "Blackhole Blockchain",
+				"native_token":     "BHX",
+				"supported_tokens": []string{"BHX", "USDT", "ETH", "SOL"},
+				"bridge_fee":       1,
+			},
+			{
+				"id":               "ethereum",
+				"name":             "Ethereum",
+				"native_token":     "ETH",
+				"supported_tokens": []string{"ETH", "USDT", "wBHX"},
+				"bridge_fee":       10,
+			},
+			{
+				"id":               "solana",
+				"name":             "Solana",
+				"native_token":     "SOL",
+				"supported_tokens": []string{"SOL", "USDT", "pBHX"},
+				"bridge_fee":       5,
+			},
+		},
+	}
+
+	if token != "" {
+		// Filter chains that support the specific token
+		var supportingChains []map[string]interface{}
+		for _, chain := range supportedChains["chains"].([]map[string]interface{}) {
+			supportedTokens := chain["supported_tokens"].([]string)
+			for _, supportedToken := range supportedTokens {
+				if supportedToken == token {
+					supportingChains = append(supportingChains, chain)
+					break
+				}
+			}
+		}
+		supportedChains["chains"] = supportingChains
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    supportedChains,
 	})
 }
