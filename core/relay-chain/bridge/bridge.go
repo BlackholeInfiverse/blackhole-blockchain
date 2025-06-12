@@ -15,6 +15,7 @@ type ChainType string
 const (
 	ChainTypeBlackhole ChainType = "blackhole"
 	ChainTypeEthereum  ChainType = "ethereum"
+	ChainTypeSolana  ChainType = "solana"
 	ChainTypePolkadot  ChainType = "polkadot"
 )
 

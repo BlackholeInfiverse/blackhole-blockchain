@@ -89,7 +89,7 @@ The wallet service now supports these flags:
 
 ### New Files Created:
 - `start_wallet_web.bat`: Easy startup script for Windows
-- `WALLET_WEB_UI_GUIDE.md`: This documentation file
+- `docs/WALLET_WEB_UI_GUIDE.md`: This documentation file
 
 ### Modified Files:
 - `services/wallet/main.go`: Added web server functionality
