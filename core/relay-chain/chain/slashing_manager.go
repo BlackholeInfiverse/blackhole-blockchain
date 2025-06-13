@@ -127,9 +127,23 @@ func (sm *SlashingManager) ExecuteSlashing(eventID string) error {
 
 	// Get validator's current stake
 	currentStake := sm.StakeLedger.GetStake(event.Validator)
+	if currentStake == 0 {
+		fmt.Printf("⚠️ Validator %s already has zero stake, skipping slashing\n", event.Validator)
+		event.Status = "skipped"
+		return nil
+	}
+
 	if currentStake < event.Amount {
 		// Slash all remaining stake if insufficient
 		event.Amount = currentStake
+	}
+
+	// SAFETY CHECK: Prevent slashing if it would leave no active validators
+	activeValidators := sm.countActiveValidators()
+	if activeValidators <= 1 && event.Amount >= currentStake {
+		fmt.Printf("🛡️ SAFETY: Preventing slashing that would jail last validator %s\n", event.Validator)
+		event.Status = "blocked_safety"
+		return fmt.Errorf("cannot jail last active validator - network safety protection")
 	}
 
 	// Execute the slashing
@@ -152,7 +166,12 @@ func (sm *SlashingManager) ExecuteSlashing(eventID string) error {
 
 	// Check if validator should be jailed (3 strikes rule)
 	if sm.ValidatorStrike[event.Validator] >= 3 {
-		sm.jailValidator(event.Validator)
+		// Additional safety check before jailing
+		if activeValidators > 1 {
+			sm.jailValidator(event.Validator)
+		} else {
+			fmt.Printf("🛡️ SAFETY: Not jailing last validator %s despite 3 strikes\n", event.Validator)
+		}
 	}
 
 	// Update event status
@@ -187,9 +206,15 @@ func (sm *SlashingManager) determineSeverity(validator string, condition Slashin
 
 	switch condition {
 	case DoubleSign:
-		return Critical // Always critical
+		return Critical // Always critical - this is a real consensus attack
 	case MaliciousTransaction:
-		return Critical // Always critical
+		// Be more conservative - only critical after multiple strikes
+		if strikes >= 2 {
+			return Critical
+		} else if strikes >= 1 {
+			return Major
+		}
+		return Minor // First offense is minor for review
 	case InvalidBlock:
 		if strikes >= 2 {
 			return Major
@@ -245,6 +270,21 @@ func (sm *SlashingManager) IsValidatorJailed(validator string) bool {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	return sm.ValidatorStrike[validator] == -1
+}
+
+// countActiveValidators counts validators with stake > 0 and not jailed
+func (sm *SlashingManager) countActiveValidators() int {
+	activeCount := 0
+	allStakes := sm.StakeLedger.GetAllStakes()
+
+	for validator, stake := range allStakes {
+		// Count as active if has stake and not jailed
+		if stake > 0 && !sm.IsValidatorJailed(validator) {
+			activeCount++
+		}
+	}
+
+	return activeCount
 }
 
 // getConditionName returns human-readable condition name
