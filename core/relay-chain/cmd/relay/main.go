@@ -15,6 +15,9 @@ import (
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/bridge"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/consensus"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/governance"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/monitoring"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/validation"
 )
 
 func main() {
@@ -52,6 +55,60 @@ func main() {
 	}
 
 	bc.P2PNode.SetChain(bc)
+
+	// Initialize enhanced monitoring system
+	fmt.Println("🔍 Initializing advanced monitoring system...")
+	if err := monitoring.InitializeGlobalMonitor(); err != nil {
+		log.Printf("⚠️ Warning: Failed to initialize monitoring: %v", err)
+	} else {
+		fmt.Println("✅ Advanced monitoring system initialized")
+
+		// Record initial metrics
+		monitoring.GlobalMonitor.RecordMetric("blockchain_height", monitoring.MetricGauge, float64(len(bc.Blocks)), nil)
+		monitoring.GlobalMonitor.RecordMetric("pending_transactions", monitoring.MetricGauge, float64(len(bc.PendingTxs)), nil)
+		monitoring.GlobalMonitor.RecordMetric("total_supply", monitoring.MetricGauge, float64(bc.TotalSupply), nil)
+	}
+
+	// Initialize E2E validation system
+	fmt.Println("🧪 Initializing E2E validation system...")
+	if err := validation.InitializeGlobalValidator(); err != nil {
+		log.Printf("⚠️ Warning: Failed to initialize E2E validator: %v", err)
+	} else {
+		fmt.Println("✅ E2E validation system initialized")
+	}
+
+	// Initialize governance simulation
+	fmt.Println("🏛️ Initializing governance simulation...")
+	if err := governance.InitializeGlobalGovernanceSimulator(); err != nil {
+		log.Printf("⚠️ Warning: Failed to initialize governance simulator: %v", err)
+	} else {
+		fmt.Println("✅ Governance simulation initialized")
+
+		// Create a sample governance proposal
+		go func() {
+			time.Sleep(5 * time.Second) // Wait for system to stabilize
+			proposal, err := governance.GlobalGovernanceSimulator.SubmitProposal(
+				governance.ProposalParameterChange,
+				"Increase Block Reward",
+				"Proposal to increase block reward from 10 BHX to 15 BHX to incentivize validators",
+				"genesis-validator",
+				map[string]interface{}{
+					"current_reward":  10,
+					"proposed_reward": 15,
+					"impact":          "positive",
+				},
+			)
+			if err != nil {
+				log.Printf("⚠️ Failed to create sample proposal: %v", err)
+			} else {
+				fmt.Printf("📝 Sample governance proposal created: %s\n", proposal.Title)
+
+				// Simulate voting after a short delay
+				time.Sleep(2 * time.Second)
+				governance.GlobalGovernanceSimulator.SimulateVoting(proposal.ID)
+			}
+		}()
+	}
 
 	// Log initial blockchain state
 	if err := bc.LogBlockchainState(nodeID); err != nil {
@@ -147,6 +204,32 @@ func miningLoop(ctx context.Context, bc *chain.Blockchain, validator *consensus.
 					bc.StakeLedger.AddStake(block.Header.Validator, bc.BlockReward)
 
 					log.Printf("✅ Block %d added with %d transactions", block.Header.Index, len(block.Transactions))
+
+					// Record metrics if monitoring is available
+					if monitoring.GlobalMonitor != nil {
+						monitoring.GlobalMonitor.RecordMetric("blocks_mined", monitoring.MetricCounter, 1, map[string]string{
+							"validator": block.Header.Validator,
+							"node_id":   nodeID,
+						})
+						monitoring.GlobalMonitor.RecordMetric("blockchain_height", monitoring.MetricGauge, float64(len(bc.Blocks)), nil)
+						monitoring.GlobalMonitor.RecordMetric("pending_transactions", monitoring.MetricGauge, float64(len(bc.PendingTxs)), nil)
+						monitoring.GlobalMonitor.RecordMetric("total_supply", monitoring.MetricGauge, float64(bc.TotalSupply), nil)
+						monitoring.GlobalMonitor.RecordMetric("transactions_per_block", monitoring.MetricGauge, float64(len(block.Transactions)), nil)
+
+						// Trigger alert for high transaction volume
+						if len(block.Transactions) > 50 {
+							monitoring.GlobalMonitor.TriggerAlert(
+								monitoring.AlertWarning,
+								"High Transaction Volume",
+								fmt.Sprintf("Block %d contains %d transactions", block.Header.Index, len(block.Transactions)),
+								"mining_system",
+								map[string]interface{}{
+									"block_index": block.Header.Index,
+									"tx_count":    len(block.Transactions),
+								},
+							)
+						}
+					}
 				}
 			}
 		}
@@ -154,13 +237,18 @@ func miningLoop(ctx context.Context, bc *chain.Blockchain, validator *consensus.
 }
 
 func startCLI(ctx context.Context, bc *chain.Blockchain, nodeID string) {
-	fmt.Println("🖥️ BlackHole Blockchain CLI")
+	fmt.Println("🖥️ BlackHole Blockchain CLI - Enhanced Edition")
 	fmt.Println("Available commands:")
-	fmt.Println("  status  - Show blockchain status")
-	fmt.Println("  log     - Log blockchain state to file")
-	fmt.Println("  list    - List all blockchain state files")
-	fmt.Println("  compare - Compare blockchain states from two files")
-	fmt.Println("  exit    - Shutdown node")
+	fmt.Println("  status     - Show blockchain status")
+	fmt.Println("  log        - Log blockchain state to file")
+	fmt.Println("  list       - List all blockchain state files")
+	fmt.Println("  compare    - Compare blockchain states from two files")
+	fmt.Println("  monitor    - Show monitoring metrics and alerts")
+	fmt.Println("  validate   - Run E2E validation tests")
+	fmt.Println("  governance - Show governance proposals and voting")
+	fmt.Println("  proposal   - Create a new governance proposal")
+	fmt.Println("  vote       - Vote on a governance proposal")
+	fmt.Println("  exit       - Shutdown node")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -239,7 +327,209 @@ func startCLI(ctx context.Context, bc *chain.Blockchain, nodeID string) {
 			} else {
 				fmt.Println(result)
 			}
+		case "monitor":
+			fmt.Println("📊 Monitoring Dashboard")
+			if monitoring.GlobalMonitor != nil {
+				// Show recent metrics
+				metrics := monitoring.GlobalMonitor.GetMetrics()
+				fmt.Printf("📈 Current Metrics (%d total):\n", len(metrics))
+				for name, metric := range metrics {
+					fmt.Printf("  %s: %.2f (%s)\n", name, metric.Value, metric.Type)
+				}
+
+				// Show recent alerts
+				alerts := monitoring.GlobalMonitor.GetAlerts()
+				activeAlerts := 0
+				for _, alert := range alerts {
+					if !alert.Resolved {
+						activeAlerts++
+					}
+				}
+				fmt.Printf("🚨 Active Alerts: %d\n", activeAlerts)
+
+				// Show performance stats
+				perfStats := monitoring.GlobalMonitor.GetPerformanceStats(5)
+				if len(perfStats) > 0 {
+					latest := perfStats[len(perfStats)-1]
+					fmt.Printf("⚡ Performance (latest):\n")
+					fmt.Printf("  CPU Usage: %.1f%%\n", latest.CPUUsage)
+					fmt.Printf("  Memory Usage: %.1f%%\n", latest.MemoryUsage)
+					fmt.Printf("  Transaction TPS: %.1f\n", latest.TransactionTPS)
+					fmt.Printf("  Block Time: %v\n", latest.BlockTime)
+				}
+			} else {
+				fmt.Println("❌ Monitoring system not available")
+			}
+
+		case "validate":
+			fmt.Println("🧪 Running E2E Validation Tests...")
+			if validation.GlobalValidator != nil {
+				results, err := validation.GlobalValidator.RunAllTests(ctx)
+				if err != nil {
+					fmt.Printf("❌ Validation failed: %v\n", err)
+				} else {
+					fmt.Printf("✅ Validation completed: %d tests run\n", len(results))
+				}
+			} else {
+				fmt.Println("❌ E2E validation system not available")
+			}
+
+		case "governance":
+			fmt.Println("🏛️ Governance Dashboard")
+			if governance.GlobalGovernanceSimulator != nil {
+				proposals := governance.GlobalGovernanceSimulator.GetProposals()
+				fmt.Printf("📝 Active Proposals (%d total):\n", len(proposals))
+				for _, proposal := range proposals {
+					fmt.Printf("  %s: %s (%s)\n", proposal.ID, proposal.Title, proposal.Status)
+					fmt.Printf("    Type: %s | Proposer: %s\n", proposal.Type, proposal.Proposer)
+					if len(proposal.Votes) > 0 {
+						fmt.Printf("    Votes: %d\n", len(proposal.Votes))
+					}
+				}
+
+				validators := governance.GlobalGovernanceSimulator.GetValidators()
+				fmt.Printf("👥 Validators (%d total):\n", len(validators))
+				for _, validator := range validators {
+					status := "🔴 Inactive"
+					if validator.Active {
+						status = "🟢 Active"
+					}
+					fmt.Printf("  %s: %s (Power: %d, Rep: %.2f)\n",
+						validator.Name, status, validator.VotingPower, validator.Reputation)
+				}
+			} else {
+				fmt.Println("❌ Governance system not available")
+			}
+
+		case "proposal":
+			fmt.Println("📝 Create New Governance Proposal")
+			if governance.GlobalGovernanceSimulator != nil {
+				fmt.Print("Enter proposal title: ")
+				scanner.Scan()
+				title := scanner.Text()
+
+				fmt.Print("Enter proposal description: ")
+				scanner.Scan()
+				description := scanner.Text()
+
+				fmt.Println("Select proposal type:")
+				fmt.Println("1. Parameter Change")
+				fmt.Println("2. Upgrade")
+				fmt.Println("3. Treasury")
+				fmt.Println("4. Validator")
+				fmt.Println("5. Emergency")
+				fmt.Print("Enter choice (1-5): ")
+				scanner.Scan()
+				choice := scanner.Text()
+
+				var proposalType governance.ProposalType
+				switch choice {
+				case "1":
+					proposalType = governance.ProposalParameterChange
+				case "2":
+					proposalType = governance.ProposalUpgrade
+				case "3":
+					proposalType = governance.ProposalTreasury
+				case "4":
+					proposalType = governance.ProposalValidator
+				case "5":
+					proposalType = governance.ProposalEmergency
+				default:
+					fmt.Println("❌ Invalid choice")
+					continue
+				}
+
+				proposal, err := governance.GlobalGovernanceSimulator.SubmitProposal(
+					proposalType, title, description, "cli-user", nil)
+				if err != nil {
+					fmt.Printf("❌ Failed to create proposal: %v\n", err)
+				} else {
+					fmt.Printf("✅ Proposal created: %s\n", proposal.ID)
+				}
+			} else {
+				fmt.Println("❌ Governance system not available")
+			}
+
+		case "vote":
+			fmt.Println("🗳️ Vote on Governance Proposal")
+			if governance.GlobalGovernanceSimulator != nil {
+				proposals := governance.GlobalGovernanceSimulator.GetProposals()
+				if len(proposals) == 0 {
+					fmt.Println("❌ No proposals available")
+					continue
+				}
+
+				fmt.Println("Available proposals:")
+				i := 1
+				proposalIDs := make([]string, 0)
+				for id, proposal := range proposals {
+					if proposal.Status == governance.StatusActive {
+						fmt.Printf("%d. %s: %s\n", i, id, proposal.Title)
+						proposalIDs = append(proposalIDs, id)
+						i++
+					}
+				}
+
+				if len(proposalIDs) == 0 {
+					fmt.Println("❌ No active proposals available for voting")
+					continue
+				}
+
+				fmt.Print("Enter proposal number: ")
+				scanner.Scan()
+				choice := scanner.Text()
+				idx, err := strconv.Atoi(choice)
+				if err != nil || idx < 1 || idx > len(proposalIDs) {
+					fmt.Println("❌ Invalid proposal number")
+					continue
+				}
+
+				fmt.Println("Vote options:")
+				fmt.Println("1. Yes")
+				fmt.Println("2. No")
+				fmt.Println("3. Abstain")
+				fmt.Println("4. No with Veto")
+				fmt.Print("Enter vote (1-4): ")
+				scanner.Scan()
+				voteChoice := scanner.Text()
+
+				var voteOption governance.VoteOption
+				switch voteChoice {
+				case "1":
+					voteOption = governance.VoteYes
+				case "2":
+					voteOption = governance.VoteNo
+				case "3":
+					voteOption = governance.VoteAbstain
+				case "4":
+					voteOption = governance.VoteNoWithVeto
+				default:
+					fmt.Println("❌ Invalid vote option")
+					continue
+				}
+
+				err = governance.GlobalGovernanceSimulator.CastVote(
+					proposalIDs[idx-1], "cli-validator", voteOption)
+				if err != nil {
+					fmt.Printf("❌ Failed to cast vote: %v\n", err)
+				} else {
+					fmt.Printf("✅ Vote cast: %s\n", voteOption)
+				}
+			} else {
+				fmt.Println("❌ Governance system not available")
+			}
+
 		case "exit":
+			fmt.Println("👋 Shutting down enhanced systems...")
+
+			// Gracefully shutdown enhanced systems
+			if monitoring.GlobalMonitor != nil {
+				monitoring.GlobalMonitor.Stop()
+			}
+			if governance.GlobalGovernanceSimulator != nil {
+				governance.GlobalGovernanceSimulator.Stop()
+			}
+
 			fmt.Println("👋 Shutting down...")
 			os.Exit(0)
 		default:
