@@ -120,3 +120,67 @@ func (v *Validator) ValidateBlock(block *chain.Block, blockchain *chain.Blockcha
 	fmt.Printf("❌ Validation failed: Block doesn't extend any known chain\n")
 	return false
 }
+
+// DynamicRewardStrategy calculates rewards based on token supply
+type DynamicRewardStrategy struct {
+	BaseReward uint64 // Base reward amount
+	MaxSupply  uint64 // Maximum token supply
+	MinReward  uint64 // Minimum reward (never go below this)
+	Enabled    bool   // Whether dynamic rewards are enabled
+}
+
+// NewDynamicRewardStrategy creates a new dynamic reward strategy
+func NewDynamicRewardStrategy(baseReward, maxSupply, minReward uint64) *DynamicRewardStrategy {
+	return &DynamicRewardStrategy{
+		BaseReward: baseReward,
+		MaxSupply:  maxSupply,
+		MinReward:  minReward,
+		Enabled:    true,
+	}
+}
+
+// CalculateReward calculates the block reward based on current supply
+func (d *DynamicRewardStrategy) CalculateReward(currentSupply uint64) uint64 {
+	if !d.Enabled || d.MaxSupply == 0 {
+		return d.BaseReward
+	}
+
+	// Calculate supply ratio (0.0 to 1.0)
+	supplyRatio := float64(currentSupply) / float64(d.MaxSupply)
+
+	// Reduce rewards as supply approaches maximum
+	rewardMultiplier := 1.0
+
+	if supplyRatio > 0.5 { // Start reducing after 50% of max supply
+		// Linear reduction from 50% to 100% supply
+		reductionFactor := (supplyRatio - 0.5) * 2.0     // 0.0 to 1.0
+		rewardMultiplier = 1.0 - (reductionFactor * 0.8) // Reduce by up to 80%
+	}
+
+	// Calculate new reward
+	newReward := uint64(float64(d.BaseReward) * rewardMultiplier)
+
+	// Ensure we never go below minimum reward
+	if newReward < d.MinReward {
+		newReward = d.MinReward
+	}
+
+	return newReward
+}
+
+// GetRewardInfo returns information about the current reward calculation
+func (d *DynamicRewardStrategy) GetRewardInfo(currentSupply uint64) map[string]interface{} {
+	supplyRatio := float64(currentSupply) / float64(d.MaxSupply)
+	currentReward := d.CalculateReward(currentSupply)
+
+	return map[string]interface{}{
+		"enabled":          d.Enabled,
+		"base_reward":      d.BaseReward,
+		"current_reward":   currentReward,
+		"min_reward":       d.MinReward,
+		"max_supply":       d.MaxSupply,
+		"current_supply":   currentSupply,
+		"supply_ratio":     supplyRatio,
+		"reduction_active": supplyRatio > 0.5,
+	}
+}

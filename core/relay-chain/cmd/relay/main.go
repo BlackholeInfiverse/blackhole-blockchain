@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/api"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/bridge"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/consensus"
 )
@@ -91,8 +92,11 @@ func main() {
 
 	go miningLoop(ctx, bc, validator, nodeID)
 
+	// Create bridge instance
+	bridgeInstance := bridge.NewBridge(bc)
+
 	// Start API server for UI
-	apiServer := api.NewAPIServer(bc, 8080)
+	apiServer := api.NewAPIServer(bc, bridgeInstance, 8080)
 	go apiServer.Start()
 
 	startCLI(ctx, bc, nodeID)
