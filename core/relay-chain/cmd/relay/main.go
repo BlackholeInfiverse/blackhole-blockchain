@@ -30,6 +30,13 @@ func main() {
 		fmt.Sscanf(os.Args[1], "%d", &port)
 	}
 
+	// Check if running in Docker mode
+	dockerMode := os.Getenv("DOCKER_MODE") == "true" || os.Getenv("BLOCKCHAIN_DOCKER") == "true"
+	if dockerMode {
+		fmt.Println("🐳 BlackHole Blockchain - Docker Mode")
+		fmt.Println("=====================================")
+	}
+
 	bc, err := chain.NewBlockchain(port)
 	if err != nil {
 		log.Fatal("Failed to create blockchain:", err)
@@ -156,7 +163,18 @@ func main() {
 	apiServer := api.NewAPIServer(bc, bridgeInstance, 8080)
 	go apiServer.Start()
 
-	startCLI(ctx, bc, nodeID)
+	// Start CLI only if not in Docker mode
+	if !dockerMode {
+		startCLI(ctx, bc, nodeID)
+	} else {
+		fmt.Println("🔄 Running in Docker daemon mode - use Docker logs to monitor")
+		fmt.Printf("   P2P Port: %d\n", port)
+		fmt.Printf("   HTTP API Port: %d\n", 8080)
+		fmt.Println("🌐 Access dashboard at http://localhost:8080")
+
+		// Keep the container running
+		<-ctx.Done()
+	}
 }
 func miningLoop(ctx context.Context, bc *chain.Blockchain, validator *consensus.Validator, nodeID string) {
 	ticker := time.NewTicker(6 * time.Second) // Optional minimal interval

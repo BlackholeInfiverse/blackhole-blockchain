@@ -3,7 +3,6 @@ package governance
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/rand"
 	"sync"
 	"time"
@@ -44,18 +43,18 @@ const (
 
 // Proposal represents a governance proposal
 type Proposal struct {
-	ID          string                 `json:"id"`
-	Type        ProposalType           `json:"type"`
-	Title       string                 `json:"title"`
-	Description string                 `json:"description"`
-	Proposer    string                 `json:"proposer"`
-	Status      ProposalStatus         `json:"status"`
-	SubmitTime  time.Time              `json:"submit_time"`
-	VotingStart time.Time              `json:"voting_start"`
-	VotingEnd   time.Time              `json:"voting_end"`
-	Votes       map[string]*Vote       `json:"votes"`
-	TotalPower  uint64                 `json:"total_power"`
-	Metadata    map[string]interface{} `json:"metadata"`
+	ID          string           `json:"id"`
+	Type        ProposalType     `json:"type"`
+	Title       string           `json:"title"`
+	Description string           `json:"description"`
+	Proposer    string           `json:"proposer"`
+	Status      ProposalStatus   `json:"status"`
+	SubmitTime  time.Time        `json:"submit_time"`
+	VotingStart time.Time        `json:"voting_start"`
+	VotingEnd   time.Time        `json:"voting_end"`
+	Votes       map[string]*Vote `json:"votes"`
+	TotalPower  uint64           `json:"total_power"`
+	Metadata    map[string]any   `json:"metadata"`
 }
 
 // Vote represents a single vote on a proposal
@@ -79,52 +78,52 @@ type Validator struct {
 
 // GovernanceParams represents governance parameters
 type GovernanceParams struct {
-	VotingPeriod      time.Duration `json:"voting_period"`
-	MinDeposit        uint64        `json:"min_deposit"`
-	QuorumThreshold   float64       `json:"quorum_threshold"`
-	PassThreshold     float64       `json:"pass_threshold"`
-	VetoThreshold     float64       `json:"veto_threshold"`
-	MaxProposalSize   int           `json:"max_proposal_size"`
-	ProposalCooldown  time.Duration `json:"proposal_cooldown"`
+	VotingPeriod     time.Duration `json:"voting_period"`
+	MinDeposit       uint64        `json:"min_deposit"`
+	QuorumThreshold  float64       `json:"quorum_threshold"`
+	PassThreshold    float64       `json:"pass_threshold"`
+	VetoThreshold    float64       `json:"veto_threshold"`
+	MaxProposalSize  int           `json:"max_proposal_size"`
+	ProposalCooldown time.Duration `json:"proposal_cooldown"`
 }
 
 // GovernanceSimulator simulates governance operations
 type GovernanceSimulator struct {
-	proposals   map[string]*Proposal
-	validators  map[string]*Validator
-	params      *GovernanceParams
-	mu          sync.RWMutex
-	ctx         context.Context
-	cancel      context.CancelFunc
-	enabled     bool
-	eventLog    []string
+	proposals  map[string]*Proposal
+	validators map[string]*Validator
+	params     *GovernanceParams
+	mu         sync.RWMutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	enabled    bool
+	eventLog   []string
 }
 
 // NewGovernanceSimulator creates a new governance simulator
 func NewGovernanceSimulator() *GovernanceSimulator {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	simulator := &GovernanceSimulator{
 		proposals:  make(map[string]*Proposal),
 		validators: make(map[string]*Validator),
 		params: &GovernanceParams{
-			VotingPeriod:      7 * 24 * time.Hour, // 7 days
-			MinDeposit:        10000,              // 10,000 BHX
-			QuorumThreshold:   0.334,              // 33.4%
-			PassThreshold:     0.5,                // 50%
-			VetoThreshold:     0.334,              // 33.4%
-			MaxProposalSize:   10000,              // 10KB
-			ProposalCooldown:  24 * time.Hour,     // 1 day
+			VotingPeriod:     7 * 24 * time.Hour, // 7 days
+			MinDeposit:       10000,              // 10,000 BHX
+			QuorumThreshold:  0.334,              // 33.4%
+			PassThreshold:    0.5,                // 50%
+			VetoThreshold:    0.334,              // 33.4%
+			MaxProposalSize:  10000,              // 10KB
+			ProposalCooldown: 24 * time.Hour,     // 1 day
 		},
 		ctx:      ctx,
 		cancel:   cancel,
 		enabled:  true,
 		eventLog: make([]string, 0),
 	}
-	
+
 	// Initialize with mock validators
 	simulator.initializeMockValidators()
-	
+
 	return simulator
 }
 
@@ -164,12 +163,12 @@ func (gs *GovernanceSimulator) initializeMockValidators() {
 			Reputation:  0.85,
 		},
 	}
-	
+
 	for _, validator := range validators {
 		gs.validators[validator.Address] = validator
 	}
-	
-	gs.logEvent(fmt.Sprintf("Initialized %d validators with total power: %d", 
+
+	gs.logEvent(fmt.Sprintf("Initialized %d validators with total power: %d",
 		len(validators), gs.getTotalVotingPower()))
 }
 
@@ -178,10 +177,10 @@ func (gs *GovernanceSimulator) Start() error {
 	if !gs.enabled {
 		return fmt.Errorf("governance simulator is disabled")
 	}
-	
+
 	// Start background processes
 	go gs.backgroundProcessing()
-	
+
 	fmt.Println("✅ Governance simulator started")
 	gs.logEvent("Governance simulator started")
 	return nil
@@ -196,16 +195,16 @@ func (gs *GovernanceSimulator) Stop() error {
 }
 
 // SubmitProposal submits a new governance proposal
-func (gs *GovernanceSimulator) SubmitProposal(proposalType ProposalType, title, description, proposer string, metadata map[string]interface{}) (*Proposal, error) {
+func (gs *GovernanceSimulator) SubmitProposal(proposalType ProposalType, title, description, proposer string, metadata map[string]any) (*Proposal, error) {
 	if !gs.enabled {
 		return nil, fmt.Errorf("governance simulator is disabled")
 	}
-	
+
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	
+
 	proposalID := fmt.Sprintf("prop_%d", time.Now().Unix())
-	
+
 	proposal := &Proposal{
 		ID:          proposalID,
 		Type:        proposalType,
@@ -220,13 +219,13 @@ func (gs *GovernanceSimulator) SubmitProposal(proposalType ProposalType, title, 
 		TotalPower:  gs.getTotalVotingPower(),
 		Metadata:    metadata,
 	}
-	
+
 	gs.proposals[proposalID] = proposal
-	
+
 	message := fmt.Sprintf("Proposal submitted: %s (%s)", title, proposalType)
 	fmt.Printf("📝 %s\n", message)
 	gs.logEvent(message)
-	
+
 	return proposal, nil
 }
 
@@ -235,47 +234,47 @@ func (gs *GovernanceSimulator) CastVote(proposalID, voterAddress string, option 
 	if !gs.enabled {
 		return fmt.Errorf("governance simulator is disabled")
 	}
-	
+
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	
+
 	proposal, exists := gs.proposals[proposalID]
 	if !exists {
 		return fmt.Errorf("proposal not found: %s", proposalID)
 	}
-	
+
 	validator, exists := gs.validators[voterAddress]
 	if !exists {
 		return fmt.Errorf("validator not found: %s", voterAddress)
 	}
-	
+
 	if !validator.Active {
 		return fmt.Errorf("validator is not active: %s", voterAddress)
 	}
-	
+
 	now := time.Now()
 	if now.Before(proposal.VotingStart) {
 		return fmt.Errorf("voting has not started yet")
 	}
-	
+
 	if now.After(proposal.VotingEnd) {
 		return fmt.Errorf("voting period has ended")
 	}
-	
+
 	vote := &Vote{
 		Voter:     voterAddress,
 		Option:    option,
 		Power:     validator.VotingPower,
 		Timestamp: now,
 	}
-	
+
 	proposal.Votes[voterAddress] = vote
 	validator.LastVoted = now
-	
+
 	message := fmt.Sprintf("Vote cast: %s voted %s on %s", validator.Name, option, proposal.Title)
 	fmt.Printf("🗳️ %s\n", message)
 	gs.logEvent(message)
-	
+
 	return nil
 }
 
@@ -284,30 +283,30 @@ func (gs *GovernanceSimulator) SimulateVoting(proposalID string) error {
 	if !gs.enabled {
 		return fmt.Errorf("governance simulator is disabled")
 	}
-	
+
 	proposal, exists := gs.proposals[proposalID]
 	if !exists {
 		return fmt.Errorf("proposal not found: %s", proposalID)
 	}
-	
+
 	fmt.Printf("🤖 Simulating voting for proposal: %s\n", proposal.Title)
-	
+
 	// Simulate voting behavior based on validator reputation and proposal type
 	for _, validator := range gs.validators {
 		if !validator.Active {
 			continue
 		}
-		
+
 		// Skip if already voted
 		if _, hasVoted := proposal.Votes[validator.Address]; hasVoted {
 			continue
 		}
-		
+
 		// Simulate voting probability based on reputation
 		if rand.Float64() > validator.Reputation {
 			continue // Validator doesn't participate
 		}
-		
+
 		// Determine vote based on proposal type and validator characteristics
 		var option VoteOption
 		switch proposal.Type {
@@ -338,14 +337,14 @@ func (gs *GovernanceSimulator) SimulateVoting(proposalID string) error {
 				option = VoteNo
 			}
 		}
-		
+
 		// Cast the vote
 		gs.CastVote(proposalID, validator.Address, option)
-		
+
 		// Add some randomness to voting timing
 		time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
 	}
-	
+
 	return nil
 }
 
@@ -354,18 +353,18 @@ func (gs *GovernanceSimulator) TallyVotes(proposalID string) (*ProposalResult, e
 	if !gs.enabled {
 		return nil, fmt.Errorf("governance simulator is disabled")
 	}
-	
+
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	
+
 	proposal, exists := gs.proposals[proposalID]
 	if !exists {
 		return nil, fmt.Errorf("proposal not found: %s", proposalID)
 	}
-	
+
 	var yesVotes, noVotes, abstainVotes, vetoVotes uint64
 	var totalVotingPower uint64
-	
+
 	for _, vote := range proposal.Votes {
 		totalVotingPower += vote.Power
 		switch vote.Option {
@@ -379,7 +378,7 @@ func (gs *GovernanceSimulator) TallyVotes(proposalID string) (*ProposalResult, e
 			vetoVotes += vote.Power
 		}
 	}
-	
+
 	result := &ProposalResult{
 		ProposalID:       proposalID,
 		YesVotes:         yesVotes,
@@ -392,7 +391,7 @@ func (gs *GovernanceSimulator) TallyVotes(proposalID string) (*ProposalResult, e
 		PassRate:         float64(yesVotes) / float64(totalVotingPower),
 		VetoRate:         float64(vetoVotes) / float64(totalVotingPower),
 	}
-	
+
 	// Determine outcome
 	if result.Quorum < gs.params.QuorumThreshold {
 		result.Outcome = "failed_quorum"
@@ -407,12 +406,12 @@ func (gs *GovernanceSimulator) TallyVotes(proposalID string) (*ProposalResult, e
 		result.Outcome = "rejected"
 		proposal.Status = StatusRejected
 	}
-	
-	message := fmt.Sprintf("Proposal %s: %s (%.1f%% quorum, %.1f%% yes)", 
+
+	message := fmt.Sprintf("Proposal %s: %s (%.1f%% quorum, %.1f%% yes)",
 		proposal.Title, result.Outcome, result.Quorum*100, result.PassRate*100)
 	fmt.Printf("📊 %s\n", message)
 	gs.logEvent(message)
-	
+
 	return result, nil
 }
 
@@ -435,7 +434,7 @@ type ProposalResult struct {
 func (gs *GovernanceSimulator) backgroundProcessing() {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-gs.ctx.Done():
@@ -450,9 +449,9 @@ func (gs *GovernanceSimulator) backgroundProcessing() {
 func (gs *GovernanceSimulator) processProposals() {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	
+
 	now := time.Now()
-	
+
 	for _, proposal := range gs.proposals {
 		switch proposal.Status {
 		case StatusPending:
@@ -487,7 +486,7 @@ func (gs *GovernanceSimulator) logEvent(message string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	logEntry := fmt.Sprintf("[%s] %s", timestamp, message)
 	gs.eventLog = append(gs.eventLog, logEntry)
-	
+
 	// Keep only last 1000 events
 	if len(gs.eventLog) > 1000 {
 		gs.eventLog = gs.eventLog[len(gs.eventLog)-1000:]
@@ -498,7 +497,7 @@ func (gs *GovernanceSimulator) logEvent(message string) {
 func (gs *GovernanceSimulator) GetProposals() map[string]*Proposal {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
-	
+
 	result := make(map[string]*Proposal)
 	for k, v := range gs.proposals {
 		result[k] = v
@@ -510,7 +509,7 @@ func (gs *GovernanceSimulator) GetProposals() map[string]*Proposal {
 func (gs *GovernanceSimulator) GetValidators() map[string]*Validator {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
-	
+
 	result := make(map[string]*Validator)
 	for k, v := range gs.validators {
 		result[k] = v
@@ -522,11 +521,11 @@ func (gs *GovernanceSimulator) GetValidators() map[string]*Validator {
 func (gs *GovernanceSimulator) GetEventLog(limit int) []string {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
-	
+
 	if limit <= 0 || limit > len(gs.eventLog) {
 		limit = len(gs.eventLog)
 	}
-	
+
 	start := len(gs.eventLog) - limit
 	result := make([]string, limit)
 	copy(result, gs.eventLog[start:])

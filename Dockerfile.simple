@@ -1,0 +1,66 @@
+# Simple Dockerfile for BlackHole Blockchain
+FROM golang:1.23-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git gcc musl-dev
+
+# Set working directory
+WORKDIR /app
+
+# Copy entire source code
+COPY . .
+
+# Set Go toolchain to use latest available
+ENV GOTOOLCHAIN=auto
+
+# Initialize go modules for the entire project
+WORKDIR /app
+RUN go mod init github.com/Shivam-Patel-G/blackhole-blockchain || true
+
+# Temporarily adjust go.mod for compatibility if needed
+RUN if grep -q "go 1.24" go.mod; then \
+        sed -i 's/go 1.24.*/go 1.23/' go.mod; \
+    fi
+
+# Build the blockchain node
+WORKDIR /app/core/relay-chain/cmd/relay
+RUN go mod init relay-node || true
+RUN echo "replace github.com/Shivam-Patel-G/blackhole-blockchain => /app" >> go.mod
+RUN go mod tidy
+RUN CGO_ENABLED=1 GOOS=linux go build -o blockchain-node .
+
+# Production stage
+FROM alpine:latest
+
+# Install runtime dependencies
+RUN apk --no-cache add ca-certificates tzdata
+
+# Create app user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
+
+# Set working directory
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/core/relay-chain/cmd/relay/blockchain-node .
+
+# Create necessary directories
+RUN mkdir -p /app/data /app/logs && \
+    chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose ports
+EXPOSE 3000 8080
+
+# Environment variables for Docker mode
+ENV DOCKER_MODE=true
+ENV BLOCKCHAIN_DOCKER=true
+ENV BLOCKCHAIN_PORT=3000
+ENV BLACKHOLE_PORT=3000
+ENV BLACKHOLE_API_PORT=8080
+
+# Default command - Docker mode (no CLI)
+CMD ["./blockchain-node"]

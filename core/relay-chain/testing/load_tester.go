@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,39 +12,39 @@ import (
 
 // LoadTestConfig represents load testing configuration
 type LoadTestConfig struct {
-	TotalTransactions    int           `json:"total_transactions"`
-	ConcurrentUsers      int           `json:"concurrent_users"`
-	TestDuration         time.Duration `json:"test_duration"`
-	TransactionTypes     []string      `json:"transaction_types"`
-	TargetTPS            float64       `json:"target_tps"`
-	RampUpDuration       time.Duration `json:"ramp_up_duration"`
-	SteadyStateDuration  time.Duration `json:"steady_state_duration"`
-	RampDownDuration     time.Duration `json:"ramp_down_duration"`
+	TotalTransactions   int           `json:"total_transactions"`
+	ConcurrentUsers     int           `json:"concurrent_users"`
+	TestDuration        time.Duration `json:"test_duration"`
+	TransactionTypes    []string      `json:"transaction_types"`
+	TargetTPS           float64       `json:"target_tps"`
+	RampUpDuration      time.Duration `json:"ramp_up_duration"`
+	SteadyStateDuration time.Duration `json:"steady_state_duration"`
+	RampDownDuration    time.Duration `json:"ramp_down_duration"`
 }
 
 // LoadTestResult represents the results of a load test
 type LoadTestResult struct {
-	Config                *LoadTestConfig   `json:"config"`
-	StartTime             time.Time         `json:"start_time"`
-	EndTime               time.Time         `json:"end_time"`
-	TotalDuration         time.Duration     `json:"total_duration"`
-	TransactionsSent      int64             `json:"transactions_sent"`
-	TransactionsSucceeded int64             `json:"transactions_succeeded"`
-	TransactionsFailed    int64             `json:"transactions_failed"`
-	AverageTPS            float64           `json:"average_tps"`
-	PeakTPS               float64           `json:"peak_tps"`
-	MinResponseTime       time.Duration     `json:"min_response_time"`
-	MaxResponseTime       time.Duration     `json:"max_response_time"`
-	AvgResponseTime       time.Duration     `json:"avg_response_time"`
-	P95ResponseTime       time.Duration     `json:"p95_response_time"`
-	P99ResponseTime       time.Duration     `json:"p99_response_time"`
-	ErrorRate             float64           `json:"error_rate"`
-	ThroughputMBps        float64           `json:"throughput_mbps"`
-	MemoryUsageMB         float64           `json:"memory_usage_mb"`
-	CPUUsagePercent       float64           `json:"cpu_usage_percent"`
-	Errors                map[string]int64  `json:"errors"`
-	ResponseTimes         []time.Duration   `json:"response_times"`
-	TPSOverTime           []TPSDataPoint    `json:"tps_over_time"`
+	Config                *LoadTestConfig  `json:"config"`
+	StartTime             time.Time        `json:"start_time"`
+	EndTime               time.Time        `json:"end_time"`
+	TotalDuration         time.Duration    `json:"total_duration"`
+	TransactionsSent      int64            `json:"transactions_sent"`
+	TransactionsSucceeded int64            `json:"transactions_succeeded"`
+	TransactionsFailed    int64            `json:"transactions_failed"`
+	AverageTPS            float64          `json:"average_tps"`
+	PeakTPS               float64          `json:"peak_tps"`
+	MinResponseTime       time.Duration    `json:"min_response_time"`
+	MaxResponseTime       time.Duration    `json:"max_response_time"`
+	AvgResponseTime       time.Duration    `json:"avg_response_time"`
+	P95ResponseTime       time.Duration    `json:"p95_response_time"`
+	P99ResponseTime       time.Duration    `json:"p99_response_time"`
+	ErrorRate             float64          `json:"error_rate"`
+	ThroughputMBps        float64          `json:"throughput_mbps"`
+	MemoryUsageMB         float64          `json:"memory_usage_mb"`
+	CPUUsagePercent       float64          `json:"cpu_usage_percent"`
+	Errors                map[string]int64 `json:"errors"`
+	ResponseTimes         []time.Duration  `json:"response_times"`
+	TPSOverTime           []TPSDataPoint   `json:"tps_over_time"`
 }
 
 // TPSDataPoint represents TPS at a specific time
@@ -82,7 +81,7 @@ type LoadTester struct {
 // NewLoadTester creates a new load tester
 func NewLoadTester(config *LoadTestConfig) *LoadTester {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	return &LoadTester{
 		config:        config,
 		ctx:           ctx,
@@ -101,36 +100,36 @@ func (lt *LoadTester) RunLoadTest() (*LoadTestResult, error) {
 	fmt.Printf("   Concurrent Users: %d\n", lt.config.ConcurrentUsers)
 	fmt.Printf("   Target TPS: %.1f\n", lt.config.TargetTPS)
 	fmt.Printf("   Test Duration: %v\n", lt.config.TestDuration)
-	
+
 	lt.startTime = time.Now()
-	
+
 	// Initialize results
 	lt.results = &LoadTestResult{
-		Config:            lt.config,
-		StartTime:         lt.startTime,
-		Errors:            make(map[string]int64),
-		ResponseTimes:     make([]time.Duration, 0),
-		TPSOverTime:       make([]TPSDataPoint, 0),
-		MinResponseTime:   time.Hour, // Initialize to high value
+		Config:          lt.config,
+		StartTime:       lt.startTime,
+		Errors:          make(map[string]int64),
+		ResponseTimes:   make([]time.Duration, 0),
+		TPSOverTime:     make([]TPSDataPoint, 0),
+		MinResponseTime: time.Hour, // Initialize to high value
 	}
-	
+
 	// Start monitoring goroutine
 	go lt.monitorPerformance()
-	
+
 	// Start TPS tracking goroutine
 	go lt.trackTPS()
-	
+
 	// Execute load test phases
 	if err := lt.executeLoadTestPhases(); err != nil {
 		return nil, fmt.Errorf("load test failed: %v", err)
 	}
-	
+
 	// Finalize results
 	lt.finalizeResults()
-	
+
 	fmt.Println("✅ Load test completed successfully!")
 	lt.printResults()
-	
+
 	return lt.results, nil
 }
 
@@ -143,7 +142,7 @@ func (lt *LoadTester) executeLoadTestPhases() error {
 			return fmt.Errorf("ramp-up phase failed: %v", err)
 		}
 	}
-	
+
 	// Phase 2: Steady state
 	if lt.config.SteadyStateDuration > 0 {
 		fmt.Printf("⚡ Phase 2: Steady state (%v)\n", lt.config.SteadyStateDuration)
@@ -151,7 +150,7 @@ func (lt *LoadTester) executeLoadTestPhases() error {
 			return fmt.Errorf("steady state phase failed: %v", err)
 		}
 	}
-	
+
 	// Phase 3: Ramp-down
 	if lt.config.RampDownDuration > 0 {
 		fmt.Printf("📉 Phase 3: Ramp-down (%v)\n", lt.config.RampDownDuration)
@@ -159,7 +158,7 @@ func (lt *LoadTester) executeLoadTestPhases() error {
 			return fmt.Errorf("ramp-down phase failed: %v", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -167,17 +166,17 @@ func (lt *LoadTester) executeLoadTestPhases() error {
 func (lt *LoadTester) rampUpPhase() error {
 	duration := lt.config.RampUpDuration
 	maxUsers := lt.config.ConcurrentUsers
-	
+
 	ticker := time.NewTicker(duration / time.Duration(maxUsers))
 	defer ticker.Stop()
-	
+
 	activeUsers := 0
 	userChannels := make([]chan bool, maxUsers)
-	
+
 	for i := 0; i < maxUsers; i++ {
 		userChannels[i] = make(chan bool, 1)
 	}
-	
+
 	for activeUsers < maxUsers {
 		select {
 		case <-lt.ctx.Done():
@@ -190,15 +189,15 @@ func (lt *LoadTester) rampUpPhase() error {
 			}
 		}
 	}
-	
+
 	// Wait for ramp-up to complete
 	time.Sleep(duration)
-	
+
 	// Stop all users
 	for i := 0; i < activeUsers; i++ {
 		userChannels[i] <- true
 	}
-	
+
 	return nil
 }
 
@@ -206,10 +205,10 @@ func (lt *LoadTester) rampUpPhase() error {
 func (lt *LoadTester) steadyStatePhase() error {
 	duration := lt.config.SteadyStateDuration
 	users := lt.config.ConcurrentUsers
-	
+
 	userChannels := make([]chan bool, users)
 	var wg sync.WaitGroup
-	
+
 	// Start all users
 	for i := 0; i < users; i++ {
 		userChannels[i] = make(chan bool, 1)
@@ -219,15 +218,15 @@ func (lt *LoadTester) steadyStatePhase() error {
 			lt.simulateUser(userID, userChannels[userID])
 		}(i)
 	}
-	
+
 	// Run for specified duration
 	time.Sleep(duration)
-	
+
 	// Stop all users
 	for i := 0; i < users; i++ {
 		userChannels[i] <- true
 	}
-	
+
 	wg.Wait()
 	return nil
 }
@@ -236,18 +235,18 @@ func (lt *LoadTester) steadyStatePhase() error {
 func (lt *LoadTester) rampDownPhase() error {
 	duration := lt.config.RampDownDuration
 	maxUsers := lt.config.ConcurrentUsers
-	
+
 	ticker := time.NewTicker(duration / time.Duration(maxUsers))
 	defer ticker.Stop()
-	
+
 	activeUsers := maxUsers
 	userChannels := make([]chan bool, maxUsers)
-	
+
 	for i := 0; i < maxUsers; i++ {
 		userChannels[i] = make(chan bool, 1)
 		go lt.simulateUser(i, userChannels[i])
 	}
-	
+
 	for activeUsers > 0 {
 		select {
 		case <-lt.ctx.Done():
@@ -260,7 +259,7 @@ func (lt *LoadTester) rampDownPhase() error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -268,7 +267,7 @@ func (lt *LoadTester) rampDownPhase() error {
 func (lt *LoadTester) simulateUser(userID int, stopCh chan bool) {
 	ticker := time.NewTicker(time.Duration(float64(time.Second) / lt.config.TargetTPS * float64(lt.config.ConcurrentUsers)))
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-stopCh:
@@ -282,17 +281,17 @@ func (lt *LoadTester) simulateUser(userID int, stopCh chan bool) {
 }
 
 // sendTransaction simulates sending a transaction
-func (lt *LoadTester) sendTransaction(userID int) {
+func (lt *LoadTester) sendTransaction(_ int) {
 	start := time.Now()
-	
+
 	// Simulate transaction processing
 	result := lt.simulateTransactionProcessing()
-	
+
 	responseTime := time.Since(start)
-	
+
 	// Record metrics
 	atomic.AddInt64(&lt.transactionsSent, 1)
-	
+
 	if result.Success {
 		atomic.AddInt64(&lt.transactionsOK, 1)
 	} else {
@@ -301,7 +300,7 @@ func (lt *LoadTester) sendTransaction(userID int) {
 		lt.errors[result.Error]++
 		lt.mu.Unlock()
 	}
-	
+
 	// Record response time
 	lt.mu.Lock()
 	lt.responseTimes = append(lt.responseTimes, responseTime)
@@ -310,18 +309,18 @@ func (lt *LoadTester) sendTransaction(userID int) {
 
 // simulateTransactionProcessing simulates blockchain transaction processing
 func (lt *LoadTester) simulateTransactionProcessing() *TransactionResult {
-	// Simulate processing time (50-200ms)
-	processingTime := time.Duration(50+rand.Intn(150)) * time.Millisecond
+	// Simulate processing time (50-200ms) - using time-based randomness
+	processingTime := time.Duration(50+(time.Now().UnixNano()%150)) * time.Millisecond
 	time.Sleep(processingTime)
-	
-	// Simulate success/failure (95% success rate)
-	success := rand.Float64() < 0.95
-	
+
+	// Simulate success/failure (95% success rate) - using time-based randomness
+	success := (time.Now().UnixNano() % 100) < 95
+
 	result := &TransactionResult{
 		Success:   success,
 		Timestamp: time.Now(),
 	}
-	
+
 	if success {
 		// Generate mock transaction hash
 		hash := make([]byte, 32)
@@ -336,9 +335,9 @@ func (lt *LoadTester) simulateTransactionProcessing() *TransactionResult {
 			"gas_limit_exceeded",
 			"network_timeout",
 		}
-		result.Error = errors[rand.Intn(len(errors))]
+		result.Error = errors[time.Now().UnixNano()%int64(len(errors))]
 	}
-	
+
 	return result
 }
 
@@ -346,7 +345,7 @@ func (lt *LoadTester) simulateTransactionProcessing() *TransactionResult {
 func (lt *LoadTester) monitorPerformance() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-lt.ctx.Done():
@@ -363,9 +362,9 @@ func (lt *LoadTester) monitorPerformance() {
 func (lt *LoadTester) trackTPS() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
-	
+
 	lastCount := int64(0)
-	
+
 	for {
 		select {
 		case <-lt.ctx.Done():
@@ -373,18 +372,18 @@ func (lt *LoadTester) trackTPS() {
 		case <-ticker.C:
 			currentCount := atomic.LoadInt64(&lt.transactionsSent)
 			tps := float64(currentCount - lastCount)
-			
+
 			lt.mu.Lock()
 			lt.tpsData = append(lt.tpsData, TPSDataPoint{
 				Timestamp: time.Now(),
 				TPS:       tps,
 			})
 			lt.mu.Unlock()
-			
+
 			if tps > lt.results.PeakTPS {
 				lt.results.PeakTPS = tps
 			}
-			
+
 			lastCount = currentCount
 		}
 	}
@@ -397,25 +396,25 @@ func (lt *LoadTester) finalizeResults() {
 	lt.results.TransactionsSent = atomic.LoadInt64(&lt.transactionsSent)
 	lt.results.TransactionsSucceeded = atomic.LoadInt64(&lt.transactionsOK)
 	lt.results.TransactionsFailed = atomic.LoadInt64(&lt.transactionsFail)
-	
+
 	if lt.results.TotalDuration > 0 {
 		lt.results.AverageTPS = float64(lt.results.TransactionsSent) / lt.results.TotalDuration.Seconds()
 	}
-	
+
 	if lt.results.TransactionsSent > 0 {
 		lt.results.ErrorRate = float64(lt.results.TransactionsFailed) / float64(lt.results.TransactionsSent) * 100
 	}
-	
+
 	// Calculate response time statistics
 	if len(lt.responseTimes) > 0 {
 		lt.calculateResponseTimeStats()
 	}
-	
+
 	// Copy collected data
 	lt.results.ResponseTimes = lt.responseTimes
 	lt.results.TPSOverTime = lt.tpsData
 	lt.results.Errors = lt.errors
-	
+
 	// Calculate throughput (mock calculation)
 	avgTxSize := 250.0 // bytes
 	lt.results.ThroughputMBps = lt.results.AverageTPS * avgTxSize / (1024 * 1024)
@@ -425,7 +424,7 @@ func (lt *LoadTester) finalizeResults() {
 func (lt *LoadTester) calculateResponseTimeStats() {
 	times := lt.responseTimes
 	n := len(times)
-	
+
 	// Sort response times for percentile calculations
 	for i := 0; i < n-1; i++ {
 		for j := 0; j < n-i-1; j++ {
@@ -434,22 +433,22 @@ func (lt *LoadTester) calculateResponseTimeStats() {
 			}
 		}
 	}
-	
+
 	// Min and Max
 	lt.results.MinResponseTime = times[0]
 	lt.results.MaxResponseTime = times[n-1]
-	
+
 	// Average
 	var total time.Duration
 	for _, t := range times {
 		total += t
 	}
 	lt.results.AvgResponseTime = total / time.Duration(n)
-	
+
 	// Percentiles
 	p95Index := int(float64(n) * 0.95)
 	p99Index := int(float64(n) * 0.99)
-	
+
 	if p95Index < n {
 		lt.results.P95ResponseTime = times[p95Index]
 	}
@@ -475,28 +474,28 @@ func (lt *LoadTester) printResults() {
 	fmt.Printf("💾 Memory Usage: %.1f MB\n", lt.results.MemoryUsageMB)
 	fmt.Printf("🖥️  CPU Usage: %.1f%%\n", lt.results.CPUUsagePercent)
 	fmt.Printf("🌐 Throughput: %.2f MB/s\n", lt.results.ThroughputMBps)
-	
+
 	if len(lt.results.Errors) > 0 {
 		fmt.Println("\n❌ Error Breakdown:")
 		for errorType, count := range lt.results.Errors {
 			fmt.Printf("   %s: %d\n", errorType, count)
 		}
 	}
-	
+
 	fmt.Println("\n🎯 Performance Assessment:")
 	if lt.results.AverageTPS >= lt.config.TargetTPS*0.9 {
 		fmt.Println("✅ Target TPS achieved!")
 	} else {
-		fmt.Printf("⚠️  Target TPS not met (%.1f%% of target)\n", 
+		fmt.Printf("⚠️  Target TPS not met (%.1f%% of target)\n",
 			lt.results.AverageTPS/lt.config.TargetTPS*100)
 	}
-	
+
 	if lt.results.ErrorRate < 1.0 {
 		fmt.Println("✅ Error rate within acceptable limits!")
 	} else {
 		fmt.Println("⚠️  High error rate detected!")
 	}
-	
+
 	if lt.results.P95ResponseTime < 1*time.Second {
 		fmt.Println("✅ Response times within acceptable limits!")
 	} else {
