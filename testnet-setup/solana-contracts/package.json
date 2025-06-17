@@ -1,0 +1,31 @@
+{
+  "name": "blackhole-bridge-spl",
+  "version": "1.0.0",
+  "description": "SPL token for BlackHole Bridge testnet demonstration",
+  "main": "index.js",
+  "scripts": {
+    "deploy:devnet": "node scripts/deploy-spl-token.js",
+    "create-mint": "node scripts/create-mint.js",
+    "mint-tokens": "node scripts/mint-tokens.js",
+    "send-transaction": "node scripts/send-transaction.js",
+    "monitor": "node scripts/monitor.js",
+    "setup-wallet": "node scripts/setup-wallet.js",
+    "check-balance": "node scripts/check-balance.js"
+  },
+  "keywords": [
+    "solana",
+    "spl",
+    "token",
+    "bridge",
+    "devnet",
+    "blackhole"
+  ],
+  "author": "BlackHole Bridge Team",
+  "license": "MIT",
+  "dependencies": {
+    "@solana/web3.js": "^1.87.0",
+    "@solana/spl-token": "^0.3.9",
+    "dotenv": "^16.3.1",
+    "bs58": "^5.0.0"
+  }
+}
