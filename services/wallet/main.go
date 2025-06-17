@@ -67,6 +67,26 @@ func main() {
 	wallet.WalletCollection = db.Collection("wallets")
 	wallet.TransactionCollection = db.Collection("transactions")
 
+	// Initialize enhanced key management system
+	fmt.Println("🔐 Initializing enhanced key management...")
+	if err := wallet.InitializeGlobalKeyManager(); err != nil {
+		log.Printf("⚠️ Warning: Failed to initialize enhanced key management: %v", err)
+		fmt.Println("📝 Continuing with standard key management...")
+	} else {
+		fmt.Println("✅ Enhanced key management initialized successfully")
+
+		// Start key rotation in background
+		go func() {
+			keyCtx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			if wallet.GlobalKeyManager != nil {
+				fmt.Println("🔄 Starting key rotation service...")
+				wallet.GlobalKeyManager.StartKeyRotation(keyCtx)
+			}
+		}()
+	}
+
 	// Initialize blockchain client
 	if err := wallet.InitBlockchainClient(4000); err != nil { // Use different port for wallet
 		log.Fatalf("Failed to initialize blockchain client: %v", err)

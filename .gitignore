@@ -26,7 +26,30 @@ go.work.sum
 
 # env file
 .env
-.json
+
+# BlackHole Blockchain Runtime Files
+blockchain_logs/
+blockchaindb_*/
+*.log
+*.db
+blockchain_state_*.json
+monitoring.log
+
+# Docker volumes
+data/blockchain/*
+data/mongodb/*
+data/wallet/*
+!data/blockchain/.gitkeep
+!data/mongodb/.gitkeep
+!data/wallet/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.iml
