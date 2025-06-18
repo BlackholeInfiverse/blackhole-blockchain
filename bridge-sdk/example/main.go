@@ -1269,8 +1269,9 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 	r.HandleFunc("/retry-queue", sdk.handleRetryQueue).Methods("GET")
 	r.HandleFunc("/panic-recovery", sdk.handlePanicRecovery).Methods("GET")
 
-	// Static file serving for logo
+	// Static file serving for logo and media
 	r.HandleFunc("/blackhole-logo.jpg", sdk.handleLogo).Methods("GET")
+	r.PathPrefix("/media/").Handler(http.StripPrefix("/media/", http.FileServer(http.Dir("./bridge-sdk/media/"))))
 
 	// Transfer endpoints
 	r.HandleFunc("/transfer", sdk.handleTransfer).Methods("POST")
@@ -1652,6 +1653,44 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🌉 BlackHole Bridge Dashboard</title>
     <style>
+        /* CSS Custom Properties for Dimmed Low-Contrast Theme */
+        :root {
+            /* Primary Colors - Dimmed Theme */
+            --cosmic-black: #0f0f0f;
+            --deep-space: #1a1a1a;
+            --nebula-dark: #2a2a2a;
+            --void-dark: #1f1f1f;
+
+            /* Dimmed Accent Colors (Low Contrast) */
+            --stellar-gold: #b8860b;
+            --bright-gold: #daa520;
+            --dark-gold: #8b7355;
+            --pale-gold: #d2b48c;
+
+            /* Text Colors (Dimmed) */
+            --text-primary: #e0e0e0;
+            --text-secondary: #b8860b;
+            --text-muted: #888888;
+            --text-accent: #daa520;
+
+            /* Status Colors (Dimmed Variations) */
+            --success-gold: #b8860b;
+            --warning-gold: #cd853f;
+            --error-gold: #a0522d;
+            --info-gold: #8b7355;
+
+            /* Background Colors (More Transparent) */
+            --bg-primary: rgba(15, 15, 15, 0.7);
+            --bg-secondary: rgba(26, 26, 26, 0.6);
+            --bg-card: rgba(42, 42, 42, 0.5);
+            --bg-hover: rgba(184, 134, 11, 0.1);
+
+            /* Border Colors (Subtle) */
+            --border-primary: rgba(184, 134, 11, 0.3);
+            --border-secondary: rgba(184, 134, 11, 0.2);
+            --border-muted: rgba(184, 134, 11, 0.15);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -1660,23 +1699,15 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background:
-                radial-gradient(ellipse at 20% 50%, rgba(0, 255, 255, 0.15) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 20%, rgba(255, 215, 0, 0.1) 0%, transparent 50%),
-                radial-gradient(ellipse at 40% 80%, rgba(138, 43, 226, 0.12) 0%, transparent 50%),
-                radial-gradient(circle at center, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.95) 100%),
-                linear-gradient(135deg, #000000 0%, #0a0a0a 25%, #1a1a2e 50%, #16213e 75%, #000000 100%);
-            background-size: 100% 100%, 80% 80%, 60% 60%, 100% 100%, 400% 400%;
-            background-attachment: fixed;
-            animation: cosmicGradient 25s ease infinite;
-            color: #ffffff;
+            background: var(--cosmic-black);
+            color: var(--text-primary);
             min-height: 100vh;
             overflow-x: hidden;
             position: relative;
         }
 
-        /* Space Particles Background */
-        .space-background {
+        /* Video Background */
+        .video-background {
             position: fixed;
             top: 0;
             left: 0;
@@ -1684,135 +1715,26 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             height: 100%;
             z-index: -10;
             overflow: hidden;
-            pointer-events: none;
         }
 
-        /* Blackhole Effect */
-        .blackhole {
-            position: absolute;
-            top: 10%;
-            right: 15%;
-            width: 200px;
-            height: 200px;
-            border-radius: 50%;
-            background: radial-gradient(circle at 30% 30%, transparent 20%, rgba(0, 0, 0, 0.8) 25%, rgba(0, 0, 0, 0.95) 40%, transparent 70%);
-            box-shadow:
-                0 0 50px rgba(0, 255, 255, 0.3),
-                inset 0 0 50px rgba(255, 215, 0, 0.2);
-            animation: blackholeRotate 20s linear infinite, blackholePulse 4s ease-in-out infinite;
+        .video-background video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.8;
         }
 
-        .blackhole::before {
-            content: '';
-            position: absolute;
-            top: -20px;
-            left: -20px;
-            right: -20px;
-            bottom: -20px;
-            border-radius: 50%;
-            background: conic-gradient(from 0deg, transparent, rgba(0, 255, 255, 0.3), rgba(255, 215, 0, 0.3), transparent);
-            animation: blackholeRotate 8s linear infinite reverse;
-        }
+        /* Video overlay removed - pure video background */
 
-        /* Galaxy Spiral */
-        .galaxy {
-            position: absolute;
-            top: 60%;
-            left: 10%;
-            width: 300px;
-            height: 300px;
-            border-radius: 50%;
-            background: radial-gradient(ellipse at center, transparent 20%, rgba(138, 43, 226, 0.1) 40%, rgba(0, 255, 255, 0.05) 60%, transparent 80%);
-            animation: galaxyRotate 30s linear infinite;
-            transform-origin: center;
-        }
+        /* Removed space particles - now using video background */
 
-        .galaxy::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 80%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.4), transparent);
-            transform: translate(-50%, -50%);
-            border-radius: 2px;
-            animation: galaxyArm 15s linear infinite;
-        }
+        /* Blackhole effects removed - using video background */
 
-        .galaxy::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 80%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.3), transparent);
-            transform: translate(-50%, -50%) rotate(120deg);
-            border-radius: 2px;
-            animation: galaxyArm 15s linear infinite reverse;
-        }
+        /* Galaxy effects removed - using video background */
 
-        /* Floating Particles */
-        .particle {
-            position: absolute;
-            background: rgba(255, 255, 255, 0.8);
-            border-radius: 50%;
-            animation: float linear infinite;
-        }
+        /* Particles removed - using video background */
 
-        .particle.small {
-            width: 2px;
-            height: 2px;
-            animation-duration: 20s;
-        }
-
-        .particle.medium {
-            width: 3px;
-            height: 3px;
-            animation-duration: 25s;
-        }
-
-        .particle.large {
-            width: 4px;
-            height: 4px;
-            animation-duration: 30s;
-        }
-
-        .particle.cyan {
-            background: rgba(0, 255, 255, 0.6);
-            box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
-        }
-
-        .particle.gold {
-            background: rgba(255, 215, 0, 0.6);
-            box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
-        }
-
-        .particle.purple {
-            background: rgba(138, 43, 226, 0.6);
-            box-shadow: 0 0 10px rgba(138, 43, 226, 0.3);
-        }
-
-        /* Shooting Stars */
-        .shooting-star {
-            position: absolute;
-            width: 2px;
-            height: 2px;
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 50%;
-            animation: shootingStar 3s linear infinite;
-        }
-
-        .shooting-star::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -50px;
-            width: 50px;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6));
-        }
+        /* Shooting stars removed - using video background */
 
         @keyframes cosmicGradient {
             0% { background-position: 0% 50%; }
@@ -1830,12 +1752,12 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         @keyframes blackholePulse {
             0%, 100% {
                 box-shadow:
-                    0 0 50px rgba(0, 255, 255, 0.3),
+                    0 0 50px rgba(255, 215, 0, 0.3),
                     inset 0 0 50px rgba(255, 215, 0, 0.2);
             }
             50% {
                 box-shadow:
-                    0 0 80px rgba(0, 255, 255, 0.5),
+                    0 0 80px rgba(255, 215, 0, 0.5),
                     inset 0 0 80px rgba(255, 215, 0, 0.4);
             }
         }
@@ -1893,41 +1815,186 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
         .sidebar {
             width: 280px;
-            background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(25px);
-            border-right: 1px solid rgba(0, 255, 255, 0.3);
+            background: var(--bg-primary);
+            backdrop-filter: blur(30px);
+            border-right: 1px solid var(--border-primary);
             padding: 20px;
             position: fixed;
             height: 100vh;
             overflow-y: auto;
             z-index: 1000;
-            box-shadow: 2px 0 20px rgba(0, 0, 0, 0.5);
+            box-shadow: 2px 0 25px rgba(0, 0, 0, 0.6);
+            transition: width 0.3s ease, transform 0.3s ease;
         }
+
+        .sidebar.collapsed {
+            width: 70px;
+        }
+
+        .sidebar.collapsed .nav-text {
+            display: none;
+        }
+
+        .sidebar.collapsed .logo h1 {
+            display: none;
+        }
+
+        .sidebar.collapsed .transfer-widget {
+            display: none;
+        }
+
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-secondary);
+        }
+
+        .collapse-btn {
+            background: none;
+            border: none;
+            color: var(--stellar-gold);
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .collapse-btn:hover {
+            background: var(--bg-hover);
+        }
+
+        .hamburger {
+            display: block;
+            width: 20px;
+            height: 2px;
+            background: currentColor;
+            position: relative;
+        }
+
+        .hamburger::before,
+        .hamburger::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: currentColor;
+            transition: all 0.3s ease;
+        }
+
+        .hamburger::before { top: -6px; }
+        .hamburger::after { top: 6px; }
 
         .logo {
             display: flex;
             align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid rgba(255, 215, 0, 0.3);
         }
 
         .logo h1 {
             font-size: 1.5rem;
-            background: linear-gradient(45deg, #ffd700, #00ffff);
+            background: linear-gradient(45deg, var(--stellar-gold), var(--cosmic-cyan));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-left: 10px;
         }
 
-        .logo img {
-            filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.5));
+        /* Enhanced Navigation Sections */
+        .nav-section {
+            margin-bottom: 25px;
+        }
+
+        .nav-section-title {
+            display: flex;
+            align-items: center;
+            color: var(--stellar-gold);
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-muted);
+        }
+
+        .nav-section-title .nav-icon {
+            margin-right: 8px;
+            font-size: 1rem;
+        }
+
+        .nav-items {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            margin-bottom: 5px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 8px;
             transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 3px;
+            height: 100%;
+            background: var(--stellar-gold);
+            transform: scaleY(0);
+            transition: transform 0.3s ease;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            transform: translateX(5px);
+        }
+
+        .nav-item:hover::before {
+            transform: scaleY(1);
+        }
+
+        .nav-item.active {
+            background: var(--bg-hover);
+            color: var(--stellar-gold);
+            border-left: 3px solid var(--stellar-gold);
+        }
+
+        .nav-icon {
+            margin-right: 12px;
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        .logo img {
+            filter: drop-shadow(0 0 8px rgba(184, 134, 11, 0.4));
+            transition: all 0.3s ease;
+            border-radius: 50%;
+            animation: logoRotate 10s linear infinite;
+            border: 2px solid var(--border-primary);
         }
 
         .logo img:hover {
-            filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.7));
+            filter: drop-shadow(0 0 12px rgba(218, 165, 32, 0.6));
             transform: scale(1.1);
+            border-color: var(--stellar-gold);
+            animation-duration: 5s;
+        }
+
+        @keyframes logoRotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         .quick-actions {
@@ -1961,16 +2028,52 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
         }
 
+        /* Quick Transfer Widget in Main Content */
+        .dashboard-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .quick-transfer-main {
+            background: var(--bg-card);
+            border: 1px solid var(--border-primary);
+            border-radius: 16px;
+            padding: 24px;
+            backdrop-filter: blur(25px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .quick-transfer-main h3 {
+            color: var(--stellar-gold);
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .transfer-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .transfer-btn-group {
+            display: flex;
+            align-items: end;
+        }
+
         .transfer-widget {
-            background: rgba(0, 255, 255, 0.1);
-            border: 1px solid rgba(0, 255, 255, 0.3);
+            background: var(--bg-hover);
+            border: 1px solid var(--border-primary);
             border-radius: 10px;
             padding: 20px;
             margin-bottom: 20px;
         }
 
         .transfer-widget h3 {
-            color: #00ffff;
+            color: var(--stellar-gold);
             margin-bottom: 15px;
         }
 
@@ -2006,18 +2109,20 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         .transfer-btn {
             width: 100%;
             padding: 12px;
-            background: linear-gradient(45deg, #00ffff, #ffd700);
+            background: linear-gradient(45deg, var(--stellar-gold), var(--bright-gold));
             border: none;
             border-radius: 8px;
-            color: #000;
+            color: var(--cosmic-black);
             font-weight: bold;
             cursor: pointer;
             transition: all 0.3s ease;
+            font-size: 1rem;
         }
 
         .transfer-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 255, 255, 0.4);
+            box-shadow: 0 5px 15px rgba(255, 215, 0, 0.4);
+            background: linear-gradient(45deg, var(--bright-gold), var(--stellar-gold));
         }
 
         .main-content {
@@ -2026,6 +2131,11 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             padding: 20px;
             position: relative;
             z-index: 1;
+            transition: margin-left 0.3s ease;
+        }
+
+        .main-content.expanded {
+            margin-left: 70px;
         }
 
         .header {
@@ -2064,15 +2174,17 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         }
 
         .stat-card {
-            background: rgba(0, 0, 0, 0.7);
-            border-radius: 15px;
-            padding: 25px;
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(0, 255, 255, 0.2);
-            transition: all 0.3s ease;
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            backdrop-filter: blur(25px);
+            border: 1px solid var(--border-primary);
+            transition: all 0.4s ease;
             position: relative;
             overflow: hidden;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            box-shadow:
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
 
         .stat-card::before {
@@ -2116,13 +2228,37 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         }
 
         .transactions-section {
-            background: rgba(0, 0, 0, 0.7);
+            background: var(--bg-card);
             border-radius: 15px;
             padding: 25px;
             backdrop-filter: blur(20px);
-            border: 1px solid rgba(0, 255, 255, 0.2);
+            border: 1px solid var(--border-primary);
             margin-bottom: 20px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .transactions-section.compact {
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .compact-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .compact-list .transaction {
+            padding: 12px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .compact-list .transaction-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 0.85rem;
         }
 
         .section-header {
@@ -2139,17 +2275,19 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
         .refresh-btn {
             padding: 8px 16px;
-            background: rgba(0, 255, 255, 0.2);
-            border: 1px solid #00ffff;
+            background: rgba(255, 215, 0, 0.2);
+            border: 1px solid var(--stellar-gold);
             border-radius: 5px;
-            color: #00ffff;
+            color: var(--stellar-gold);
             cursor: pointer;
             transition: all 0.3s ease;
+            font-weight: 600;
         }
 
         .refresh-btn:hover {
-            background: rgba(0, 255, 255, 0.3);
-            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            background: rgba(255, 215, 0, 0.3);
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+            transform: translateY(-1px);
         }
 
         .transaction {
@@ -2157,13 +2295,14 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             margin: 15px 0;
             padding: 20px;
             border-radius: 10px;
-            border-left: 4px solid #00ffff;
+            border-left: 4px solid var(--stellar-gold);
             transition: all 0.3s ease;
         }
 
         .transaction:hover {
             background: rgba(255, 255, 255, 0.1);
             transform: translateX(2px);
+            border-left-color: var(--bright-gold);
         }
 
         .transaction-header {
@@ -2186,18 +2325,42 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         }
 
         .status.completed {
-            background: #4caf50;
-            color: white;
+            background: var(--success-green);
+            color: var(--cosmic-black);
+            position: relative;
+        }
+
+        .status.completed::before {
+            content: '✓';
+            margin-right: 4px;
         }
 
         .status.pending {
-            background: #ff9800;
-            color: white;
+            background: var(--warning-orange);
+            color: var(--cosmic-black);
+            position: relative;
+            animation: pulse 2s infinite;
+        }
+
+        .status.pending::before {
+            content: '⏳';
+            margin-right: 4px;
         }
 
         .status.failed {
-            background: #f44336;
+            background: var(--error-red);
             color: white;
+            position: relative;
+        }
+
+        .status.failed::before {
+            content: '✗';
+            margin-right: 4px;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
         }
 
         .transaction-details {
@@ -2293,165 +2456,205 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
     </style>
 </head>
 <body>
-    <!-- Space Background with Particles and Effects -->
-    <div class="space-background">
-        <!-- Blackhole Effect -->
-        <div class="blackhole"></div>
-
-        <!-- Galaxy Spiral -->
-        <div class="galaxy"></div>
-
-        <!-- Floating Particles -->
-        <div class="particle small cyan" style="left: 10%; animation-delay: 0s;"></div>
-        <div class="particle medium gold" style="left: 20%; animation-delay: 2s;"></div>
-        <div class="particle large purple" style="left: 30%; animation-delay: 4s;"></div>
-        <div class="particle small gold" style="left: 40%; animation-delay: 6s;"></div>
-        <div class="particle medium cyan" style="left: 50%; animation-delay: 8s;"></div>
-        <div class="particle large" style="left: 60%; animation-delay: 10s;"></div>
-        <div class="particle small purple" style="left: 70%; animation-delay: 12s;"></div>
-        <div class="particle medium" style="left: 80%; animation-delay: 14s;"></div>
-        <div class="particle large cyan" style="left: 90%; animation-delay: 16s;"></div>
-        <div class="particle small" style="left: 15%; animation-delay: 18s;"></div>
-        <div class="particle medium purple" style="left: 25%; animation-delay: 20s;"></div>
-        <div class="particle large gold" style="left: 35%; animation-delay: 22s;"></div>
-        <div class="particle small cyan" style="left: 45%; animation-delay: 24s;"></div>
-        <div class="particle medium" style="left: 55%; animation-delay: 26s;"></div>
-        <div class="particle large purple" style="left: 65%; animation-delay: 28s;"></div>
-        <div class="particle small gold" style="left: 75%; animation-delay: 30s;"></div>
-        <div class="particle medium cyan" style="left: 85%; animation-delay: 32s;"></div>
-        <div class="particle large" style="left: 95%; animation-delay: 34s;"></div>
-
-        <!-- Shooting Stars -->
-        <div class="shooting-star" style="top: 20%; left: 0%; animation-delay: 0s;"></div>
-        <div class="shooting-star" style="top: 40%; left: 0%; animation-delay: 5s;"></div>
-        <div class="shooting-star" style="top: 60%; left: 0%; animation-delay: 10s;"></div>
-        <div class="shooting-star" style="top: 80%; left: 0%; animation-delay: 15s;"></div>
+    <!-- Video Background -->
+    <div class="video-background">
+        <video autoplay muted loop playsinline>
+            <source src="media/blackhole.mp4" type="video/mp4">
+            <source src="media/blackhole_2.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
     </div>
 
+
+
     <div class="container">
-        <div class="sidebar">
-            <div class="logo">
-                <img src="/blackhole-logo.jpg" alt="BlackHole Logo" style="width: 40px; height: 40px; margin-right: 10px;">
-                <h1>BlackHole Bridge</h1>
-            </div>
-
-            <div class="quick-actions">
-                <h3>🚀 Quick Actions</h3>
-                <a href="/health" class="action-btn">🏥 System Health</a>
-                <a href="/stats" class="action-btn">📊 Statistics</a>
-                <a href="/transactions" class="action-btn">💸 All Transactions</a>
-                <a href="/logs" class="action-btn">📜 Live Logs</a>
-                <a href="/errors" class="action-btn">⚠️ Error Monitor</a>
-                <a href="/circuit-breakers" class="action-btn">🔧 Circuit Breakers</a>
-            </div>
-
-            <div class="transfer-widget">
-                <h3>💫 Quick Transfer</h3>
-                <form id="transferForm">
-                    <div class="form-group">
-                        <label>From Chain:</label>
-                        <select id="fromChain">
-                            <option value="ethereum">🔷 Ethereum</option>
-                            <option value="solana">🟣 Solana</option>
-                            <option value="blackhole">⚫ BlackHole</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>To Chain:</label>
-                        <select id="toChain">
-                            <option value="solana">🟣 Solana</option>
-                            <option value="ethereum">🔷 Ethereum</option>
-                            <option value="blackhole">⚫ BlackHole</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Token:</label>
-                        <select id="tokenSymbol">
-                            <option value="ETH">🔷 ETH - Ethereum</option>
-                            <option value="SOL">🟣 SOL - Solana</option>
-                            <option value="BHX">⚫ BHX - BlackHole</option>
-                            <option value="USDC">💵 USDC - USD Coin</option>
-                            <option value="USDT">💵 USDT - Tether USD</option>
-                            <option value="WBTC">🟠 WBTC - Wrapped Bitcoin</option>
-                            <option value="LINK">🔗 LINK - Chainlink</option>
-                            <option value="UNI">🦄 UNI - Uniswap</option>
-                            <option value="RAY">⚡ RAY - Raydium</option>
-                            <option value="ORCA">🐋 ORCA - Orca</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Amount:</label>
-                        <input type="number" id="amount" placeholder="0.00" step="0.0001" min="0">
-                    </div>
-                    <div class="form-group">
-                        <label>From Address:</label>
-                        <input type="text" id="fromAddress" placeholder="Source address">
-                    </div>
-                    <div class="form-group">
-                        <label>To Address:</label>
-                        <input type="text" id="toAddress" placeholder="Destination address">
-                    </div>
-                    <button type="submit" class="transfer-btn">🚀 Initiate Transfer</button>
-                </form>
-            </div>
-
-            <div class="recent-transfers" id="recentTransfers">
-                <h4>📋 Recent Transfers</h4>
-                <div class="loading">
-                    <div class="spinner"></div>
-                    Loading recent transfers...
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="collapse-btn" onclick="toggleSidebar()">
+                    <span class="hamburger"></span>
+                </button>
+                <div class="logo">
+                    <img src="/blackhole-logo.jpg" alt="BlackHole Logo" style="width: 40px; height: 40px; margin-right: 10px;">
+                    <h1 class="nav-text">BlackHole Bridge</h1>
                 </div>
             </div>
+
+            <!-- Core Operations -->
+            <div class="nav-section">
+                <h3 class="nav-section-title">
+                    <span class="nav-icon">🚀</span>
+                    <span class="nav-text">Core Operations</span>
+                </h3>
+                <div class="nav-items">
+                    <a href="#dashboard" class="nav-item active">
+                        <span class="nav-icon">📊</span>
+                        <span class="nav-text">Dashboard</span>
+                    </a>
+                    <a href="#transfer" class="nav-item">
+                        <span class="nav-icon">💫</span>
+                        <span class="nav-text">Quick Transfer</span>
+                    </a>
+                    <a href="/transactions" class="nav-item">
+                        <span class="nav-icon">💸</span>
+                        <span class="nav-text">All Transactions</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Monitoring & Analytics -->
+            <div class="nav-section">
+                <h3 class="nav-section-title">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">Monitoring</span>
+                </h3>
+                <div class="nav-items">
+                    <a href="/stats" class="nav-item">
+                        <span class="nav-icon">📊</span>
+                        <span class="nav-text">Statistics</span>
+                    </a>
+                    <a href="/health" class="nav-item">
+                        <span class="nav-icon">🏥</span>
+                        <span class="nav-text">System Health</span>
+                    </a>
+                    <a href="/logs" class="nav-item">
+                        <span class="nav-icon">📜</span>
+                        <span class="nav-text">Live Logs</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Security & Maintenance -->
+            <div class="nav-section">
+                <h3 class="nav-section-title">
+                    <span class="nav-icon">🛡️</span>
+                    <span class="nav-text">Security</span>
+                </h3>
+                <div class="nav-items">
+                    <a href="/errors" class="nav-item">
+                        <span class="nav-icon">⚠️</span>
+                        <span class="nav-text">Error Monitor</span>
+                    </a>
+                    <a href="/circuit-breakers" class="nav-item">
+                        <span class="nav-icon">🔧</span>
+                        <span class="nav-text">Circuit Breakers</span>
+                    </a>
+                    <a href="/replay-protection" class="nav-item">
+                        <span class="nav-icon">🛡️</span>
+                        <span class="nav-text">Replay Protection</span>
+                    </a>
+                </div>
+            </div>
+
+
         </div>
 
         <div class="main-content">
             <div class="header">
                 <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
-                    <img src="/blackhole-logo.jpg" alt="BlackHole Logo" style="width: 60px; height: 60px; margin-right: 15px;">
+                    <img src="/blackhole-logo.jpg" alt="BlackHole Logo" style="width: 60px; height: 60px; margin-right: 15px; border-radius: 50%; border: 2px solid rgba(184, 134, 11, 0.3); animation: logoRotate 10s linear infinite; filter: drop-shadow(0 0 12px rgba(184, 134, 11, 0.5));">
                     <h1 style="margin: 0;">BlackHole Bridge Dashboard</h1>
                 </div>
                 <p>Cross-Chain Bridge Monitoring & Control System</p>
             </div>
 
-            <div class="stats-grid" id="stats">
-                <div class="stat-card">
-                    <h3>📊 Total Transactions</h3>
-                    <div class="value" id="total-tx">1,250</div>
-                    <div class="change">+12% from yesterday</div>
+            <div class="dashboard-layout">
+                <div class="stats-grid" id="stats">
+                    <div class="stat-card">
+                        <h3>📊 Total Transactions</h3>
+                        <div class="value" id="total-tx">1,250</div>
+                        <div class="change">+12% from yesterday</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>✅ Success Rate</h3>
+                        <div class="value" id="success-rate">96.0%</div>
+                        <div class="change">+0.5% improvement</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>⏳ Pending</h3>
+                        <div class="value" id="pending">5</div>
+                        <div class="change">-2 from last hour</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>💰 Total Volume</h3>
+                        <div class="value" id="volume">125.5 ETH</div>
+                        <div class="change">+8.2% today</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>⚡ Avg Processing</h3>
+                        <div class="value" id="avg-time">1.8s</div>
+                        <div class="change">-0.3s faster</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>🔥 Error Rate</h3>
+                        <div class="value" id="error-rate">2.5%</div>
+                        <div class="change">-0.8% improvement</div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <h3>✅ Success Rate</h3>
-                    <div class="value" id="success-rate">96.0%</div>
-                    <div class="change">+0.5% improvement</div>
-                </div>
-                <div class="stat-card">
-                    <h3>⏳ Pending</h3>
-                    <div class="value" id="pending">5</div>
-                    <div class="change">-2 from last hour</div>
-                </div>
-                <div class="stat-card">
-                    <h3>💰 Total Volume</h3>
-                    <div class="value" id="volume">125.5 ETH</div>
-                    <div class="change">+8.2% today</div>
-                </div>
-                <div class="stat-card">
-                    <h3>⚡ Avg Processing</h3>
-                    <div class="value" id="avg-time">1.8s</div>
-                    <div class="change">-0.3s faster</div>
-                </div>
-                <div class="stat-card">
-                    <h3>🔥 Error Rate</h3>
-                    <div class="value" id="error-rate">2.5%</div>
-                    <div class="change">-0.8% improvement</div>
+
+                <!-- Quick Transfer Widget in Main Content -->
+                <div class="quick-transfer-main">
+                    <h3>💫 Quick Transfer</h3>
+                    <form id="transferForm">
+                        <div class="transfer-row">
+                            <div class="form-group">
+                                <label>From Chain:</label>
+                                <select id="fromChain">
+                                    <option value="ethereum">🔷 Ethereum</option>
+                                    <option value="solana">🟣 Solana</option>
+                                    <option value="blackhole">⚫ BlackHole</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>To Chain:</label>
+                                <select id="toChain">
+                                    <option value="solana">🟣 Solana</option>
+                                    <option value="ethereum">🔷 Ethereum</option>
+                                    <option value="blackhole">⚫ BlackHole</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Token:</label>
+                                <select id="tokenSymbol">
+                                    <option value="ETH">🔷 ETH - Ethereum</option>
+                                    <option value="SOL">🟣 SOL - Solana</option>
+                                    <option value="BHX">⚫ BHX - BlackHole</option>
+                                    <option value="USDC">💵 USDC - USD Coin</option>
+                                    <option value="USDT">💵 USDT - Tether USD</option>
+                                    <option value="WBTC">🟠 WBTC - Wrapped Bitcoin</option>
+                                    <option value="LINK">🔗 LINK - Chainlink</option>
+                                    <option value="UNI">🦄 UNI - Uniswap</option>
+                                    <option value="RAY">⚡ RAY - Raydium</option>
+                                    <option value="ORCA">🐋 ORCA - Orca</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Amount:</label>
+                                <input type="number" id="amount" placeholder="0.00" step="0.0001" min="0">
+                            </div>
+                        </div>
+                        <div class="transfer-row">
+                            <div class="form-group">
+                                <label>From Address:</label>
+                                <input type="text" id="fromAddress" placeholder="Source address">
+                            </div>
+                            <div class="form-group">
+                                <label>To Address:</label>
+                                <input type="text" id="toAddress" placeholder="Destination address">
+                            </div>
+                            <div class="form-group transfer-btn-group">
+                                <button type="submit" class="transfer-btn">🚀 Initiate Transfer</button>
+                            </div>
+                        </div>
+                    </form>
                 </div>
             </div>
 
-            <div class="transactions-section">
+            <div class="transactions-section compact">
                 <div class="section-header">
                     <h2>💸 Recent Transactions</h2>
                     <button class="refresh-btn" onclick="refreshTransactions()">🔄 Refresh</button>
                 </div>
-                <div id="transactions-list">
+                <div id="transactions-list" class="compact-list">
                     <div class="loading">
                         <div class="spinner"></div>
                         Loading transactions...
@@ -2613,7 +2816,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     setTimeout(() => {
                         document.getElementById('transferForm').reset();
                         btn.textContent = originalText;
-                        btn.style.background = 'linear-gradient(45deg, #00ffff, #ffd700)';
+                        btn.style.background = 'linear-gradient(45deg, #ffd700, #ffed4e)';
                     }, 2000);
                 } else {
                     alert('Transfer failed: ' + (result.error || 'Unknown error'));
@@ -2624,80 +2827,53 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             }
         });
 
-        // Create dynamic space particles
-        function createSpaceParticles() {
-            const spaceBackground = document.querySelector('.space-background');
-            const particleCount = 50;
-
-            for (let i = 0; i < particleCount; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'particle';
-
-                // Random size
-                const sizes = ['small', 'medium', 'large'];
-                const size = sizes[Math.floor(Math.random() * sizes.length)];
-                particle.classList.add(size);
-
-                // Random color
-                const colors = ['', 'cyan', 'gold', 'purple'];
-                const color = colors[Math.floor(Math.random() * colors.length)];
-                if (color) particle.classList.add(color);
-
-                // Random position and delay
-                particle.style.left = Math.random() * 100 + '%';
-                particle.style.animationDelay = Math.random() * 30 + 's';
-                particle.style.animationDuration = (20 + Math.random() * 20) + 's';
-
-                spaceBackground.appendChild(particle);
-            }
-
-            // Create additional shooting stars
-            for (let i = 0; i < 8; i++) {
-                const star = document.createElement('div');
-                star.className = 'shooting-star';
-                star.style.top = Math.random() * 100 + '%';
-                star.style.left = '0%';
-                star.style.animationDelay = Math.random() * 20 + 's';
-                star.style.animationDuration = (2 + Math.random() * 4) + 's';
-
-                spaceBackground.appendChild(star);
-            }
-        }
-
-        // Add twinkling stars effect
-        function createTwinklingStars() {
-            const spaceBackground = document.querySelector('.space-background');
-            const starCount = 100;
-
-            for (let i = 0; i < starCount; i++) {
-                const star = document.createElement('div');
-                star.style.position = 'absolute';
-                star.style.width = '1px';
-                star.style.height = '1px';
-                star.style.background = 'rgba(255, 255, 255, 0.8)';
-                star.style.borderRadius = '50%';
-                star.style.left = Math.random() * 100 + '%';
-                star.style.top = Math.random() * 100 + '%';
-                star.style.animation = 'twinkle ' + (2 + Math.random() * 3) + 's ease-in-out infinite';
-                star.style.animationDelay = Math.random() * 5 + 's';
-
-                spaceBackground.appendChild(star);
-            }
-        }
+        // Space particles removed - using video background
 
         // Add CSS for twinkling animation
         const style = document.createElement('style');
         style.textContent = '@keyframes twinkle { 0%, 100% { opacity: 0.3; transform: scale(1); } 50% { opacity: 1; transform: scale(1.2); } }';
         document.head.appendChild(style);
 
+        // Sidebar toggle functionality
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.querySelector('.main-content');
+
+            sidebar.classList.toggle('collapsed');
+            mainContent.classList.toggle('expanded');
+
+            // Store preference in localStorage
+            localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+        }
+
+        // Restore sidebar state from localStorage
+        function restoreSidebarState() {
+            const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            if (isCollapsed) {
+                document.getElementById('sidebar').classList.add('collapsed');
+                document.querySelector('.main-content').classList.add('expanded');
+            }
+        }
+
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', () => {
-            createSpaceParticles();
-            createTwinklingStars();
+            restoreSidebarState();
             refreshStats();
             refreshTransactions();
             refreshRecentTransfers();
             startAutoRefresh();
+
+            // Debug video loading
+            const video = document.querySelector('.video-background video');
+            if (video) {
+                video.addEventListener('loadstart', () => console.log('Video loading started'));
+                video.addEventListener('canplay', () => console.log('Video can play'));
+                video.addEventListener('error', (e) => console.error('Video error:', e));
+                video.addEventListener('loadeddata', () => console.log('Video data loaded'));
+
+                // Force play if needed
+                video.play().catch(e => console.log('Video autoplay blocked:', e));
+            }
         });
 
         // Cleanup on page unload
@@ -2837,28 +3013,45 @@ func (sdk *BridgeSDK) handleLogo(w http.ResponseWriter, r *http.Request) {
 					<feMergeNode in="SourceGraphic"/>
 				</feMerge>
 			</filter>
+			<animateTransform id="rotate" attributeName="transform" type="rotate" values="0 50 50;360 50 50" dur="10s" repeatCount="indefinite"/>
 		</defs>
 
-		<!-- Outer cosmic ring -->
-		<circle cx="50" cy="50" r="45" fill="url(#blackholeGradient)" filter="url(#glow)" opacity="0.8"/>
+		<!-- Outer cosmic ring with rotation -->
+		<circle cx="50" cy="50" r="48" fill="url(#blackholeGradient)" filter="url(#glow)" opacity="0.9"/>
 
-		<!-- Accretion disk -->
-		<circle cx="50" cy="50" r="35" fill="none" stroke="#00ffff" stroke-width="2" opacity="0.6"/>
-		<circle cx="50" cy="50" r="30" fill="none" stroke="#ffd700" stroke-width="1.5" opacity="0.7"/>
-		<circle cx="50" cy="50" r="25" fill="none" stroke="#8a2be2" stroke-width="1" opacity="0.5"/>
+		<!-- Rotating accretion disk -->
+		<g>
+			<animateTransform attributeName="transform" type="rotate" values="0 50 50;360 50 50" dur="8s" repeatCount="indefinite"/>
+			<circle cx="50" cy="50" r="38" fill="none" stroke="#00ffff" stroke-width="2" opacity="0.7"/>
+			<circle cx="50" cy="50" r="33" fill="none" stroke="#ffd700" stroke-width="1.8" opacity="0.8"/>
+			<circle cx="50" cy="50" r="28" fill="none" stroke="#8a2be2" stroke-width="1.2" opacity="0.6"/>
+		</g>
 
 		<!-- Event horizon -->
-		<circle cx="50" cy="50" r="20" fill="url(#centerGradient)" filter="url(#glow)"/>
+		<circle cx="50" cy="50" r="22" fill="url(#centerGradient)" filter="url(#glow)"/>
 
 		<!-- Central singularity -->
-		<circle cx="50" cy="50" r="8" fill="#000000"/>
+		<circle cx="50" cy="50" r="10" fill="#000000"/>
 
-		<!-- Cosmic particles -->
-		<circle cx="25" cy="25" r="1" fill="#00ffff" opacity="0.8"/>
-		<circle cx="75" cy="30" r="0.8" fill="#ffd700" opacity="0.9"/>
-		<circle cx="20" cy="70" r="1.2" fill="#8a2be2" opacity="0.7"/>
-		<circle cx="80" cy="75" r="0.6" fill="#00ffff" opacity="0.6"/>
-		<circle cx="30" cy="80" r="0.9" fill="#ffd700" opacity="0.8"/>
+		<!-- Rotating cosmic particles -->
+		<g>
+			<animateTransform attributeName="transform" type="rotate" values="0 50 50;360 50 50" dur="12s" repeatCount="indefinite"/>
+			<circle cx="25" cy="25" r="1.2" fill="#00ffff" opacity="0.9"/>
+			<circle cx="75" cy="30" r="1" fill="#ffd700" opacity="1"/>
+			<circle cx="20" cy="70" r="1.4" fill="#8a2be2" opacity="0.8"/>
+			<circle cx="80" cy="75" r="0.8" fill="#00ffff" opacity="0.7"/>
+			<circle cx="30" cy="80" r="1.1" fill="#ffd700" opacity="0.9"/>
+			<circle cx="70" cy="20" r="0.9" fill="#8a2be2" opacity="0.6"/>
+		</g>
+
+		<!-- Additional orbital particles -->
+		<g>
+			<animateTransform attributeName="transform" type="rotate" values="360 50 50;0 50 50" dur="15s" repeatCount="indefinite"/>
+			<circle cx="15" cy="50" r="0.8" fill="#00ffff" opacity="0.6"/>
+			<circle cx="85" cy="50" r="0.7" fill="#ffd700" opacity="0.7"/>
+			<circle cx="50" cy="15" r="0.9" fill="#8a2be2" opacity="0.5"/>
+			<circle cx="50" cy="85" r="0.6" fill="#00ffff" opacity="0.8"/>
+		</g>
 	</svg>`
 
 	w.Header().Set("Content-Type", "image/svg+xml")
