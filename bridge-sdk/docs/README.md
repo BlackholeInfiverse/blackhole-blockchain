@@ -330,6 +330,12 @@ make test
 # View logs
 make logs
 ```
+### Or simply run 
+
+```bash
+cd bridge-sdk/example
+go run main.go
+```
 
 ### Production Deployment
 
