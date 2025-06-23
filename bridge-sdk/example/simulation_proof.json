@@ -1,0 +1,78 @@
+{
+  "test_id": "sim_1750667196",
+  "start_time": "2025-06-23T13:56:36.2881353+05:30",
+  "end_time": "2025-06-23T13:56:43.3291686+05:30",
+  "status": "completed",
+  "total_transactions": 6,
+  "successful_txs": 6,
+  "failed_txs": 0,
+  "chains": [
+    "ethereum",
+    "solana",
+    "blackhole"
+  ],
+  "test_results": {
+    "circuit_breaker": {
+      "description": "Circuit breaker fault tolerance validation",
+      "failure_count": 6,
+      "final_state": "open",
+      "initial_state": "closed",
+      "processing_time": 1.5,
+      "success": true,
+      "threshold": 5
+    },
+    "eth_to_bh": {
+      "amount": "1.500000000000000000",
+      "dest_chain": "blackhole",
+      "processing_time": 3.0000529,
+      "source_chain": "ethereum",
+      "status": "completed",
+      "success": true,
+      "transaction_id": "sim_eth_bh_1750667199"
+    },
+    "eth_to_sol": {
+      "amount": "100.000000",
+      "dest_chain": "solana",
+      "processing_time": 2.0002105,
+      "source_chain": "ethereum",
+      "status": "completed",
+      "success": true,
+      "transaction_id": "sim_eth_sol_1750667196"
+    },
+    "replay_protection": {
+      "blocked_replays": 1,
+      "first_attempt_allowed": true,
+      "hash": "a5aac638bec8bc9dd4b7aa16e3196fd418e4c533959260d576746e4d80229b0d",
+      "processing_time": 2.1,
+      "protection_active": true,
+      "second_attempt_blocked": true,
+      "status": "PROTECTED",
+      "success": true,
+      "test_description": "Replay attack protection validation"
+    },
+    "sol_to_bh": {
+      "amount": "250.000000",
+      "dest_chain": "blackhole",
+      "processing_time": 1.0009971,
+      "source_chain": "solana",
+      "status": "completed",
+      "success": true,
+      "transaction_id": "sim_sol_bh_1750667202"
+    },
+    "sol_to_eth": {
+      "amount": "5.000000000",
+      "dest_chain": "ethereum",
+      "processing_time": 1.0000548,
+      "source_chain": "solana",
+      "status": "completed",
+      "success": true,
+      "transaction_id": "sim_sol_eth_1750667198"
+    }
+  },
+  "screenshots": [],
+  "log_files": [],
+  "metrics": {
+    "success_rate": 100,
+    "total_time": 7.0410333
+  }
+}
