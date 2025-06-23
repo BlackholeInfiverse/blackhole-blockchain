@@ -31,20 +31,36 @@ services:
       - DEBUG_MODE=${DEBUG_MODE:-false}
       - REDIS_URL=${REDIS_URL}
       - POSTGRES_URL=${POSTGRES_URL}
+      # Enhanced Configuration
+      - ENABLE_COLORED_LOGS=${ENABLE_COLORED_LOGS:-true}
+      - ENABLE_ZAP_LOGGER=${ENABLE_ZAP_LOGGER:-true}
+      - REPLAY_PROTECTION_ENABLED=${REPLAY_PROTECTION_ENABLED:-true}
+      - CIRCUIT_BREAKER_ENABLED=${CIRCUIT_BREAKER_ENABLED:-true}
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - RETRY_DELAY_MS=${RETRY_DELAY_MS:-5000}
+      - BATCH_SIZE=${BATCH_SIZE:-100}
+      # Simulation Configuration
+      - SIMULATION_MODE=${SIMULATION_MODE:-false}
+      - ENABLE_FULL_SIMULATION=${ENABLE_FULL_SIMULATION:-false}
+      - TOKEN_DEPLOYMENT_ENABLED=${TOKEN_DEPLOYMENT_ENABLED:-false}
+      - SCREENSHOT_MODE=${SCREENSHOT_MODE:-false}
     volumes:
       - bridge-data:/app/data
       - bridge-logs:/app/logs
-    networks:
-      - bridge-network
-    depends_on:
-      - redis
-      - postgres
+      - bridge-screenshots:/app/simulation_screenshots
+      - bridge-simulation-logs:/app/simulation_logs
+      - ./media:/app/media:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - bridge-network
+    depends_on:
+      - redis
+      - postgres
 
   # Redis for caching and session management
   redis:
@@ -147,6 +163,10 @@ volumes:
   bridge-data:
     driver: local
   bridge-logs:
+    driver: local
+  bridge-screenshots:
+    driver: local
+  bridge-simulation-logs:
     driver: local
   redis-data:
     driver: local

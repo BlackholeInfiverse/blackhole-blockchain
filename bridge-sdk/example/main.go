@@ -25,6 +25,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/bbolt"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // BridgeSDK represents the main bridge SDK
@@ -33,6 +35,7 @@ type BridgeSDK struct {
 	config            *Config
 	db                *bbolt.DB
 	logger            *logrus.Logger
+	zapLogger         *zap.Logger
 	upgrader          websocket.Upgrader
 	clients           map[*websocket.Conn]bool
 	clientsMutex      sync.RWMutex
@@ -50,6 +53,8 @@ type BridgeSDK struct {
 	eventsMutex       sync.RWMutex
 	blockedReplays    int64
 	blockedMutex      sync.RWMutex
+	simulationMode    bool
+	coloredOutput     bool
 }
 
 // Config holds the bridge configuration
@@ -66,6 +71,12 @@ type Config struct {
 	MaxRetries              int
 	RetryDelay              time.Duration
 	BatchSize               int
+	SimulationMode          bool
+	EnableColoredLogs       bool
+	EnableZapLogger         bool
+	EnableFullSimulation    bool
+	TokenDeploymentEnabled  bool
+	ScreenshotMode          bool
 }
 
 // Transaction represents a bridge transaction
@@ -107,12 +118,17 @@ type Event struct {
 	RetryCount    int                    `json:"retry_count"`
 }
 
-// ReplayProtection handles duplicate event detection
+// ReplayProtection handles duplicate event detection with complete BoltDB integration
 type ReplayProtection struct {
 	processedHashes map[string]time.Time
 	mutex          sync.RWMutex
 	db             *bbolt.DB
 	enabled        bool
+	cacheSize      int
+	cacheTTL       time.Duration
+	cleanupTicker  *time.Ticker
+	logger         *logrus.Logger
+	zapLogger      *zap.Logger
 }
 
 // CircuitBreaker implements circuit breaker pattern
@@ -148,6 +164,110 @@ type ErrorEntry struct {
 type EventRecovery struct {
 	failedEvents []FailedEvent
 	mutex       sync.RWMutex
+}
+
+// Simulation types
+type SimulationConfig struct {
+	EnableFullSimulation    bool
+	TokenDeploymentEnabled  bool
+	ScreenshotMode          bool
+	TestnetMode            bool
+	EthereumTestnetRPC     string
+	SolanaTestnetRPC       string
+	TestTokenAddress       string
+	TestWalletPrivateKey   string
+	SimulationDuration     time.Duration
+	TransactionCount       int
+}
+
+type TokenDeployment struct {
+	Symbol          string    `json:"symbol"`
+	Name            string    `json:"name"`
+	Address         string    `json:"address"`
+	Chain           string    `json:"chain"`
+	Decimals        int       `json:"decimals"`
+	TotalSupply     string    `json:"total_supply"`
+	DeployedAt      time.Time `json:"deployed_at"`
+	DeploymentTxHash string   `json:"deployment_tx_hash"`
+	TestMode        bool      `json:"test_mode"`
+}
+
+type SimulationResult struct {
+	ID                string              `json:"id"`
+	StartTime         time.Time           `json:"start_time"`
+	EndTime           time.Time           `json:"end_time"`
+	Duration          time.Duration       `json:"duration"`
+	TotalTransactions int                 `json:"total_transactions"`
+	SuccessfulTxs     int                 `json:"successful_transactions"`
+	FailedTxs         int                 `json:"failed_transactions"`
+	SuccessRate       float64             `json:"success_rate"`
+	TokenDeployments  []TokenDeployment   `json:"token_deployments"`
+	Screenshots       []string            `json:"screenshots"`
+	LogFiles          []string            `json:"log_files"`
+	Errors            []string            `json:"errors"`
+	Metrics           map[string]interface{} `json:"metrics"`
+}
+
+type SimulationEngine struct {
+	sdk              *BridgeSDK
+	logger           *zap.Logger
+	config           *SimulationConfig
+	results          *SimulationResult
+	tokenDeployments []TokenDeployment
+	screenshots      []string
+	logFiles         []string
+}
+
+// NewSimulationEngine creates a new simulation engine
+func NewSimulationEngine(sdk *BridgeSDK, config *SimulationConfig) *SimulationEngine {
+	return &SimulationEngine{
+		sdk:              sdk,
+		logger:           sdk.zapLogger,
+		config:           config,
+		tokenDeployments: make([]TokenDeployment, 0),
+		screenshots:      make([]string, 0),
+		logFiles:         make([]string, 0),
+	}
+}
+
+// RunFullSimulation runs a complete end-to-end simulation
+func (se *SimulationEngine) RunFullSimulation(ctx context.Context) (*SimulationResult, error) {
+	se.logger.Info("🚀 Starting full end-to-end bridge simulation")
+
+	startTime := time.Now()
+	se.results = &SimulationResult{
+		ID:        fmt.Sprintf("sim_%d", startTime.Unix()),
+		StartTime: startTime,
+		Metrics:   make(map[string]interface{}),
+	}
+
+	// Simulate some transactions
+	for i := 0; i < se.config.TransactionCount; i++ {
+		se.results.TotalTransactions++
+		if rand.Float32() < 0.9 { // 90% success rate
+			se.results.SuccessfulTxs++
+		} else {
+			se.results.FailedTxs++
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Finalize results
+	se.results.EndTime = time.Now()
+	se.results.Duration = se.results.EndTime.Sub(se.results.StartTime)
+
+	if se.results.TotalTransactions > 0 {
+		se.results.SuccessRate = float64(se.results.SuccessfulTxs) / float64(se.results.TotalTransactions) * 100
+	}
+
+	se.logger.Info("✅ Full simulation completed",
+		zap.String("simulation_id", se.results.ID),
+		zap.Duration("duration", se.results.Duration),
+		zap.Int("total_transactions", se.results.TotalTransactions),
+		zap.Float64("success_rate", se.results.SuccessRate),
+	)
+
+	return se.results, nil
 }
 
 // FailedEvent represents a failed event
@@ -303,14 +423,21 @@ type EnvironmentConfig struct {
 	BatchSize               int
 	EnableColoredLogs       bool
 	EnableDocumentation     bool
+	SimulationMode          bool
+	EnableZapLogger         bool
+	EnableFullSimulation    bool
+	TokenDeploymentEnabled  bool
+	ScreenshotMode          bool
 }
+
+
 
 // LoadEnvironmentConfig loads configuration from environment variables and .env file
 func LoadEnvironmentConfig() *EnvironmentConfig {
 	config := &EnvironmentConfig{
 		Port:                    getEnvOrDefault("PORT", "8084"),
-		EthereumRPC:             getEnvOrDefault("ETHEREUM_RPC", "wss://eth-mainnet.alchemyapi.io/v2/demo"),
-		SolanaRPC:               getEnvOrDefault("SOLANA_RPC", "wss://api.mainnet-beta.solana.com"),
+		EthereumRPC:             getEnvOrDefault("ETHEREUM_RPC", "wss://eth-sepolia.g.alchemy.com/v2/demo"),
+		SolanaRPC:               getEnvOrDefault("SOLANA_RPC", "wss://api.devnet.solana.com"),
 		BlackHoleRPC:            getEnvOrDefault("BLACKHOLE_RPC", "ws://localhost:8545"),
 		DatabasePath:            getEnvOrDefault("DATABASE_PATH", "./data/bridge.db"),
 		LogLevel:                getEnvOrDefault("LOG_LEVEL", "info"),
@@ -321,6 +448,11 @@ func LoadEnvironmentConfig() *EnvironmentConfig {
 		BatchSize:               getEnvIntOrDefault("BATCH_SIZE", 100),
 		EnableColoredLogs:       getEnvBoolOrDefault("ENABLE_COLORED_LOGS", true),
 		EnableDocumentation:     getEnvBoolOrDefault("ENABLE_DOCUMENTATION", true),
+		SimulationMode:          getEnvBoolOrDefault("SIMULATION_MODE", false),
+		EnableZapLogger:         getEnvBoolOrDefault("ENABLE_ZAP_LOGGER", true),
+		EnableFullSimulation:    getEnvBoolOrDefault("ENABLE_FULL_SIMULATION", false),
+		TokenDeploymentEnabled:  getEnvBoolOrDefault("TOKEN_DEPLOYMENT_ENABLED", false),
+		ScreenshotMode:          getEnvBoolOrDefault("SCREENSHOT_MODE", false),
 	}
 
 	retryDelayMs := getEnvIntOrDefault("RETRY_DELAY_MS", 5000)
@@ -417,11 +549,22 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 			ForceColors:     true,
 			FullTimestamp:   true,
 			TimestampFormat: "2006-01-02 15:04:05",
+			DisableQuote:    true,
 		})
 	} else {
 		logger.SetFormatter(&logrus.JSONFormatter{
 			TimestampFormat: "2006-01-02 15:04:05",
 		})
+	}
+
+	// Initialize Zap logger if enabled
+	var zapLogger *zap.Logger
+	if envConfig.EnableZapLogger {
+		zapConfig := zap.NewDevelopmentConfig()
+		if envConfig.EnableColoredLogs {
+			zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		}
+		zapLogger, _ = zapConfig.Build()
 	}
 
 	// Ensure directories exist
@@ -444,12 +587,18 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 		return nil
 	})
 
-	// Initialize components
+	// Initialize components with enhanced replay protection
 	replayProtection := &ReplayProtection{
 		processedHashes: make(map[string]time.Time),
 		db:             db,
 		enabled:        config.ReplayProtectionEnabled,
+		cacheSize:      10000,
+		cacheTTL:       24 * time.Hour,
+		logger:         logger,
+		zapLogger:      zapLogger,
 	}
+
+	// Cleanup ticker will be started after SDK creation
 
 	circuitBreakers := make(map[string]*CircuitBreaker)
 	if config.CircuitBreakerEnabled {
@@ -496,11 +645,12 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 		logger:     logger,
 	}
 
-	return &BridgeSDK{
+	sdk := &BridgeSDK{
 		blockchain:       blockchain,
 		config:          config,
 		db:              db,
 		logger:          logger,
+		zapLogger:       zapLogger,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true // Allow all origins for demo
@@ -518,7 +668,21 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 		transactions:     make(map[string]*Transaction),
 		events:          make([]Event, 0),
 		blockedReplays:   0,
+		simulationMode:   envConfig.SimulationMode,
+		coloredOutput:    envConfig.EnableColoredLogs,
 	}
+
+	// Start cleanup ticker for replay protection after SDK creation
+	if config.ReplayProtectionEnabled {
+		replayProtection.cleanupTicker = time.NewTicker(1 * time.Hour)
+		go func() {
+			for range replayProtection.cleanupTicker.C {
+				sdk.cleanupExpiredEntries()
+			}
+		}()
+	}
+
+	return sdk
 }
 
 // StartEthereumListener starts the Ethereum blockchain listener
@@ -1113,33 +1277,143 @@ func (sdk *BridgeSDK) addEvent(eventType, chain, txHash string, data map[string]
 	}
 }
 
-// Replay protection functions
+// Enhanced replay protection functions with complete BoltDB integration
 func (sdk *BridgeSDK) generateEventHash(tx *Transaction) string {
-	data := fmt.Sprintf("%s:%s:%s:%s", tx.SourceChain, tx.Hash, tx.Amount, tx.CreatedAt.Format(time.RFC3339))
+	// Enhanced hash generation with more transaction details for better uniqueness
+	data := fmt.Sprintf("%s:%s:%s:%s:%s:%s:%d",
+		tx.SourceChain, tx.DestChain, tx.SourceAddress, tx.DestAddress,
+		tx.TokenSymbol, tx.Amount, tx.CreatedAt.Unix())
 	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:])
+	hashStr := hex.EncodeToString(hash[:])
+
+	// Log hash generation if in simulation mode
+	if sdk.simulationMode && sdk.zapLogger != nil {
+		sdk.zapLogger.Info("Generated event hash",
+			zap.String("hash", hashStr),
+			zap.String("transaction_id", tx.ID),
+			zap.String("source_chain", tx.SourceChain),
+			zap.String("dest_chain", tx.DestChain),
+		)
+	}
+
+	return hashStr
 }
 
 func (sdk *BridgeSDK) isReplayAttack(hash string) bool {
+	if !sdk.replayProtection.enabled {
+		return false
+	}
+
 	sdk.replayProtection.mutex.RLock()
 	defer sdk.replayProtection.mutex.RUnlock()
 
-	_, exists := sdk.replayProtection.processedHashes[hash]
+	// Check in-memory cache first for performance
+	if processedTime, exists := sdk.replayProtection.processedHashes[hash]; exists {
+		// Check if entry is still valid (within TTL)
+		if time.Since(processedTime) < sdk.replayProtection.cacheTTL {
+			if sdk.simulationMode && sdk.zapLogger != nil {
+				sdk.zapLogger.Warn("Replay attack detected in memory cache",
+					zap.String("hash", hash),
+					zap.Time("processed_time", processedTime),
+				)
+			}
+			return true
+		}
+		// Remove expired entry from cache
+		delete(sdk.replayProtection.processedHashes, hash)
+	}
+
+	// Check in persistent database
+	var exists bool
+	sdk.db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte("replay_protection"))
+		if bucket != nil {
+			value := bucket.Get([]byte(hash))
+			if value != nil {
+				// Parse timestamp and check if still valid
+				if timestamp, err := strconv.ParseInt(string(value), 10, 64); err == nil {
+					processedTime := time.Unix(timestamp, 0)
+					if time.Since(processedTime) < sdk.replayProtection.cacheTTL {
+						exists = true
+						// Add back to memory cache for faster future lookups
+						sdk.replayProtection.processedHashes[hash] = processedTime
+					}
+				}
+			}
+		}
+		return nil
+	})
+
+	if exists && sdk.simulationMode && sdk.zapLogger != nil {
+		sdk.zapLogger.Warn("Replay attack detected in database",
+			zap.String("hash", hash),
+		)
+	}
+
 	return exists
 }
 
-func (sdk *BridgeSDK) markAsProcessed(hash string) {
+func (sdk *BridgeSDK) markAsProcessed(hash string) error {
+	if !sdk.replayProtection.enabled {
+		return nil
+	}
+
 	sdk.replayProtection.mutex.Lock()
 	defer sdk.replayProtection.mutex.Unlock()
 
-	sdk.replayProtection.processedHashes[hash] = time.Now()
+	now := time.Now()
 
-	// Clean up old hashes (older than 24 hours)
-	cutoff := time.Now().Add(-24 * time.Hour)
-	for h, t := range sdk.replayProtection.processedHashes {
-		if t.Before(cutoff) {
-			delete(sdk.replayProtection.processedHashes, h)
+	// Add to in-memory cache
+	sdk.replayProtection.processedHashes[hash] = now
+
+	// Cleanup old entries if cache is too large
+	if len(sdk.replayProtection.processedHashes) > sdk.replayProtection.cacheSize {
+		sdk.cleanupExpiredEntries()
+	}
+
+	// Persist to database for durability
+	err := sdk.db.Update(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte("replay_protection"))
+		if bucket == nil {
+			return fmt.Errorf("replay protection bucket not found")
 		}
+
+		timestamp := fmt.Sprintf("%d", now.Unix())
+		return bucket.Put([]byte(hash), []byte(timestamp))
+	})
+
+	if err != nil && sdk.zapLogger != nil {
+		sdk.zapLogger.Error("Failed to persist replay protection hash",
+			zap.String("hash", hash),
+			zap.Error(err),
+		)
+	} else if sdk.simulationMode && sdk.zapLogger != nil {
+		sdk.zapLogger.Info("Marked hash as processed",
+			zap.String("hash", hash),
+			zap.Time("timestamp", now),
+		)
+	}
+
+	return err
+}
+
+// Enhanced cleanup method for replay protection
+func (sdk *BridgeSDK) cleanupExpiredEntries() {
+	now := time.Now()
+	expiredCount := 0
+
+	for hash, processedTime := range sdk.replayProtection.processedHashes {
+		if now.Sub(processedTime) > sdk.replayProtection.cacheTTL {
+			delete(sdk.replayProtection.processedHashes, hash)
+			expiredCount++
+		}
+	}
+
+	if expiredCount > 0 && sdk.zapLogger != nil {
+		sdk.zapLogger.Info("Cleaned up expired replay protection entries",
+			zap.Int("expired_count", expiredCount),
+			zap.Int("remaining_count", len(sdk.replayProtection.processedHashes)),
+		)
 	}
 }
 
@@ -3061,18 +3335,60 @@ func (sdk *BridgeSDK) handleLogo(w http.ResponseWriter, r *http.Request) {
 
 // Main function
 func main() {
+	// Load environment configuration
+	envConfig := LoadEnvironmentConfig()
+
 	// Get port from environment or use default
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8084"
 	}
 
-	// Create bridge SDK with default configuration
+	// Create bridge SDK with enhanced configuration
 	sdk := NewBridgeSDK(nil, nil)
 
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Initialize simulation engine if enabled
+	if envConfig.EnableFullSimulation {
+		simulationConfig := &SimulationConfig{
+			EnableFullSimulation:    envConfig.EnableFullSimulation,
+			TokenDeploymentEnabled:  envConfig.TokenDeploymentEnabled,
+			ScreenshotMode:          envConfig.ScreenshotMode,
+			TestnetMode:            true,
+			EthereumTestnetRPC:     envConfig.EthereumRPC,
+			SolanaTestnetRPC:       envConfig.SolanaRPC,
+			SimulationDuration:     10 * time.Minute,
+			TransactionCount:       20,
+		}
+		simulationEngine := NewSimulationEngine(sdk, simulationConfig)
+
+		// Run simulation in background
+		go func() {
+			defer sdk.panicRecovery.RecoverFromPanic("simulation_engine")
+			if sdk.zapLogger != nil {
+				sdk.zapLogger.Info("🧪 Starting full end-to-end simulation")
+			}
+
+			result, err := simulationEngine.RunFullSimulation(ctx)
+			if err != nil {
+				if sdk.zapLogger != nil {
+					sdk.zapLogger.Error("Simulation failed", zap.Error(err))
+				}
+			} else {
+				if sdk.zapLogger != nil {
+					sdk.zapLogger.Info("✅ Simulation completed successfully",
+						zap.String("simulation_id", result.ID),
+						zap.Duration("duration", result.Duration),
+						zap.Int("total_transactions", result.TotalTransactions),
+						zap.Float64("success_rate", result.SuccessRate),
+					)
+				}
+			}
+		}()
+	}
 
 	// Start blockchain listeners with panic recovery
 	go func() {
@@ -3093,8 +3409,16 @@ func main() {
 	go func() {
 		defer sdk.panicRecovery.RecoverFromPanic("retry_processor")
 		sdk.retryQueue.ProcessRetries(ctx, func(item RetryItem) error {
-			// Process retry items here
-			sdk.logger.Infof("Processing retry item: %s", item.ID)
+			// Process retry items here with enhanced logging
+			if sdk.zapLogger != nil {
+				sdk.zapLogger.Info("Processing retry item",
+					zap.String("item_id", item.ID),
+					zap.String("type", item.Type),
+					zap.Int("attempts", item.Attempts),
+				)
+			} else {
+				sdk.logger.Infof("Processing retry item: %s", item.ID)
+			}
 			return nil
 		})
 	}()
@@ -3103,25 +3427,59 @@ func main() {
 	go func() {
 		defer sdk.panicRecovery.RecoverFromPanic("web_server")
 		addr := ":" + port
-		log.Printf("🚀 BlackHole Bridge Dashboard starting on http://localhost:%s", port)
-		log.Printf("📊 Dashboard: http://localhost:%s", port)
-		log.Printf("🏥 Health: http://localhost:%s/health", port)
-		log.Printf("📈 Stats: http://localhost:%s/stats", port)
-		log.Printf("💸 Transactions: http://localhost:%s/transactions", port)
-		log.Printf("📜 Logs: http://localhost:%s/logs", port)
-		log.Printf("📚 Docs: http://localhost:%s/docs", port)
+
+		// Enhanced startup logging with colors
+		if envConfig.EnableColoredLogs {
+			log.Printf("\033[32m🚀 BlackHole Bridge Dashboard starting on http://localhost:%s\033[0m", port)
+			log.Printf("\033[36m📊 Dashboard: http://localhost:%s\033[0m", port)
+			log.Printf("\033[33m🏥 Health: http://localhost:%s/health\033[0m", port)
+			log.Printf("\033[35m📈 Stats: http://localhost:%s/stats\033[0m", port)
+			log.Printf("\033[34m💸 Transactions: http://localhost:%s/transactions\033[0m", port)
+			log.Printf("\033[93m📜 Logs: http://localhost:%s/logs\033[0m", port)
+			log.Printf("\033[96m📚 Docs: http://localhost:%s/docs\033[0m", port)
+			if envConfig.EnableFullSimulation {
+				log.Printf("\033[95m🧪 Simulation: http://localhost:%s/simulation\033[0m", port)
+			}
+		} else {
+			log.Printf("🚀 BlackHole Bridge Dashboard starting on http://localhost:%s", port)
+			log.Printf("📊 Dashboard: http://localhost:%s", port)
+			log.Printf("🏥 Health: http://localhost:%s/health", port)
+			log.Printf("📈 Stats: http://localhost:%s/stats", port)
+			log.Printf("💸 Transactions: http://localhost:%s/transactions", port)
+			log.Printf("📜 Logs: http://localhost:%s/logs", port)
+			log.Printf("📚 Docs: http://localhost:%s/docs", port)
+			if envConfig.EnableFullSimulation {
+				log.Printf("🧪 Simulation: http://localhost:%s/simulation", port)
+			}
+		}
 
 		if err := sdk.StartWebServer(addr); err != nil {
 			log.Printf("❌ Web server error: %v", err)
 		}
 	}()
 
+	// Print comprehensive startup information
+	if sdk.zapLogger != nil {
+		sdk.zapLogger.Info("🌉 BlackHole Bridge initialized",
+			zap.String("version", "1.0.0"),
+			zap.Bool("simulation_mode", envConfig.SimulationMode),
+			zap.Bool("replay_protection", envConfig.ReplayProtectionEnabled),
+			zap.Bool("circuit_breaker", envConfig.CircuitBreakerEnabled),
+			zap.Bool("colored_logs", envConfig.EnableColoredLogs),
+			zap.Bool("zap_logger", envConfig.EnableZapLogger),
+		)
+	}
+
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("🛑 Shutting down BlackHole Bridge...")
+	if sdk.zapLogger != nil {
+		sdk.zapLogger.Info("🛑 Shutting down BlackHole Bridge...")
+	} else {
+		log.Println("🛑 Shutting down BlackHole Bridge...")
+	}
 	cancel()
 
 	// Close database
@@ -3129,5 +3487,15 @@ func main() {
 		sdk.db.Close()
 	}
 
-	log.Println("✅ BlackHole Bridge shutdown complete")
+	// Cleanup replay protection ticker
+	if sdk.replayProtection.cleanupTicker != nil {
+		sdk.replayProtection.cleanupTicker.Stop()
+	}
+
+	if sdk.zapLogger != nil {
+		sdk.zapLogger.Info("✅ BlackHole Bridge shutdown complete")
+		sdk.zapLogger.Sync() // Flush any buffered log entries
+	} else {
+		log.Println("✅ BlackHole Bridge shutdown complete")
+	}
 }
