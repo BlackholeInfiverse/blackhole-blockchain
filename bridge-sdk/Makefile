@@ -1,13 +1,49 @@
 # BlackHole Bridge Makefile
 # ========================
 
-.PHONY: help build start stop restart logs clean test dev prod backup restore
+.PHONY: help build start stop restart logs clean test dev prod backup restore quick-start deploy-local deploy-dev deploy-staging deploy-prod
 
 # Default target
 help: ## Show this help message
-	@echo "BlackHole Bridge - Available Commands:"
-	@echo "======================================"
+	@echo "🌉 BlackHole Bridge - Available Commands:"
+	@echo "=========================================="
+	@echo ""
+	@echo "🚀 ONE-LINER DEPLOYMENTS:"
+	@echo "  quick-start     - Ultimate one-command deployment (local)"
+	@echo "  deploy-local    - Deploy locally with full stack"
+	@echo "  deploy-dev      - Deploy development environment (testnets)"
+	@echo "  deploy-staging  - Deploy staging environment"
+	@echo "  deploy-prod     - Deploy production environment"
+	@echo ""
+	@echo "🔧 DEVELOPMENT COMMANDS:"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+# 🚀 ONE-LINER DEPLOYMENT COMMANDS
+quick-start: ## Ultimate one-command deployment (local)
+	@echo "🚀 BlackHole Bridge - Ultimate One-Liner Deployment"
+	@echo "===================================================="
+	@chmod +x deploy-one-liner.sh
+	@./deploy-one-liner.sh local
+
+deploy-local: ## Deploy locally with full stack
+	@echo "🏠 Deploying locally..."
+	@chmod +x deploy-one-liner.sh
+	@./deploy-one-liner.sh local
+
+deploy-dev: ## Deploy development environment (testnets)
+	@echo "🧪 Deploying development environment..."
+	@chmod +x deploy-one-liner.sh
+	@./deploy-one-liner.sh dev
+
+deploy-staging: ## Deploy staging environment
+	@echo "🎭 Deploying staging environment..."
+	@chmod +x deploy-one-liner.sh
+	@./deploy-one-liner.sh staging
+
+deploy-prod: ## Deploy production environment
+	@echo "🏭 Deploying production environment..."
+	@chmod +x deploy-one-liner.sh
+	@./deploy-one-liner.sh prod
 
 # Environment setup
 setup: ## Initial setup and environment preparation

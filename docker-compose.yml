@@ -1,4 +1,5 @@
-version: '3.8'
+# Docker Compose file for BlackHole Bridge
+# No version needed for modern Docker Compose
 
 services:
   # MongoDB Database

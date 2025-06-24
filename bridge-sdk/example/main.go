@@ -92,7 +92,8 @@ type Transaction struct {
 	ProcessingTime  string    `json:"processing_time,omitempty"`
 }
 
-// Event represents a blockchain event
+
+
 type Event struct {
 	ID            string                 `json:"id"`
 	Type          string                 `json:"type"`
