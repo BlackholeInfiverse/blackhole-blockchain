@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -178,27 +179,47 @@ func EncryptData(key []byte, plaintext []byte) (string, error) {
 
 // DecryptData decrypts AES-256-GCM ciphertext (base64 encoded)
 func DecryptData(key []byte, ciphertextBase64 string) ([]byte, error) {
+	if len(key) != 32 {
+		return nil, fmt.Errorf("invalid key length: got %d, want 32", len(key))
+	}
+
+	// Validate and decode base64
 	ciphertext, err := base64.RawStdEncoding.DecodeString(ciphertextBase64)
 	if err != nil {
-		return nil, err
+		// Try standard base64 as fallback
+		ciphertext, err = base64.StdEncoding.DecodeString(ciphertextBase64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode base64: %v", err)
+		}
 	}
+
+	// Create AES cipher
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create AES cipher: %v", err)
 	}
+
+	// Create GCM mode
 	aesGCM, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create GCM: %v", err)
 	}
+
+	// Validate ciphertext length
 	if len(ciphertext) < aesGCM.NonceSize() {
-		return nil, errors.New("ciphertext too short")
+		return nil, fmt.Errorf("ciphertext too short: got %d bytes, need at least %d bytes", len(ciphertext), aesGCM.NonceSize())
 	}
+
+	// Extract nonce and ciphertext
 	nonce := ciphertext[:aesGCM.NonceSize()]
 	ciphertext = ciphertext[aesGCM.NonceSize():]
+
+	// Decrypt
 	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decryption failed: %v", err)
 	}
+
 	return plaintext, nil
 }
 
@@ -247,22 +268,83 @@ func (skm *SecureKeyManager) initializeHSMMasterKey() error {
 // SecureEncryptData encrypts data with enhanced security
 func (skm *SecureKeyManager) SecureEncryptData(plaintext []byte, securityLevel string) (string, error) {
 	if skm.hsmEnabled && securityLevel == "hsm" {
+		fmt.Printf("🔐 Using HSM encryption for security level: %s\n", securityLevel)
 		return skm.encryptWithHSM(plaintext)
 	}
 
-	// Use enhanced encryption with master key
-	derivedKey := skm.deriveEncryptionKey(plaintext[:min(len(plaintext), 16)])
-	return EncryptData(derivedKey, plaintext)
+	fmt.Printf("🔐 Using enhanced encryption with security level: %s\n", securityLevel)
+
+	// Generate a random salt for key derivation
+	salt := make([]byte, 16)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return "", fmt.Errorf("failed to generate salt: %v", err)
+	}
+
+	// Derive key using the random salt
+	derivedKey := skm.deriveEncryptionKey(salt)
+	fmt.Printf("📝 Generated random salt for key derivation\n")
+
+	// Encrypt the data
+	encryptedData, err := EncryptData(derivedKey, plaintext)
+	if err != nil {
+		return "", err
+	}
+
+	// Prepend the salt to the encrypted data
+	saltBase64 := base64.RawStdEncoding.EncodeToString(salt)
+	return saltBase64 + ":" + encryptedData, nil
 }
 
 // SecureDecryptData decrypts data with enhanced security
 func (skm *SecureKeyManager) SecureDecryptData(ciphertextBase64 string, securityLevel string) ([]byte, error) {
 	if skm.hsmEnabled && securityLevel == "hsm" {
+		fmt.Printf("🔓 Using HSM decryption for security level: %s\n", securityLevel)
 		return skm.decryptWithHSM(ciphertextBase64)
 	}
 
-	// For now, use standard decryption - would need to store derivation info
-	return DecryptData(skm.masterKey, ciphertextBase64)
+	fmt.Printf("🔓 Attempting decryption with security level: %s\n", securityLevel)
+
+	// First try the new format with salt
+	parts := strings.Split(ciphertextBase64, ":")
+	if len(parts) == 2 {
+		fmt.Println("📝 Found salt in ciphertext, using new format")
+		salt, err := base64.RawStdEncoding.DecodeString(parts[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode salt: %v", err)
+		}
+		fmt.Printf("📝 Successfully decoded salt (length: %d)\n", len(salt))
+
+		// Derive key using the stored salt
+		derivedKey := skm.deriveEncryptionKey(salt)
+		fmt.Printf("🔑 Derived key from salt (length: %d)\n", len(derivedKey))
+
+		// Try decrypting with the derived key
+		plaintext, err := DecryptData(derivedKey, parts[1])
+		if err == nil {
+			fmt.Println("✅ Decryption successful with stored salt")
+			return plaintext, nil
+		}
+		fmt.Printf("ℹ️ Decryption with stored salt failed: %v\n", err)
+
+		// If that fails, try decrypting just the ciphertext part with master key
+		plaintext, err = DecryptData(skm.masterKey, parts[1])
+		if err == nil {
+			fmt.Println("✅ Decryption successful with master key")
+			return plaintext, nil
+		}
+		fmt.Printf("ℹ️ Decryption with master key failed: %v\n", err)
+	}
+
+	// Try master key on full ciphertext as fallback
+	fmt.Println("📝 Trying master key on full ciphertext...")
+	plaintext, err := DecryptData(skm.masterKey, ciphertextBase64)
+	if err == nil {
+		fmt.Println("✅ Decryption successful with master key on full ciphertext")
+		return plaintext, nil
+	}
+	fmt.Printf("❌ All decryption attempts failed. Last error: %v\n", err)
+
+	return nil, fmt.Errorf("all decryption methods failed: %v", err)
 }
 
 // encryptWithHSM encrypts data using HSM
@@ -716,6 +798,11 @@ func GetWalletDetails(ctx context.Context, user *User, walletName string, passwo
 		return nil, nil, nil, fmt.Errorf("wallet not found: %v", err)
 	}
 
+	// Validate wallet encryption format
+	if err := ValidateWalletEncryption(&wallet); err != nil {
+		return nil, nil, nil, fmt.Errorf("wallet data validation failed: %v", err)
+	}
+
 	// Update last accessed time
 	now := time.Now()
 	WalletCollection.UpdateOne(ctx, bson.M{
@@ -730,8 +817,6 @@ func GetWalletDetails(ctx context.Context, user *User, walletName string, passwo
 	if GlobalKeyManager != nil {
 		if cachedKey, found := GlobalKeyManager.GetCachedKey(walletID); found {
 			fmt.Printf("🔑 Using cached key for wallet: %s\n", walletName)
-			// For simplicity, return the cached key as both private key and mnemonic
-			// In production, would cache them separately
 			return &wallet, cachedKey, nil, nil
 		}
 	}
@@ -744,32 +829,40 @@ func GetWalletDetails(ctx context.Context, user *User, walletName string, passwo
 
 	// Use enhanced decryption if available
 	if GlobalKeyManager != nil && wallet.SecurityLevel != "" {
+		fmt.Printf("🔐 Attempting enhanced decryption with security level: %s\n", wallet.SecurityLevel)
 		privKeyBytes, err = GlobalKeyManager.SecureDecryptData(wallet.EncryptedPrivKey, wallet.SecurityLevel)
 		if err != nil {
+			fmt.Printf("⚠️ Enhanced decryption failed, falling back to standard decryption: %v\n", err)
 			// Fallback to standard decryption
 			privKeyBytes, err = DecryptData(encryptionKey, wallet.EncryptedPrivKey)
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to decrypt private key: %v", err)
+				return nil, nil, nil, fmt.Errorf("failed to decrypt private key (both enhanced and standard): %v", err)
 			}
 		}
 
-		mnemonicBytes, err = GlobalKeyManager.SecureDecryptData(wallet.EncryptedMnemonic, wallet.SecurityLevel)
-		if err != nil {
-			// Fallback to standard decryption
-			mnemonicBytes, err = DecryptData(encryptionKey, wallet.EncryptedMnemonic)
+		if wallet.EncryptedMnemonic != "" {
+			mnemonicBytes, err = GlobalKeyManager.SecureDecryptData(wallet.EncryptedMnemonic, wallet.SecurityLevel)
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to decrypt mnemonic: %v", err)
+				fmt.Printf("⚠️ Enhanced mnemonic decryption failed, falling back to standard decryption: %v\n", err)
+				// Fallback to standard decryption
+				mnemonicBytes, err = DecryptData(encryptionKey, wallet.EncryptedMnemonic)
+				if err != nil {
+					return nil, nil, nil, fmt.Errorf("failed to decrypt mnemonic (both enhanced and standard): %v", err)
+				}
 			}
 		}
 	} else {
 		// Standard decryption
+		fmt.Println("🔐 Using standard decryption")
 		privKeyBytes, err = DecryptData(encryptionKey, wallet.EncryptedPrivKey)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to decrypt private key: %v", err)
 		}
-		mnemonicBytes, err = DecryptData(encryptionKey, wallet.EncryptedMnemonic)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to decrypt mnemonic: %v", err)
+		if wallet.EncryptedMnemonic != "" {
+			mnemonicBytes, err = DecryptData(encryptionKey, wallet.EncryptedMnemonic)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("failed to decrypt mnemonic: %v", err)
+			}
 		}
 	}
 
@@ -783,4 +876,41 @@ func GetWalletDetails(ctx context.Context, user *User, walletName string, passwo
 
 	fmt.Printf("🔓 Wallet accessed: %s (Security: %s)\n", walletName, wallet.SecurityLevel)
 	return &wallet, privKeyBytes, mnemonicBytes, nil
+}
+
+// ValidateWalletEncryption checks if the wallet's encrypted data is properly formatted
+func ValidateWalletEncryption(wallet *Wallet) error {
+	// Check if encrypted private key is valid base64
+	if _, err := base64.RawStdEncoding.DecodeString(wallet.EncryptedPrivKey); err != nil {
+		// Try checking if it's in the new format with salt
+		parts := strings.Split(wallet.EncryptedPrivKey, ":")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid private key encryption format: %v", err)
+		}
+		if _, err := base64.RawStdEncoding.DecodeString(parts[0]); err != nil {
+			return fmt.Errorf("invalid salt encoding in private key: %v", err)
+		}
+		if _, err := base64.RawStdEncoding.DecodeString(parts[1]); err != nil {
+			return fmt.Errorf("invalid ciphertext encoding in private key: %v", err)
+		}
+	}
+
+	// Check if encrypted mnemonic is valid base64 (if present)
+	if wallet.EncryptedMnemonic != "" {
+		if _, err := base64.RawStdEncoding.DecodeString(wallet.EncryptedMnemonic); err != nil {
+			// Try checking if it's in the new format with salt
+			parts := strings.Split(wallet.EncryptedMnemonic, ":")
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid mnemonic encryption format: %v", err)
+			}
+			if _, err := base64.RawStdEncoding.DecodeString(parts[0]); err != nil {
+				return fmt.Errorf("invalid salt encoding in mnemonic: %v", err)
+			}
+			if _, err := base64.RawStdEncoding.DecodeString(parts[1]); err != nil {
+				return fmt.Errorf("invalid ciphertext encoding in mnemonic: %v", err)
+			}
+		}
+	}
+
+	return nil
 }
