@@ -509,3 +509,58 @@
 12:29:38.407879 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
 12:29:38.410982 db@janitor F·6 G·0
 12:29:38.410982 db@open done T·4.14ms
+=============== Jun 25, 2025 (IST) ===============
+10:31:43.103754 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+10:31:43.115888 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+10:31:43.115888 db@open opening
+10:31:43.116418 journal@recovery F·1
+10:31:43.116994 journal@recovery recovering @118
+10:31:43.117507 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+10:31:43.127000 db@janitor table missing @51
+10:31:43.127000 db@janitor table missing @48
+10:31:43.127000 db@janitor table missing @47
+10:31:43.127000 db@janitor table missing @24
+=============== Jun 25, 2025 (IST) ===============
+10:31:54.357043 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+10:31:54.357560 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+10:31:54.357560 db@open opening
+10:31:54.358078 journal@recovery F·1
+10:31:54.358078 journal@recovery recovering @120
+10:31:54.358605 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+10:31:54.362833 db@janitor table missing @51
+10:31:54.362833 db@janitor table missing @48
+10:31:54.362833 db@janitor table missing @47
+10:31:54.362833 db@janitor table missing @24
+=============== Jun 25, 2025 (IST) ===============
+10:44:52.334485 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+10:44:52.335000 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+10:44:52.335000 db@open opening
+10:44:52.335522 journal@recovery F·1
+10:44:52.335522 journal@recovery recovering @122
+10:44:52.336046 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+10:44:52.347530 db@janitor table missing @47
+10:44:52.347530 db@janitor table missing @24
+10:44:52.347530 db@janitor table missing @51
+10:44:52.347530 db@janitor table missing @48
+=============== Jun 25, 2025 (IST) ===============
+10:47:50.964262 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+10:47:50.965305 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+10:47:50.965305 db@open opening
+10:47:50.965305 journal@recovery F·1
+10:47:50.965305 journal@recovery recovering @124
+10:47:50.965828 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+10:47:50.969523 db@janitor table missing @47
+10:47:50.969523 db@janitor table missing @24
+10:47:50.969523 db@janitor table missing @51
+10:47:50.969523 db@janitor table missing @48
+=============== Jun 25, 2025 (IST) ===============
+10:53:20.944356 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+10:53:20.945409 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+10:53:20.945409 db@open opening
+10:53:20.945409 journal@recovery F·1
+10:53:20.945409 journal@recovery recovering @126
+10:53:20.945942 version@stat F·[2 2] S·7KiB[366B 7KiB] Sc·[0.50 0.00]
+10:53:20.949650 db@janitor table missing @51
+10:53:20.949650 db@janitor table missing @48
+10:53:20.949650 db@janitor table missing @47
+10:53:20.949650 db@janitor table missing @24
