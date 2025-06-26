@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: blackhole-blockchain
+    env: go
+    buildCommand: cd core/relay-chain/cmd/relay && go build -o blockchain-node
+    startCommand: ./core/relay-chain/cmd/relay/blockchain-node
+    envVars:
+      - key: BLOCKCHAIN_PORT
+        value: "3000"
+      - key: BLACKHOLE_API_PORT
+        value: "8080"
+      - key: LOG_LEVEL
+        value: "info"
+    healthCheckPath: /health
+    autoDeploy: true 
