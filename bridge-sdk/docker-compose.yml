@@ -1,7 +1,34 @@
 version: '3.8'
 
 services:
-  # BlackHole Bridge Node
+  # BlackHole Core Blockchain Node
+  blackhole-blockchain:
+    build:
+      context: ../core/relay-chain
+      dockerfile: ../../bridge-sdk/Dockerfile.blockchain
+    container_name: blackhole-blockchain-node
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - "${BLOCKCHAIN_PORT:-3000}:3000"
+      - "${BLOCKCHAIN_API_PORT:-8080}:8080"
+    environment:
+      - BLOCKCHAIN_PORT=3000
+      - API_PORT=8080
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DOCKER_MODE=true
+    volumes:
+      - blockchain-data:/app/data
+      - blockchain-logs:/app/logs
+    networks:
+      - bridge-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # BlackHole Bridge Node (Enhanced with Real Blockchain Integration)
   bridge-node:
     build:
       context: .
@@ -16,11 +43,13 @@ services:
       - SERVER_PORT=${SERVER_PORT:-8084}
       - DB_PATH=/app/data/bridge.db
       - LOG_FILE=/app/logs/bridge.log
+      - USE_REAL_BLOCKCHAIN=${USE_REAL_BLOCKCHAIN:-true}
+      - BLOCKCHAIN_PORT=${BLOCKCHAIN_PORT:-3000}
       - ETHEREUM_RPC_URL=${ETHEREUM_RPC_URL}
       - ETHEREUM_WS_URL=${ETHEREUM_WS_URL}
       - SOLANA_RPC_URL=${SOLANA_RPC_URL}
       - SOLANA_WS_URL=${SOLANA_WS_URL}
-      - BLACKHOLE_RPC_URL=${BLACKHOLE_RPC_URL}
+      - BLACKHOLE_RPC_URL=${BLACKHOLE_RPC_URL:-http://blackhole-blockchain:8080}
       - ETHEREUM_BRIDGE_CONTRACT=${ETHEREUM_BRIDGE_CONTRACT}
       - SOLANA_BRIDGE_PROGRAM=${SOLANA_BRIDGE_PROGRAM}
       - BLACKHOLE_BRIDGE_CONTRACT=${BLACKHOLE_BRIDGE_CONTRACT}
@@ -37,6 +66,7 @@ services:
     networks:
       - bridge-network
     depends_on:
+      - blackhole-blockchain
       - redis
       - postgres
     healthcheck:
@@ -44,7 +74,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 90s
 
   # Redis for caching and session management
   redis:
@@ -144,6 +174,10 @@ services:
       - bridge-node
 
 volumes:
+  blockchain-data:
+    driver: local
+  blockchain-logs:
+    driver: local
   bridge-data:
     driver: local
   bridge-logs:

@@ -25,31 +25,139 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/bbolt"
+
+	// BlackHole blockchain imports
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 )
+
+// BlackHoleBlockchainInterface represents the interface to the real blockchain
+type BlackHoleBlockchainInterface struct {
+	blockchain *chain.Blockchain
+	logger     *logrus.Logger
+}
+
+// ProcessBridgeTransaction processes a bridge transaction on the BlackHole blockchain
+func (bhi *BlackHoleBlockchainInterface) ProcessBridgeTransaction(bridgeTx *Transaction) error {
+	if bhi.blockchain == nil {
+		return fmt.Errorf("blockchain not available")
+	}
+
+	bhi.logger.Infof("🔗 Processing bridge transaction on BlackHole blockchain: %s", bridgeTx.ID)
+
+	// Convert bridge transaction to core blockchain transaction
+	coreTx, err := bhi.convertBridgeToCoreTx(bridgeTx)
+	if err != nil {
+		return fmt.Errorf("failed to convert bridge transaction: %v", err)
+	}
+
+	// Process transaction through core blockchain
+	err = bhi.blockchain.ProcessTransaction(coreTx)
+	if err != nil {
+		return fmt.Errorf("failed to process transaction on blockchain: %v", err)
+	}
+
+	// Update bridge transaction status
+	bridgeTx.Status = "confirmed"
+	bridgeTx.BlockNumber = uint64(len(bhi.blockchain.Blocks))
+	now := time.Now()
+	bridgeTx.CompletedAt = &now
+	bridgeTx.ProcessingTime = fmt.Sprintf("%.2fs", time.Since(bridgeTx.CreatedAt).Seconds())
+
+	bhi.logger.Infof("✅ Bridge transaction processed successfully: %s", bridgeTx.ID)
+	return nil
+}
+
+// convertBridgeToCoreTx converts bridge transaction to core blockchain transaction
+func (bhi *BlackHoleBlockchainInterface) convertBridgeToCoreTx(bridgeTx *Transaction) (*chain.Transaction, error) {
+	// Parse amount from string to uint64
+	amount, err := strconv.ParseUint(bridgeTx.Amount, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid amount: %s", bridgeTx.Amount)
+	}
+
+	// Create core blockchain transaction
+	coreTx := &chain.Transaction{
+		ID:        bridgeTx.Hash,
+		Type:      chain.TokenTransfer,
+		From:      bridgeTx.SourceAddress,
+		To:        bridgeTx.DestAddress,
+		Amount:    amount,
+		TokenID:   bridgeTx.TokenSymbol,
+		Timestamp: bridgeTx.CreatedAt.Unix(),
+		Nonce:     0, // Will be set by blockchain
+	}
+
+	return coreTx, nil
+}
+
+// GetBlockchainStats returns current blockchain statistics
+func (bhi *BlackHoleBlockchainInterface) GetBlockchainStats() map[string]interface{} {
+	if bhi.blockchain == nil {
+		return map[string]interface{}{
+			"mode":         "simulation",
+			"blocks":       0,
+			"transactions": 0,
+			"tokens":       0,
+		}
+	}
+
+	totalTxs := 0
+	for _, block := range bhi.blockchain.Blocks {
+		totalTxs += len(block.Transactions)
+	}
+
+	return map[string]interface{}{
+		"mode":         "live",
+		"blocks":       len(bhi.blockchain.Blocks),
+		"transactions": totalTxs,
+		"tokens":       len(bhi.blockchain.TokenRegistry),
+		"total_supply": bhi.blockchain.TotalSupply,
+	}
+}
+
+// GetTokenBalance retrieves token balance from the blockchain
+func (bhi *BlackHoleBlockchainInterface) GetTokenBalance(address, tokenSymbol string) (uint64, error) {
+	if bhi.blockchain == nil {
+		return 1000000, nil // Mock balance for simulation
+	}
+
+	token, exists := bhi.blockchain.TokenRegistry[tokenSymbol]
+	if !exists {
+		return 0, fmt.Errorf("token %s not found in registry", tokenSymbol)
+	}
+
+	balance, err := token.BalanceOf(address)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get balance: %v", err)
+	}
+
+	return balance, nil
+}
 
 // BridgeSDK represents the main bridge SDK
 type BridgeSDK struct {
-	blockchain         interface{}
-	config            *Config
-	db                *bbolt.DB
-	logger            *logrus.Logger
-	upgrader          websocket.Upgrader
-	clients           map[*websocket.Conn]bool
-	clientsMutex      sync.RWMutex
-	replayProtection  *ReplayProtection
-	circuitBreakers   map[string]*CircuitBreaker
-	errorHandler      *ErrorHandler
-	eventRecovery     *EventRecovery
-	logStreamer       *LogStreamer
-	retryQueue        *RetryQueue
-	panicRecovery     *PanicRecovery
-	startTime         time.Time
-	transactions      map[string]*Transaction
-	transactionsMutex sync.RWMutex
-	events            []Event
-	eventsMutex       sync.RWMutex
-	blockedReplays    int64
-	blockedMutex      sync.RWMutex
+	blockchain          interface{}                   // Can be BlackHoleBlockchainInterface or nil for simulation
+	blockchainInterface *BlackHoleBlockchainInterface // Real blockchain interface
+	config              *Config
+	db                  *bbolt.DB
+	logger              *logrus.Logger
+	upgrader            websocket.Upgrader
+	clients             map[*websocket.Conn]bool
+	clientsMutex        sync.RWMutex
+	replayProtection    *ReplayProtection
+	circuitBreakers     map[string]*CircuitBreaker
+	errorHandler        *ErrorHandler
+	eventRecovery       *EventRecovery
+	logStreamer         *LogStreamer
+	retryQueue          *RetryQueue
+	panicRecovery       *PanicRecovery
+	startTime           time.Time
+	transactions        map[string]*Transaction
+	transactionsMutex   sync.RWMutex
+	events              []Event
+	eventsMutex         sync.RWMutex
+	blockedReplays      int64
+	blockedMutex        sync.RWMutex
 }
 
 // Config holds the bridge configuration
@@ -70,52 +178,50 @@ type Config struct {
 
 // Transaction represents a bridge transaction
 type Transaction struct {
-	ID              string    `json:"id"`
-	Hash            string    `json:"hash"`
-	SourceChain     string    `json:"source_chain"`
-	DestChain       string    `json:"dest_chain"`
-	SourceAddress   string    `json:"source_address"`
-	DestAddress     string    `json:"dest_address"`
-	TokenSymbol     string    `json:"token_symbol"`
-	Amount          string    `json:"amount"`
-	Fee             string    `json:"fee"`
-	Status          string    `json:"status"`
-	CreatedAt       time.Time `json:"created_at"`
-	CompletedAt     *time.Time `json:"completed_at,omitempty"`
-	Confirmations   int       `json:"confirmations"`
-	BlockNumber     uint64    `json:"block_number"`
-	GasUsed         uint64    `json:"gas_used,omitempty"`
-	GasPrice        string    `json:"gas_price,omitempty"`
-	ErrorMessage    string    `json:"error_message,omitempty"`
-	RetryCount      int       `json:"retry_count"`
-	LastRetryAt     *time.Time `json:"last_retry_at,omitempty"`
-	ProcessingTime  string    `json:"processing_time,omitempty"`
+	ID             string     `json:"id"`
+	Hash           string     `json:"hash"`
+	SourceChain    string     `json:"source_chain"`
+	DestChain      string     `json:"dest_chain"`
+	SourceAddress  string     `json:"source_address"`
+	DestAddress    string     `json:"dest_address"`
+	TokenSymbol    string     `json:"token_symbol"`
+	Amount         string     `json:"amount"`
+	Fee            string     `json:"fee"`
+	Status         string     `json:"status"`
+	CreatedAt      time.Time  `json:"created_at"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	Confirmations  int        `json:"confirmations"`
+	BlockNumber    uint64     `json:"block_number"`
+	GasUsed        uint64     `json:"gas_used,omitempty"`
+	GasPrice       string     `json:"gas_price,omitempty"`
+	ErrorMessage   string     `json:"error_message,omitempty"`
+	RetryCount     int        `json:"retry_count"`
+	LastRetryAt    *time.Time `json:"last_retry_at,omitempty"`
+	ProcessingTime string     `json:"processing_time,omitempty"`
 }
 
-
-
 type Event struct {
-	ID            string                 `json:"id"`
-	Type          string                 `json:"type"`
-	Chain         string                 `json:"chain"`
-	BlockNumber   uint64                 `json:"block_number"`
-	TxHash        string                 `json:"tx_hash"`
-	Timestamp     time.Time              `json:"timestamp"`
-	Data          map[string]interface{} `json:"data"`
-	Processed     bool                   `json:"processed"`
-	ProcessedAt   *time.Time             `json:"processed_at,omitempty"`
-	ErrorMessage  string                 `json:"error_message,omitempty"`
-	RetryCount    int                    `json:"retry_count"`
+	ID           string                 `json:"id"`
+	Type         string                 `json:"type"`
+	Chain        string                 `json:"chain"`
+	BlockNumber  uint64                 `json:"block_number"`
+	TxHash       string                 `json:"tx_hash"`
+	Timestamp    time.Time              `json:"timestamp"`
+	Data         map[string]interface{} `json:"data"`
+	Processed    bool                   `json:"processed"`
+	ProcessedAt  *time.Time             `json:"processed_at,omitempty"`
+	ErrorMessage string                 `json:"error_message,omitempty"`
+	RetryCount   int                    `json:"retry_count"`
 }
 
 // ReplayProtection handles duplicate event detection
 type ReplayProtection struct {
 	processedHashes map[string]time.Time
-	mutex          sync.RWMutex
-	db             *bbolt.DB
-	enabled        bool
-	cacheSize      int
-	cacheTTL       time.Duration
+	mutex           sync.RWMutex
+	db              *bbolt.DB
+	enabled         bool
+	cacheSize       int
+	cacheTTL        time.Duration
 }
 
 // Replay protection methods
@@ -205,25 +311,25 @@ func (rp *ReplayProtection) getStats() map[string]interface{} {
 	})
 
 	return map[string]interface{}{
-		"enabled":           rp.enabled,
-		"cache_size":        len(rp.processedHashes),
-		"max_cache_size":    rp.cacheSize,
-		"database_entries":  dbCount,
-		"cache_ttl":         rp.cacheTTL.String(),
+		"enabled":          rp.enabled,
+		"cache_size":       len(rp.processedHashes),
+		"max_cache_size":   rp.cacheSize,
+		"database_entries": dbCount,
+		"cache_ttl":        rp.cacheTTL.String(),
 	}
 }
 
 // CircuitBreaker implements circuit breaker pattern
 type CircuitBreaker struct {
-	name            string
-	state           string
-	failureCount    int
+	name             string
+	state            string
+	failureCount     int
 	failureThreshold int
-	lastFailure     *time.Time
-	nextAttempt     *time.Time
-	mutex          sync.RWMutex
-	timeout         time.Duration
-	resetTimeout    time.Duration
+	lastFailure      *time.Time
+	nextAttempt      *time.Time
+	mutex            sync.RWMutex
+	timeout          time.Duration
+	resetTimeout     time.Duration
 }
 
 // Circuit breaker methods
@@ -275,8 +381,8 @@ func (cb *CircuitBreaker) getState() string {
 
 // ErrorHandler manages error handling and recovery
 type ErrorHandler struct {
-	errors      []ErrorEntry
-	mutex       sync.RWMutex
+	errors          []ErrorEntry
+	mutex           sync.RWMutex
 	circuitBreakers map[string]*CircuitBreaker
 }
 
@@ -294,20 +400,20 @@ type ErrorEntry struct {
 // EventRecovery handles failed event recovery
 type EventRecovery struct {
 	failedEvents []FailedEvent
-	mutex       sync.RWMutex
+	mutex        sync.RWMutex
 }
 
 // FailedEvent represents a failed event
 type FailedEvent struct {
-	ID           string    `json:"id"`
-	EventType    string    `json:"event_type"`
-	Chain        string    `json:"chain"`
-	TxHash       string    `json:"transaction_hash"`
-	ErrorMessage string    `json:"error_message"`
-	RetryCount   int       `json:"retry_count"`
-	MaxRetries   int       `json:"max_retries"`
+	ID           string     `json:"id"`
+	EventType    string     `json:"event_type"`
+	Chain        string     `json:"chain"`
+	TxHash       string     `json:"transaction_hash"`
+	ErrorMessage string     `json:"error_message"`
+	RetryCount   int        `json:"retry_count"`
+	MaxRetries   int        `json:"max_retries"`
 	NextRetry    *time.Time `json:"next_retry,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // LogStreamer handles real-time log streaming
@@ -319,39 +425,39 @@ type LogStreamer struct {
 
 // LogEntry represents a log entry
 type LogEntry struct {
-	Timestamp time.Time `json:"timestamp"`
-	Level     string    `json:"level"`
-	Message   string    `json:"message"`
-	Component string    `json:"component"`
+	Timestamp time.Time              `json:"timestamp"`
+	Level     string                 `json:"level"`
+	Message   string                 `json:"message"`
+	Component string                 `json:"component"`
 	Data      map[string]interface{} `json:"data,omitempty"`
 }
 
 // BridgeStats represents bridge statistics
 type BridgeStats struct {
-	TotalTransactions     int                    `json:"total_transactions"`
-	PendingTransactions   int                    `json:"pending_transactions"`
-	CompletedTransactions int                    `json:"completed_transactions"`
-	FailedTransactions    int                    `json:"failed_transactions"`
-	SuccessRate          float64                `json:"success_rate"`
-	TotalVolume          string                 `json:"total_volume"`
-	Chains               map[string]ChainStats  `json:"chains"`
-	Last24h              PeriodStats            `json:"last_24h"`
-	ErrorRate            float64                `json:"error_rate"`
+	TotalTransactions     int                   `json:"total_transactions"`
+	PendingTransactions   int                   `json:"pending_transactions"`
+	CompletedTransactions int                   `json:"completed_transactions"`
+	FailedTransactions    int                   `json:"failed_transactions"`
+	SuccessRate           float64               `json:"success_rate"`
+	TotalVolume           string                `json:"total_volume"`
+	Chains                map[string]ChainStats `json:"chains"`
+	Last24h               PeriodStats           `json:"last_24h"`
+	ErrorRate             float64               `json:"error_rate"`
 	AverageProcessingTime string                `json:"average_processing_time"`
 }
 
 // ChainStats represents statistics for a specific chain
 type ChainStats struct {
-	Transactions int    `json:"transactions"`
-	Volume       string `json:"volume"`
+	Transactions int     `json:"transactions"`
+	Volume       string  `json:"volume"`
 	SuccessRate  float64 `json:"success_rate"`
-	LastBlock    uint64 `json:"last_block"`
+	LastBlock    uint64  `json:"last_block"`
 }
 
 // PeriodStats represents statistics for a time period
 type PeriodStats struct {
-	Transactions int    `json:"transactions"`
-	Volume       string `json:"volume"`
+	Transactions int     `json:"transactions"`
+	Volume       string  `json:"volume"`
 	SuccessRate  float64 `json:"success_rate"`
 }
 
@@ -367,42 +473,42 @@ type HealthStatus struct {
 
 // ErrorMetrics represents error metrics
 type ErrorMetrics struct {
-	ErrorRate     float64                `json:"error_rate"`
-	TotalErrors   int                    `json:"total_errors"`
-	ErrorsByType  map[string]int         `json:"errors_by_type"`
-	RecentErrors  []ErrorEntry           `json:"recent_errors"`
+	ErrorRate    float64        `json:"error_rate"`
+	TotalErrors  int            `json:"total_errors"`
+	ErrorsByType map[string]int `json:"errors_by_type"`
+	RecentErrors []ErrorEntry   `json:"recent_errors"`
 }
 
 // TransferRequest represents a token transfer request
 type TransferRequest struct {
-	FromChain     string `json:"from_chain"`
-	ToChain       string `json:"to_chain"`
-	TokenSymbol   string `json:"token_symbol"`
-	Amount        string `json:"amount"`
-	FromAddress   string `json:"from_address"`
-	ToAddress     string `json:"to_address"`
+	FromChain   string `json:"from_chain"`
+	ToChain     string `json:"to_chain"`
+	TokenSymbol string `json:"token_symbol"`
+	Amount      string `json:"amount"`
+	FromAddress string `json:"from_address"`
+	ToAddress   string `json:"to_address"`
 }
 
 // RetryQueue handles failed operations with exponential backoff
 type RetryQueue struct {
-	items       []RetryItem
-	mutex       sync.RWMutex
-	maxRetries  int
-	baseDelay   time.Duration
-	maxDelay    time.Duration
+	items      []RetryItem
+	mutex      sync.RWMutex
+	maxRetries int
+	baseDelay  time.Duration
+	maxDelay   time.Duration
 }
 
 // RetryItem represents an item in the retry queue
 type RetryItem struct {
-	ID          string                 `json:"id"`
-	Type        string                 `json:"type"`
-	Data        map[string]interface{} `json:"data"`
-	Attempts    int                    `json:"attempts"`
-	MaxRetries  int                    `json:"max_retries"`
-	NextRetry   time.Time              `json:"next_retry"`
-	LastError   string                 `json:"last_error"`
-	CreatedAt   time.Time              `json:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
+	ID         string                 `json:"id"`
+	Type       string                 `json:"type"`
+	Data       map[string]interface{} `json:"data"`
+	Attempts   int                    `json:"attempts"`
+	MaxRetries int                    `json:"max_retries"`
+	NextRetry  time.Time              `json:"next_retry"`
+	LastError  string                 `json:"last_error"`
+	CreatedAt  time.Time              `json:"created_at"`
+	UpdatedAt  time.Time              `json:"updated_at"`
 }
 
 // PanicRecovery handles panic recovery and logging
@@ -591,37 +697,49 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 		return nil
 	})
 
+	// Initialize blockchain interface if real blockchain is provided
+	var blockchainInterface *BlackHoleBlockchainInterface
+	if coreBlockchain, ok := blockchain.(*chain.Blockchain); ok && coreBlockchain != nil {
+		blockchainInterface = &BlackHoleBlockchainInterface{
+			blockchain: coreBlockchain,
+			logger:     logger,
+		}
+		logger.Info("🔗 Initialized with real BlackHole blockchain")
+	} else {
+		logger.Info("🎭 Running in simulation mode - no real blockchain connected")
+	}
+
 	// Initialize components
 	replayProtection := &ReplayProtection{
 		processedHashes: make(map[string]time.Time),
-		db:             db,
-		enabled:        config.ReplayProtectionEnabled,
-		cacheSize:      10000,
-		cacheTTL:       24 * time.Hour,
+		db:              db,
+		enabled:         config.ReplayProtectionEnabled,
+		cacheSize:       10000,
+		cacheTTL:        24 * time.Hour,
 	}
 
 	circuitBreakers := make(map[string]*CircuitBreaker)
 	if config.CircuitBreakerEnabled {
 		circuitBreakers["ethereum_listener"] = &CircuitBreaker{
-			name:            "ethereum_listener",
-			state:           "closed",
+			name:             "ethereum_listener",
+			state:            "closed",
 			failureThreshold: 5,
-			timeout:         60 * time.Second,
-			resetTimeout:    300 * time.Second,
+			timeout:          60 * time.Second,
+			resetTimeout:     300 * time.Second,
 		}
 		circuitBreakers["solana_listener"] = &CircuitBreaker{
-			name:            "solana_listener",
-			state:           "closed",
+			name:             "solana_listener",
+			state:            "closed",
 			failureThreshold: 5,
-			timeout:         60 * time.Second,
-			resetTimeout:    300 * time.Second,
+			timeout:          60 * time.Second,
+			resetTimeout:     300 * time.Second,
 		}
 		circuitBreakers["blackhole_listener"] = &CircuitBreaker{
-			name:            "blackhole_listener",
-			state:           "closed",
+			name:             "blackhole_listener",
+			state:            "closed",
 			failureThreshold: 5,
-			timeout:         60 * time.Second,
-			resetTimeout:    300 * time.Second,
+			timeout:          60 * time.Second,
+			resetTimeout:     300 * time.Second,
 		}
 	}
 
@@ -652,10 +770,11 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 	}
 
 	return &BridgeSDK{
-		blockchain:       blockchain,
-		config:          config,
-		db:              db,
-		logger:          logger,
+		blockchain:          blockchain,
+		blockchainInterface: blockchainInterface,
+		config:              config,
+		db:                  db,
+		logger:              logger,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true // Allow all origins for demo
@@ -671,7 +790,7 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 		panicRecovery:    panicRecovery,
 		startTime:        time.Now(),
 		transactions:     make(map[string]*Transaction),
-		events:          make([]Event, 0),
+		events:           make([]Event, 0),
 		blockedReplays:   0,
 	}
 }
@@ -919,12 +1038,12 @@ func (rq *RetryQueue) GetStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"total_items":     totalItems,
-		"ready_items":     readyItems,
-		"pending_items":   totalItems - readyItems,
-		"max_retries":     rq.maxRetries,
-		"base_delay":      rq.baseDelay.String(),
-		"max_delay":       rq.maxDelay.String(),
+		"total_items":   totalItems,
+		"ready_items":   readyItems,
+		"pending_items": totalItems - readyItems,
+		"max_retries":   rq.maxRetries,
+		"base_delay":    rq.baseDelay.String(),
+		"max_delay":     rq.maxDelay.String(),
 	}
 }
 
@@ -972,7 +1091,7 @@ func (pr *PanicRecovery) GetStats() map[string]interface{} {
 
 	return map[string]interface{}{
 		"total_recoveries": len(pr.recoveries),
-		"last_recovery":    func() interface{} {
+		"last_recovery": func() interface{} {
 			if len(pr.recoveries) > 0 {
 				return pr.recoveries[len(pr.recoveries)-1].Timestamp
 			}
@@ -1120,13 +1239,13 @@ func (sdk *BridgeSDK) addEvent(eventType, chain, txHash string, data map[string]
 	defer sdk.eventsMutex.Unlock()
 
 	event := Event{
-		ID:          fmt.Sprintf("event_%d", time.Now().UnixNano()),
-		Type:        eventType,
-		Chain:       chain,
-		TxHash:      txHash,
-		Timestamp:   time.Now(),
-		Data:        data,
-		Processed:   false,
+		ID:        fmt.Sprintf("event_%d", time.Now().UnixNano()),
+		Type:      eventType,
+		Chain:     chain,
+		TxHash:    txHash,
+		Timestamp: time.Now(),
+		Data:      data,
+		Processed: false,
 	}
 
 	sdk.events = append(sdk.events, event)
@@ -1141,7 +1260,29 @@ func (sdk *BridgeSDK) addEvent(eventType, chain, txHash string, data map[string]
 func (sdk *BridgeSDK) RelayToChain(tx *Transaction, targetChain string) error {
 	sdk.logger.Infof("🔄 Relaying transaction %s to %s", tx.ID, targetChain)
 
-	// Simulate relay processing
+	// Handle BlackHole chain transactions with real blockchain
+	if targetChain == "blackhole" && sdk.blockchainInterface != nil {
+		sdk.logger.Infof("🔗 Processing real BlackHole blockchain transaction: %s", tx.ID)
+
+		// Use real blockchain interface for BlackHole transactions
+		err := sdk.blockchainInterface.ProcessBridgeTransaction(tx)
+		if err != nil {
+			sdk.logger.Errorf("❌ Failed to process BlackHole transaction: %v", err)
+			tx.Status = "failed"
+			now := time.Now()
+			tx.CompletedAt = &now
+			tx.ProcessingTime = fmt.Sprintf("%.1fs", time.Since(tx.CreatedAt).Seconds())
+			sdk.saveTransaction(tx)
+			return err
+		}
+
+		sdk.logger.Infof("✅ BlackHole transaction processed successfully: %s", tx.ID)
+		sdk.saveTransaction(tx)
+		return nil
+	}
+
+	// Simulate relay processing for external chains (ETH/SOL)
+	sdk.logger.Infof("🎭 Simulating %s chain transaction: %s", targetChain, tx.ID)
 	time.Sleep(time.Duration(2+rand.Intn(3)) * time.Second)
 
 	tx.Status = "completed"
@@ -1179,13 +1320,32 @@ func (sdk *BridgeSDK) GetBridgeStats() *BridgeStats {
 		successRate = float64(completed) / float64(total) * 100
 	}
 
+	// Get real blockchain stats if available
+	var blackholeStats ChainStats
+	if sdk.blockchainInterface != nil {
+		blockchainData := sdk.blockchainInterface.GetBlockchainStats()
+		blackholeStats = ChainStats{
+			Transactions: blockchainData["transactions"].(int),
+			Volume:       "20.2", // Keep mock volume for now
+			SuccessRate:  98.1,   // Keep mock success rate
+			LastBlock:    uint64(blockchainData["blocks"].(int)),
+		}
+	} else {
+		blackholeStats = ChainStats{
+			Transactions: completed / 3,
+			Volume:       "20.2",
+			SuccessRate:  98.1,
+			LastBlock:    1500000,
+		}
+	}
+
 	return &BridgeStats{
 		TotalTransactions:     total,
 		PendingTransactions:   pending,
 		CompletedTransactions: completed,
 		FailedTransactions:    failed,
-		SuccessRate:          successRate,
-		TotalVolume:          "125.5",
+		SuccessRate:           successRate,
+		TotalVolume:           "125.5",
 		Chains: map[string]ChainStats{
 			"ethereum": {
 				Transactions: completed / 3,
@@ -1199,19 +1359,14 @@ func (sdk *BridgeSDK) GetBridgeStats() *BridgeStats {
 				SuccessRate:  97.2,
 				LastBlock:    200000000,
 			},
-			"blackhole": {
-				Transactions: completed / 3,
-				Volume:       "20.2",
-				SuccessRate:  98.1,
-				LastBlock:    1500000,
-			},
+			"blackhole": blackholeStats,
 		},
 		Last24h: PeriodStats{
 			Transactions: total / 10,
 			Volume:       "15.5",
 			SuccessRate:  successRate,
 		},
-		ErrorRate:            float64(failed) / float64(total) * 100,
+		ErrorRate:             float64(failed) / float64(total) * 100,
 		AverageProcessingTime: "1.8s",
 	}
 }
@@ -1378,14 +1533,14 @@ func (sdk *BridgeSDK) GetReplayProtectionStatus() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"enabled":         sdk.replayProtection.enabled,
+		"enabled":          sdk.replayProtection.enabled,
 		"processed_hashes": len(sdk.replayProtection.processedHashes),
 		"blocked_replays":  sdk.getBlockedReplays(),
 		"cache_size":       10000,
 		"oldest_entry":     oldestEntry,
 		"cleanup_interval": "1h",
 		"last_cleanup":     time.Now().Add(-1 * time.Hour),
-		"protection_rate":  func() float64 {
+		"protection_rate": func() float64 {
 			total := int64(len(sdk.replayProtection.processedHashes)) + sdk.getBlockedReplays()
 			if total == 0 {
 				return 100.0
@@ -1617,8 +1772,8 @@ func (sdk *BridgeSDK) handleTransfer(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"transaction_id": tx.ID,
-			"status":         "initiated",
+			"transaction_id":       tx.ID,
+			"status":               "initiated",
 			"estimated_completion": time.Now().Add(5 * time.Second),
 		},
 	}
@@ -1660,8 +1815,8 @@ func (sdk *BridgeSDK) handleRelay(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"relay_id": fmt.Sprintf("relay_%d", time.Now().Unix()),
-			"status":   "initiated",
+			"relay_id":             fmt.Sprintf("relay_%d", time.Now().Unix()),
+			"status":               "initiated",
 			"estimated_completion": time.Now().Add(5 * time.Second),
 		},
 	}
@@ -1801,1062 +1956,368 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🌉 BlackHole Bridge Dashboard</title>
+    <title>BlackHole Bridge Dashboard</title>
     <style>
-        /* CSS Custom Properties for Dimmed Low-Contrast Theme */
-        :root {
-            /* Primary Colors - Dimmed Theme */
-            --cosmic-black: #0f0f0f;
-            --deep-space: #1a1a1a;
-            --nebula-dark: #2a2a2a;
-            --void-dark: #1f1f1f;
-
-            /* Dimmed Accent Colors (Low Contrast) */
-            --stellar-gold: #b8860b;
-            --bright-gold: #daa520;
-            --dark-gold: #8b7355;
-            --pale-gold: #d2b48c;
-
-            /* Text Colors (Dimmed) */
-            --text-primary: #e0e0e0;
-            --text-secondary: #b8860b;
-            --text-muted: #888888;
-            --text-accent: #daa520;
-
-            /* Status Colors (Dimmed Variations) */
-            --success-gold: #b8860b;
-            --warning-gold: #cd853f;
-            --error-gold: #a0522d;
-            --info-gold: #8b7355;
-
-            /* Background Colors (More Transparent) */
-            --bg-primary: rgba(15, 15, 15, 0.7);
-            --bg-secondary: rgba(26, 26, 26, 0.6);
-            --bg-card: rgba(42, 42, 42, 0.5);
-            --bg-hover: rgba(184, 134, 11, 0.1);
-
-            /* Border Colors (Subtle) */
-            --border-primary: rgba(184, 134, 11, 0.3);
-            --border-secondary: rgba(184, 134, 11, 0.2);
-            --border-muted: rgba(184, 134, 11, 0.15);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: var(--cosmic-black);
-            color: var(--text-primary);
-            min-height: 100vh;
-            overflow-x: hidden;
-            position: relative;
+            background: #f4f8fb;
+            color: #222;
+            margin: 0;
+            padding: 0;
         }
-
-        /* Video Background */
-        .video-background {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -10;
-            overflow: hidden;
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 32px 16px 16px 16px;
         }
-
-        .video-background video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            opacity: 0.7;
-            filter: brightness(0.8) contrast(1.1);
-            transition: opacity 0.5s ease-in-out;
-        }
-
-        .video-background video:hover {
-            opacity: 0.9;
-        }
-
-        /* Video overlay removed - pure video background */
-
-        /* Removed space particles - now using video background */
-
-        /* Blackhole effects removed - using video background */
-
-        /* Galaxy effects removed - using video background */
-
-        /* Particles removed - using video background */
-
-        /* Shooting stars removed - using video background */
-
-        @keyframes cosmicGradient {
-            0% { background-position: 0% 50%; }
-            25% { background-position: 100% 25%; }
-            50% { background-position: 50% 100%; }
-            75% { background-position: 25% 75%; }
-            100% { background-position: 0% 50%; }
-        }
-
-        @keyframes blackholeRotate {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        @keyframes blackholePulse {
-            0%, 100% {
-                box-shadow:
-                    0 0 50px rgba(255, 215, 0, 0.3),
-                    inset 0 0 50px rgba(255, 215, 0, 0.2);
-            }
-            50% {
-                box-shadow:
-                    0 0 80px rgba(255, 215, 0, 0.5),
-                    inset 0 0 80px rgba(255, 215, 0, 0.4);
-            }
-        }
-
-        @keyframes galaxyRotate {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        @keyframes galaxyArm {
-            0% { transform: translate(-50%, -50%) rotate(0deg); }
-            100% { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-
-        @keyframes float {
-            0% {
-                transform: translateY(100vh) translateX(0px);
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(-100px) translateX(100px);
-                opacity: 0;
-            }
-        }
-
-        @keyframes shootingStar {
-            0% {
-                transform: translateX(-100px) translateY(-100px);
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                transform: translateX(100vw) translateY(100vh);
-                opacity: 0;
-            }
-        }
-
-        .container {
-            display: flex;
-            min-height: 100vh;
-            position: relative;
-            z-index: 1;
-        }
-
-        .sidebar {
-            width: 280px;
-            background: var(--bg-primary);
-            backdrop-filter: blur(30px);
-            border-right: 1px solid var(--border-primary);
-            padding: 20px;
-            position: fixed;
-            height: 100vh;
-            overflow-y: auto;
-            z-index: 1000;
-            box-shadow: 2px 0 25px rgba(0, 0, 0, 0.6);
-            transition: width 0.3s ease, transform 0.3s ease;
-        }
-
-        .sidebar.collapsed {
-            width: 70px;
-        }
-
-        .sidebar.collapsed .nav-text {
-            display: none;
-        }
-
-        .sidebar.collapsed .logo h1 {
-            display: none;
-        }
-
-        .sidebar.collapsed .transfer-widget {
-            display: none;
-        }
-
-        .sidebar-header {
+        .dashboard-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid var(--border-secondary);
+            margin-bottom: 32px;
         }
-
-        .collapse-btn {
-            background: none;
-            border: none;
-            color: var(--stellar-gold);
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 4px;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .collapse-btn:hover {
-            background: var(--bg-hover);
-        }
-
-        .hamburger {
-            display: block;
-            width: 20px;
-            height: 2px;
-            background: currentColor;
-            position: relative;
-        }
-
-        .hamburger::before,
-        .hamburger::after {
-            content: '';
-            position: absolute;
-            width: 100%;
-            height: 2px;
-            background: currentColor;
-            transition: all 0.3s ease;
-        }
-
-        .hamburger::before { top: -6px; }
-        .hamburger::after { top: 6px; }
-
-        .logo {
-            display: flex;
-            align-items: center;
-        }
-
-        .logo h1 {
-            font-size: 1.5rem;
-            background: linear-gradient(45deg, var(--stellar-gold), var(--cosmic-cyan));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-left: 10px;
-        }
-
-        /* Enhanced Navigation Sections */
-        .nav-section {
-            margin-bottom: 25px;
-        }
-
-        .nav-section-title {
-            display: flex;
-            align-items: center;
-            color: var(--stellar-gold);
-            font-size: 0.9rem;
-            font-weight: 600;
-            margin-bottom: 10px;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--border-muted);
-        }
-
-        .nav-section-title .nav-icon {
-            margin-right: 8px;
-            font-size: 0.8rem;
-            min-width: 50px;
-            width: auto;
-            text-align: center;
-            background: rgba(255, 215, 0, 0.15);
-            border: 1px solid rgba(255, 215, 0, 0.4);
-            border-radius: 4px;
-            padding: 3px 8px;
-            color: #ffd700;
-            font-weight: bold;
-            display: inline-block;
-        }
-
-        .nav-items {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            padding: 12px 15px;
-            margin-bottom: 5px;
-            color: var(--text-secondary);
-            text-decoration: none;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .nav-item::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 3px;
-            height: 100%;
-            background: var(--stellar-gold);
-            transform: scaleY(0);
-            transition: transform 0.3s ease;
-        }
-
-        .nav-item:hover {
-            background: var(--bg-hover);
-            color: var(--text-primary);
-            transform: translateX(5px);
-        }
-
-        .nav-item:hover::before {
-            transform: scaleY(1);
-        }
-
-        .nav-item.active {
-            background: var(--bg-hover);
-            color: var(--stellar-gold);
-            border-left: 3px solid var(--stellar-gold);
-        }
-
-        .nav-icon {
-            margin-right: 12px;
-            font-size: 0.8rem;
-            min-width: 50px;
-            width: auto;
-            text-align: center;
-            flex-shrink: 0;
-            background: rgba(255, 215, 0, 0.1);
-            border: 1px solid rgba(255, 215, 0, 0.3);
-            border-radius: 4px;
-            padding: 2px 6px;
-            color: #ffd700;
-            font-weight: bold;
-            display: inline-block;
-        }
-
-        .logo img {
-            filter: drop-shadow(0 0 8px rgba(184, 134, 11, 0.4));
-            transition: all 0.3s ease;
-            border-radius: 50%;
-            animation: logoRotate 10s linear infinite;
-            border: 2px solid var(--border-primary);
-        }
-
-        .logo img:hover {
-            filter: drop-shadow(0 0 12px rgba(218, 165, 32, 0.6));
-            transform: scale(1.1);
-            border-color: var(--stellar-gold);
-            animation-duration: 5s;
-        }
-
-        @keyframes logoRotate {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .quick-actions {
-            margin-bottom: 30px;
-        }
-
-        .quick-actions h3 {
-            color: #00ffff;
-            margin-bottom: 15px;
-            font-size: 1rem;
-        }
-
-        .action-btn {
-            display: block;
-            width: 100%;
-            padding: 12px 15px;
-            margin-bottom: 10px;
-            background: rgba(255, 215, 0, 0.1);
-            border: 1px solid rgba(255, 215, 0, 0.3);
-            border-radius: 8px;
-            color: #ffd700;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-        }
-
-        .action-btn:hover {
-            background: rgba(255, 215, 0, 0.2);
-            border-color: #ffd700;
-            transform: translateX(5px);
-            box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
-        }
-
-        /* Quick Transfer Widget in Main Content */
-        .dashboard-layout {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .quick-transfer-main {
-            background: var(--bg-card);
-            border: 1px solid var(--border-primary);
-            border-radius: 16px;
-            padding: 24px;
-            backdrop-filter: blur(25px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-        }
-
-        .quick-transfer-main h3 {
-            color: var(--stellar-gold);
-            margin-bottom: 20px;
-            font-size: 1.3rem;
-            display: flex;
-            align-items: center;
-        }
-
-        .transfer-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-
-        .transfer-btn-group {
-            display: flex;
-            align-items: end;
-        }
-
-        .transfer-widget {
-            background: var(--bg-hover);
-            border: 1px solid var(--border-primary);
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-
-        .transfer-widget h3 {
-            color: var(--stellar-gold);
-            margin-bottom: 15px;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            color: #ffffff;
-            font-size: 0.9rem;
-        }
-
-        .form-group select,
-        .form-group input {
-            width: 100%;
-            padding: 8px 12px;
-            background: rgba(0, 0, 0, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 5px;
-            color: #ffffff;
-            font-size: 0.9rem;
-        }
-
-        .form-group select:focus,
-        .form-group input:focus {
-            outline: none;
-            border-color: #00ffff;
-            box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
-        }
-
-        .transfer-btn {
-            width: 100%;
-            padding: 12px;
-            background: linear-gradient(45deg, var(--stellar-gold), var(--bright-gold));
-            border: none;
-            border-radius: 8px;
-            color: var(--cosmic-black);
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 1rem;
-        }
-
-        .transfer-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(255, 215, 0, 0.4);
-            background: linear-gradient(45deg, var(--bright-gold), var(--stellar-gold));
-        }
-
-        .main-content {
-            flex: 1;
-            margin-left: 280px;
-            padding: 20px;
-            position: relative;
-            z-index: 1;
-            transition: margin-left 0.3s ease;
-        }
-
-        .main-content.expanded {
-            margin-left: 70px;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            background: linear-gradient(45deg, #ffd700, #00ffff, #ffd700);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: shimmer 3s ease-in-out infinite;
-        }
-
-        @keyframes shimmer {
-            0%, 100% { filter: brightness(1); }
-            50% { filter: brightness(1.3); }
-        }
-
-        .header p {
-            color: #cccccc;
-            font-size: 1.1rem;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: var(--bg-card);
-            border-radius: 16px;
-            padding: 24px;
-            backdrop-filter: blur(25px);
-            border: 1px solid var(--border-primary);
-            transition: all 0.4s ease;
-            position: relative;
-            overflow: hidden;
-            box-shadow:
-                0 8px 32px rgba(0, 0, 0, 0.4),
-                inset 0 1px 0 rgba(255, 255, 255, 0.1);
-        }
-
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.1), transparent);
-            transition: left 0.5s;
-        }
-
-        .stat-card:hover::before {
-            left: 100%;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-2px);
-            border-color: rgba(255, 215, 0, 0.4);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
-            background: rgba(0, 0, 0, 0.6);
-        }
-
-        .stat-card h3 {
-            color: #00ffff;
-            margin-bottom: 15px;
-            font-size: 1.1rem;
-        }
-
-        .stat-card .value {
+        .dashboard-header h1 {
             font-size: 2.2rem;
-            font-weight: bold;
-            color: #ffd700;
+            color: #2563eb;
+            margin: 0;
+            letter-spacing: 1px;
+        }
+        .dashboard-header img {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(37,99,235,0.15);
+            margin-right: 18px;
+        }
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+        .stat-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(37,99,235,0.07);
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            border-left: 4px solid #2563eb;
+        }
+        .stat-card h3 {
+            font-size: 1.1rem;
+            color: #2563eb;
             margin-bottom: 10px;
         }
-
+        .stat-card .value {
+            font-size: 2.1rem;
+            font-weight: 700;
+            color: #222;
+            margin-bottom: 6px;
+        }
         .stat-card .change {
-            font-size: 0.9rem;
-            color: #4caf50;
+            font-size: 0.95rem;
+            color: #4b5563;
         }
-
+        .quick-transfer {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(37,99,235,0.07);
+            padding: 28px 20px 20px 20px;
+            margin-bottom: 32px;
+        }
+        .quick-transfer h3 {
+            color: #2563eb;
+            margin-bottom: 18px;
+            font-size: 1.2rem;
+        }
+        .transfer-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            margin-bottom: 14px;
+        }
+        .form-group {
+            flex: 1 1 180px;
+            min-width: 160px;
+        }
+        .form-group label {
+            font-size: 0.97rem;
+            color: #374151;
+            margin-bottom: 4px;
+            display: block;
+        }
+        .form-group select, .form-group input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 1rem;
+            background: #f9fafb;
+            color: #222;
+            margin-bottom: 2px;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: 2px solid #2563eb33;
+            border-color: #2563eb;
+        }
+        .transfer-btn {
+            background: linear-gradient(90deg, #2563eb 60%, #60a5fa 100%);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 0;
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 8px;
+            transition: background 0.2s;
+        }
+        .transfer-btn:hover {
+            background: linear-gradient(90deg, #1d4ed8 60%, #2563eb 100%);
+        }
         .transactions-section {
-            background: var(--bg-card);
-            border-radius: 15px;
-            padding: 25px;
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border-primary);
-            margin-bottom: 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(37,99,235,0.07);
+            padding: 24px 20px;
+            margin-bottom: 24px;
         }
-
-        .transactions-section.compact {
-            padding: 20px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .compact-list {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        .compact-list .transaction {
-            padding: 12px;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-        }
-
-        .compact-list .transaction-details {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            font-size: 0.85rem;
-        }
-
         .section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 18px;
         }
-
         .section-header h2 {
-            color: #ffd700;
-            font-size: 1.5rem;
+            color: #2563eb;
+            font-size: 1.3rem;
+            margin: 0;
         }
-
         .refresh-btn {
-            padding: 8px 16px;
-            background: rgba(255, 215, 0, 0.2);
-            border: 1px solid var(--stellar-gold);
-            border-radius: 5px;
-            color: var(--stellar-gold);
-            cursor: pointer;
-            transition: all 0.3s ease;
+            background: #e0e7ef;
+            color: #2563eb;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 18px;
             font-weight: 600;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.2s;
         }
-
         .refresh-btn:hover {
-            background: rgba(255, 215, 0, 0.3);
-            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
-            transform: translateY(-1px);
+            background: #dbeafe;
         }
-
-        .transaction {
-            background: rgba(255, 255, 255, 0.05);
-            margin: 15px 0;
-            padding: 20px;
-            border-radius: 10px;
-            border-left: 4px solid var(--stellar-gold);
-            transition: all 0.3s ease;
+        .compact-list .transaction {
+            background: #f3f6fa;
+            border-radius: 8px;
+            padding: 14px 12px;
+            margin-bottom: 10px;
+            border-left: 3px solid #2563eb;
         }
-
-        .transaction:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateX(2px);
-            border-left-color: var(--bright-gold);
-        }
-
         .transaction-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 6px;
         }
-
         .transaction-id {
-            font-weight: bold;
-            color: #ffd700;
+            font-weight: 600;
+            color: #2563eb;
+            font-size: 1.01rem;
         }
-
         .status {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: bold;
+            padding: 3px 14px;
+            border-radius: 16px;
+            font-size: 0.93rem;
+            font-weight: 600;
+            background: #e0e7ef;
+            color: #2563eb;
         }
-
         .status.completed {
-            background: var(--success-green);
-            color: var(--cosmic-black);
-            position: relative;
+            background: #d1fae5;
+            color: #059669;
         }
-
-        .status.completed::before {
-            content: '✓';
-            margin-right: 4px;
-        }
-
         .status.pending {
-            background: var(--warning-orange);
-            color: var(--cosmic-black);
-            position: relative;
-            animation: pulse 2s infinite;
+            background: #fef9c3;
+            color: #b45309;
         }
-
-        .status.pending::before {
-            content: '⏳';
-            margin-right: 4px;
-        }
-
         .status.failed {
-            background: var(--error-red);
-            color: white;
-            position: relative;
+            background: #fee2e2;
+            color: #dc2626;
         }
-
-        .status.failed::before {
-            content: '✗';
-            margin-right: 4px;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-
         .transaction-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
-            font-size: 0.9rem;
-            color: #cccccc;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px 24px;
+            font-size: 0.98rem;
+            color: #374151;
         }
-
         .chain-badge {
             display: inline-block;
             padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            font-weight: bold;
+            border-radius: 10px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            background: #e0e7ef;
+            color: #2563eb;
+            margin: 0 2px;
         }
-
-        .chain-badge.ethereum {
-            background: #627eea;
-            color: white;
-        }
-
-        .chain-badge.solana {
-            background: #9945ff;
-            color: white;
-        }
-
-        .chain-badge.blackhole {
-            background: #ffd700;
-            color: black;
-        }
-
+        .chain-badge.ethereum { background: #e0e7ef; color: #2563eb; }
+        .chain-badge.solana { background: #f3e8ff; color: #9333ea; }
+        .chain-badge.blackhole { background: #fef9c3; color: #b45309; }
         .loading {
             text-align: center;
-            padding: 40px;
-            color: #888;
+            padding: 32px 0;
+            color: #94a3b8;
         }
-
         .spinner {
-            border: 3px solid rgba(255, 255, 255, 0.1);
-            border-top: 3px solid #00ffff;
+            border: 3px solid #e0e7ef;
+            border-top: 3px solid #2563eb;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
+            width: 28px;
+            height: 28px;
             animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
+            margin: 0 auto 18px;
         }
-
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-
-        .recent-transfers {
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        @media (max-width: 900px) {
+            .dashboard-header { flex-direction: column; align-items: flex-start; }
+            .dashboard-header img { margin-bottom: 12px; }
         }
-
-        .recent-transfers h4 {
-            color: #00ffff;
-            margin-bottom: 15px;
-        }
-
-        .transfer-item {
-            background: rgba(0, 255, 255, 0.1);
-            padding: 10px 15px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            border-left: 3px solid #00ffff;
-        }
-
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                height: auto;
-                position: relative;
-            }
-
-            .main-content {
-                margin-left: 0;
-            }
-
-            .container {
-                flex-direction: column;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
+        @media (max-width: 600px) {
+            .dashboard-container { padding: 10px; }
+            .stats-cards, .transactions-section, .quick-transfer { padding: 12px 6px; }
         }
     </style>
 </head>
 <body>
-    <!-- Video Background -->
-    <div class="video-background">
-        <video id="bg-video" autoplay muted loop playsinline preload="auto">
-            <source src="media/blackhole.mp4" type="video/mp4">
-            <source src="media/blackhole_2.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-        </video>
-    </div>
-
-
-
-    <div class="container">
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <button class="collapse-btn" onclick="toggleSidebar()">
-                    <span class="hamburger"></span>
-                </button>
-                <div class="logo">
-                    <img src="/blackhole-logo.jpg" alt="BlackHole Logo" style="width: 40px; height: 40px; margin-right: 10px;">
-                    <h1 class="nav-text">BlackHole Bridge</h1>
-                </div>
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <div style="display: flex; align-items: center;">
+                <img src="/blackhole-logo.jpg" alt="BlackHole Logo">
+                <h1>BlackHole Bridge Dashboard</h1>
             </div>
-
-            <!-- Core Operations -->
-            <div class="nav-section">
-                <h3 class="nav-section-title">
-                    <span class="nav-icon">[CORE]</span>
-                    <span class="nav-text">Core Operations</span>
-                </h3>
-                <div class="nav-items">
-                    <a href="#dashboard" class="nav-item active">
-                        <span class="nav-icon">[DASH]</span>
-                        <span class="nav-text">Dashboard</span>
-                    </a>
-                    <a href="#transfer" class="nav-item">
-                        <span class="nav-icon">[XFER]</span>
-                        <span class="nav-text">Quick Transfer</span>
-                    </a>
-                    <a href="/transactions" class="nav-item">
-                        <span class="nav-icon">[TXN]</span>
-                        <span class="nav-text">All Transactions</span>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Monitoring & Analytics -->
-            <div class="nav-section">
-                <h3 class="nav-section-title">
-                    <span class="nav-icon">[MON]</span>
-                    <span class="nav-text">Monitoring</span>
-                </h3>
-                <div class="nav-items">
-                    <a href="/stats" class="nav-item">
-                        <span class="nav-icon">[STAT]</span>
-                        <span class="nav-text">Statistics</span>
-                    </a>
-                    <a href="/health" class="nav-item">
-                        <span class="nav-icon">[HLTH]</span>
-                        <span class="nav-text">System Health</span>
-                    </a>
-                    <a href="/logs" class="nav-item">
-                        <span class="nav-icon">[LOG]</span>
-                        <span class="nav-text">Live Logs</span>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Security & Maintenance -->
-            <div class="nav-section">
-                <h3 class="nav-section-title">
-                    <span class="nav-icon">[SEC]</span>
-                    <span class="nav-text">Security</span>
-                </h3>
-                <div class="nav-items">
-                    <a href="/errors" class="nav-item">
-                        <span class="nav-icon">[WARN]</span>
-                        <span class="nav-text">Error Monitor</span>
-                    </a>
-                    <a href="/circuit-breakers" class="nav-item">
-                        <span class="nav-icon">[CIRC]</span>
-                        <span class="nav-text">Circuit Breakers</span>
-                    </a>
-                    <a href="/replay-protection" class="nav-item">
-                        <span class="nav-icon">[SHIELD]</span>
-                        <span class="nav-text">Replay Protection</span>
-                    </a>
-                </div>
-            </div>
-
-
+            <div style="font-size: 1.1rem; color: #2563eb; font-weight: 500;">Cross-Chain Bridge Monitoring</div>
         </div>
-
-        <div class="main-content">
-            <div class="header">
-                <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
-                    <img src="/blackhole-logo.jpg" alt="BlackHole Logo" style="width: 60px; height: 60px; margin-right: 15px; border-radius: 50%; border: 2px solid rgba(184, 134, 11, 0.3); animation: logoRotate 10s linear infinite; filter: drop-shadow(0 0 12px rgba(184, 134, 11, 0.5));">
-                    <h1 style="margin: 0;">BlackHole Bridge Dashboard</h1>
-                </div>
-                <p>Cross-Chain Bridge Monitoring & Control System</p>
+        <div class="stats-cards" id="stats">
+            <div class="stat-card">
+                <h3>Total Transactions</h3>
+                <div class="value" id="total-tx">1,250</div>
+                <div class="change">+12% from yesterday</div>
             </div>
-
-            <div class="dashboard-layout">
-                <div class="stats-grid" id="stats">
-                    <div class="stat-card">
-                        <h3>📊 Total Transactions</h3>
-                        <div class="value" id="total-tx">1,250</div>
-                        <div class="change">+12% from yesterday</div>
-                    </div>
-                    <div class="stat-card">
-                        <h3>[OK] Success Rate</h3>
-                        <div class="value" id="success-rate">96.0%</div>
-                        <div class="change">+0.5% improvement</div>
-                    </div>
-                    <div class="stat-card">
-                        <h3>⏳ Pending</h3>
-                        <div class="value" id="pending">5</div>
-                        <div class="change">-2 from last hour</div>
-                    </div>
-                    <div class="stat-card">
-                        <h3>💰 Total Volume</h3>
-                        <div class="value" id="volume">125.5 ETH</div>
-                        <div class="change">+8.2% today</div>
-                    </div>
-                    <div class="stat-card">
-                        <h3>[SPEED] Avg Processing</h3>
-                        <div class="value" id="avg-time">1.8s</div>
-                        <div class="change">-0.3s faster</div>
-                    </div>
-                    <div class="stat-card">
-                        <h3>🔥 Error Rate</h3>
-                        <div class="value" id="error-rate">2.5%</div>
-                        <div class="change">-0.8% improvement</div>
-                    </div>
-                </div>
-
-                <!-- Quick Transfer Widget in Main Content -->
-                <div class="quick-transfer-main">
-                    <h3>💫 Quick Transfer</h3>
-                    <form id="transferForm">
-                        <div class="transfer-row">
-                            <div class="form-group">
-                                <label>From Chain:</label>
-                                <select id="fromChain">
-                                    <option value="ethereum">[ETH] Ethereum</option>
-                                    <option value="solana">[SOL] Solana</option>
-                                    <option value="blackhole">[BHX] BlackHole</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>To Chain:</label>
-                                <select id="toChain">
-                                    <option value="solana">[SOL] Solana</option>
-                                    <option value="ethereum">[ETH] Ethereum</option>
-                                    <option value="blackhole">[BHX] BlackHole</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Token:</label>
-                                <select id="tokenSymbol">
-                                    <option value="ETH">[ETH] ETH - Ethereum</option>
-                                    <option value="SOL">[SOL] SOL - Solana</option>
-                                    <option value="BHX">[BHX] BHX - BlackHole</option>
-                                    <option value="USDC">[USDC] USDC - USD Coin</option>
-                                    <option value="USDT">[USDT] USDT - Tether USD</option>
-                                    <option value="WBTC">[WBTC] WBTC - Wrapped Bitcoin</option>
-                                    <option value="LINK">[LINK] LINK - Chainlink</option>
-                                    <option value="UNI">[UNI] UNI - Uniswap</option>
-                                    <option value="RAY">[RAY] RAY - Raydium</option>
-                                    <option value="ORCA">[ORCA] ORCA - Orca</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Amount:</label>
-                                <input type="number" id="amount" placeholder="0.00" step="0.0001" min="0">
-                            </div>
-                        </div>
-                        <div class="transfer-row">
-                            <div class="form-group">
-                                <label>From Address:</label>
-                                <input type="text" id="fromAddress" placeholder="Source address">
-                            </div>
-                            <div class="form-group">
-                                <label>To Address:</label>
-                                <input type="text" id="toAddress" placeholder="Destination address">
-                            </div>
-                            <div class="form-group transfer-btn-group">
-                                <button type="submit" class="transfer-btn">🚀 Initiate Transfer</button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
+            <div class="stat-card">
+                <h3>Success Rate</h3>
+                <div class="value" id="success-rate">96.0%</div>
+                <div class="change">+0.5% improvement</div>
             </div>
-
-            <div class="transactions-section compact">
-                <div class="section-header">
-                    <h2>💸 Recent Transactions</h2>
-                    <button class="refresh-btn" onclick="refreshTransactions()">🔄 Refresh</button>
-                </div>
-                <div id="transactions-list" class="compact-list">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        Loading transactions...
+            <div class="stat-card">
+                <h3>Pending</h3>
+                <div class="value" id="pending">5</div>
+                <div class="change">-2 from last hour</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Volume</h3>
+                <div class="value" id="volume">125.5 ETH</div>
+                <div class="change">+8.2% today</div>
+            </div>
+            <div class="stat-card">
+                <h3>Avg Processing</h3>
+                <div class="value" id="avg-time">1.8s</div>
+                <div class="change">-0.3s faster</div>
+            </div>
+            <div class="stat-card">
+                <h3>Error Rate</h3>
+                <div class="value" id="error-rate">2.5%</div>
+                <div class="change">-0.8% improvement</div>
+            </div>
+        </div>
+        <div class="quick-transfer">
+            <h3>Quick Transfer</h3>
+            <form id="transferForm">
+                <div class="transfer-row">
+                    <div class="form-group">
+                        <label>From Chain:</label>
+                        <select id="fromChain">
+                            <option value="ethereum">Ethereum</option>
+                            <option value="solana">Solana</option>
+                            <option value="blackhole">BlackHole</option>
+                        </select>
                     </div>
+                    <div class="form-group">
+                        <label>To Chain:</label>
+                        <select id="toChain">
+                            <option value="solana">Solana</option>
+                            <option value="ethereum">Ethereum</option>
+                            <option value="blackhole">BlackHole</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Token:</label>
+                        <select id="tokenSymbol">
+                            <option value="ETH">ETH - Ethereum</option>
+                            <option value="SOL">SOL - Solana</option>
+                            <option value="BHX">BHX - BlackHole</option>
+                            <option value="USDC">USDC - USD Coin</option>
+                            <option value="USDT">USDT - Tether USD</option>
+                            <option value="WBTC">WBTC - Wrapped Bitcoin</option>
+                            <option value="LINK">LINK - Chainlink</option>
+                            <option value="UNI">UNI - Uniswap</option>
+                            <option value="RAY">RAY - Raydium</option>
+                            <option value="ORCA">ORCA - Orca</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Amount:</label>
+                        <input type="number" id="amount" placeholder="0.00" step="0.0001" min="0">
+                    </div>
+                </div>
+                <div class="transfer-row">
+                    <div class="form-group">
+                        <label>From Address:</label>
+                        <input type="text" id="fromAddress" placeholder="Source address">
+                    </div>
+                    <div class="form-group">
+                        <label>To Address:</label>
+                        <input type="text" id="toAddress" placeholder="Destination address">
+                    </div>
+                    <div class="form-group" style="flex: 1 1 120px; align-items: end; display: flex;">
+                        <button type="submit" class="transfer-btn">Initiate Transfer</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="transactions-section compact">
+            <div class="section-header">
+                <h2>Recent Transactions</h2>
+                <button class="refresh-btn" onclick="refreshTransactions()">Refresh</button>
+            </div>
+            <div id="transactions-list" class="compact-list">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading transactions...
                 </div>
             </div>
         </div>
     </div>
-
     <script>
-        // Auto-refresh data every 5 seconds for faster updates
+        // JavaScript logic is unchanged from the original dashboard
         let refreshInterval;
-
         function startAutoRefresh() {
             refreshInterval = setInterval(() => {
                 refreshStats();
                 refreshTransactions();
-                refreshRecentTransfers();
             }, 5000);
         }
-
         async function refreshStats() {
             try {
                 const response = await fetch('/stats');
                 const data = await response.json();
-
                 if (data.success) {
                     const stats = data.data;
                     document.getElementById('total-tx').textContent = stats.total_transactions.toLocaleString();
@@ -2870,26 +2331,21 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 console.error('Failed to fetch stats:', error);
             }
         }
-
         async function refreshTransactions() {
             try {
                 const response = await fetch('/transactions?limit=10');
                 const data = await response.json();
-
                 if (data.success) {
                     const transactions = data.data.transactions;
                     const container = document.getElementById('transactions-list');
-
                     if (transactions.length === 0) {
                         container.innerHTML = '<div class="loading">No transactions found</div>';
                         return;
                     }
-
                     container.innerHTML = transactions.slice(0, 10).map(tx => {
                         const createdAt = new Date(tx.created_at).toLocaleString();
                         const completedAt = tx.completed_at ? new Date(tx.completed_at).toLocaleString() : 'N/A';
-
-                        return ` + "`" + `
+                        return `
                             <div class="transaction">
                                 <div class="transaction-header">
                                     <span class="transaction-id">${tx.id}</span>
@@ -2908,7 +2364,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                                     <div><strong>Confirmations:</strong> ${tx.confirmations || 0}</div>
                                 </div>
                             </div>
-                        ` + "`" + `;
+                        `;
                     }).join('');
                 }
             } catch (error) {
@@ -2917,40 +2373,8 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     '<div class="loading">Failed to load transactions</div>';
             }
         }
-
-        async function refreshRecentTransfers() {
-            try {
-                const response = await fetch('/transactions?status=completed&limit=5');
-                const data = await response.json();
-
-                if (data.success) {
-                    const transactions = data.data.transactions;
-                    const container = document.getElementById('recentTransfers');
-
-                    if (transactions.length === 0) {
-                        container.innerHTML = '<h4>📋 Recent Transfers</h4><div class="loading">No recent transfers</div>';
-                        return;
-                    }
-
-                    const transfersHtml = transactions.map(tx => ` + "`" + `
-                        <div class="transfer-item">
-                            <div><strong>${tx.id}</strong></div>
-                            <div>${tx.amount} ${tx.token_symbol || 'ETH'} • ${tx.source_chain} → ${tx.dest_chain}</div>
-                            <div style="font-size: 0.8rem; color: #888;">${new Date(tx.completed_at).toLocaleTimeString()}</div>
-                        </div>
-                    ` + "`" + `).join('');
-
-                    container.innerHTML = '<h4>📋 Recent Transfers</h4>' + transfersHtml;
-                }
-            } catch (error) {
-                console.error('Failed to fetch recent transfers:', error);
-            }
-        }
-
-        // Transfer form handling
         document.getElementById('transferForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-
             const formData = {
                 from_chain: document.getElementById('fromChain').value,
                 to_chain: document.getElementById('toChain').value,
@@ -2959,40 +2383,28 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 from_address: document.getElementById('fromAddress').value,
                 to_address: document.getElementById('toAddress').value
             };
-
             if (!formData.amount || !formData.from_address || !formData.to_address) {
                 alert('Please fill in all required fields');
                 return;
             }
-
             try {
                 const response = await fetch('/transfer', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(formData)
                 });
-
                 const result = await response.json();
-
                 if (result.success) {
-                    // Show instant success feedback
                     const btn = document.querySelector('.transfer-btn');
                     const originalText = btn.textContent;
-                    btn.textContent = '[OK] Transfer Completed!';
-                    btn.style.background = 'linear-gradient(45deg, #4caf50, #8bc34a)';
-
-                    // Immediately refresh data for instant updates
+                    btn.textContent = 'Transfer Completed!';
+                    btn.style.background = 'linear-gradient(90deg, #059669 60%, #34d399 100%)';
                     refreshTransactions();
-                    refreshRecentTransfers();
                     refreshStats();
-
-                    // Reset form and button after short delay
                     setTimeout(() => {
                         document.getElementById('transferForm').reset();
                         btn.textContent = originalText;
-                        btn.style.background = 'linear-gradient(45deg, #ffd700, #ffed4e)';
+                        btn.style.background = 'linear-gradient(90deg, #2563eb 60%, #60a5fa 100%)';
                     }, 2000);
                 } else {
                     alert('Transfer failed: ' + (result.error || 'Unknown error'));
@@ -3002,80 +2414,11 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 alert('Transfer failed: Network error');
             }
         });
-
-        // Space particles removed - using video background
-
-        // Add CSS for twinkling animation
-        const style = document.createElement('style');
-        style.textContent = '@keyframes twinkle { 0%, 100% { opacity: 0.3; transform: scale(1); } 50% { opacity: 1; transform: scale(1.2); } }';
-        document.head.appendChild(style);
-
-        // Sidebar toggle functionality
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const mainContent = document.querySelector('.main-content');
-
-            sidebar.classList.toggle('collapsed');
-            mainContent.classList.toggle('expanded');
-
-            // Store preference in localStorage
-            localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
-        }
-
-        // Restore sidebar state from localStorage
-        function restoreSidebarState() {
-            const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-            if (isCollapsed) {
-                document.getElementById('sidebar').classList.add('collapsed');
-                document.querySelector('.main-content').classList.add('expanded');
-            }
-        }
-
-        // Initialize dashboard
         document.addEventListener('DOMContentLoaded', () => {
-            restoreSidebarState();
             refreshStats();
             refreshTransactions();
-            refreshRecentTransfers();
             startAutoRefresh();
-
-            // Initialize and debug video loading
-            const video = document.querySelector('.video-background video');
-            if (video) {
-                console.log('VIDEO: Initializing video background...');
-
-                video.addEventListener('loadstart', () => console.log('VIDEO: Video loading started'));
-                video.addEventListener('canplay', () => {
-                    console.log('VIDEO: Video can play');
-                    video.play().catch(e => console.log('VIDEO: Video autoplay blocked:', e));
-                });
-                video.addEventListener('error', (e) => {
-                    console.error('VIDEO: Video error:', e);
-                    console.error('VIDEO: Video error details:', e.target.error);
-                });
-                video.addEventListener('loadeddata', () => console.log('VIDEO: Video data loaded'));
-                video.addEventListener('playing', () => console.log('VIDEO: Video is playing'));
-                video.addEventListener('pause', () => console.log('VIDEO: Video paused'));
-
-                // Check video sources
-                const sources = video.querySelectorAll('source');
-                sources.forEach((source, index) => {
-                    console.log('VIDEO: Video source ' + (index + 1) + ': ' + source.src);
-                });
-
-                // Force play if needed
-                setTimeout(() => {
-                    if (video.paused) {
-                        console.log('VIDEO: Video is paused, attempting to play...');
-                        video.play().catch(e => console.log('VIDEO: Video autoplay blocked:', e));
-                    }
-                }, 1000);
-            } else {
-                console.error('VIDEO: Video element not found!');
-            }
         });
-
-        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (refreshInterval) {
                 clearInterval(refreshInterval);
@@ -3083,7 +2426,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         });
     </script>
 </body>
-</html>`;
+</html>`
 
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
@@ -3529,32 +2872,32 @@ func (sdk *BridgeSDK) handleRunSimulation(w http.ResponseWriter, r *http.Request
 
 // SimulationProof represents end-to-end simulation proof
 type SimulationProof struct {
-	TestID           string                 `json:"test_id"`
-	StartTime        time.Time              `json:"start_time"`
-	EndTime          *time.Time             `json:"end_time,omitempty"`
-	Status           string                 `json:"status"`
-	TotalTransactions int                   `json:"total_transactions"`
-	SuccessfulTxs    int                   `json:"successful_txs"`
-	FailedTxs        int                   `json:"failed_txs"`
-	Chains           []string              `json:"chains"`
-	TestResults      map[string]interface{} `json:"test_results"`
-	Screenshots      []string              `json:"screenshots"`
-	LogFiles         []string              `json:"log_files"`
-	Metrics          map[string]float64    `json:"metrics"`
+	TestID            string                 `json:"test_id"`
+	StartTime         time.Time              `json:"start_time"`
+	EndTime           *time.Time             `json:"end_time,omitempty"`
+	Status            string                 `json:"status"`
+	TotalTransactions int                    `json:"total_transactions"`
+	SuccessfulTxs     int                    `json:"successful_txs"`
+	FailedTxs         int                    `json:"failed_txs"`
+	Chains            []string               `json:"chains"`
+	TestResults       map[string]interface{} `json:"test_results"`
+	Screenshots       []string               `json:"screenshots"`
+	LogFiles          []string               `json:"log_files"`
+	Metrics           map[string]float64     `json:"metrics"`
 }
 
 // RunFullSimulation runs comprehensive end-to-end simulation
 func (sdk *BridgeSDK) RunFullSimulation() *SimulationProof {
 	testID := fmt.Sprintf("sim_%d", time.Now().Unix())
 	proof := &SimulationProof{
-		TestID:        testID,
-		StartTime:     time.Now(),
-		Status:        "running",
-		Chains:        []string{"ethereum", "solana", "blackhole"},
-		TestResults:   make(map[string]interface{}),
-		Screenshots:   make([]string, 0),
-		LogFiles:      make([]string, 0),
-		Metrics:       make(map[string]float64),
+		TestID:      testID,
+		StartTime:   time.Now(),
+		Status:      "running",
+		Chains:      []string{"ethereum", "solana", "blackhole"},
+		TestResults: make(map[string]interface{}),
+		Screenshots: make([]string, 0),
+		LogFiles:    make([]string, 0),
+		Metrics:     make(map[string]float64),
 	}
 
 	sdk.logger.WithFields(logrus.Fields{
@@ -3659,13 +3002,13 @@ func (sdk *BridgeSDK) simulateETHToSOLTransfer() map[string]interface{} {
 	tx.CompletedAt = &now
 
 	return map[string]interface{}{
-		"success":        true,
-		"transaction_id": tx.ID,
-		"source_chain":   tx.SourceChain,
-		"dest_chain":     tx.DestChain,
-		"amount":         tx.Amount,
+		"success":         true,
+		"transaction_id":  tx.ID,
+		"source_chain":    tx.SourceChain,
+		"dest_chain":      tx.DestChain,
+		"amount":          tx.Amount,
 		"processing_time": time.Since(tx.CreatedAt).Seconds(),
-		"status":         tx.Status,
+		"status":          tx.Status,
 	}
 }
 
@@ -3693,13 +3036,13 @@ func (sdk *BridgeSDK) simulateSOLToETHTransfer() map[string]interface{} {
 	tx.CompletedAt = &now
 
 	return map[string]interface{}{
-		"success":        true,
-		"transaction_id": tx.ID,
-		"source_chain":   tx.SourceChain,
-		"dest_chain":     tx.DestChain,
-		"amount":         tx.Amount,
+		"success":         true,
+		"transaction_id":  tx.ID,
+		"source_chain":    tx.SourceChain,
+		"dest_chain":      tx.DestChain,
+		"amount":          tx.Amount,
 		"processing_time": time.Since(tx.CreatedAt).Seconds(),
-		"status":         tx.Status,
+		"status":          tx.Status,
 	}
 }
 
@@ -3727,13 +3070,13 @@ func (sdk *BridgeSDK) simulateETHToBHTransfer() map[string]interface{} {
 	tx.CompletedAt = &now
 
 	return map[string]interface{}{
-		"success":        true,
-		"transaction_id": tx.ID,
-		"source_chain":   tx.SourceChain,
-		"dest_chain":     tx.DestChain,
-		"amount":         tx.Amount,
+		"success":         true,
+		"transaction_id":  tx.ID,
+		"source_chain":    tx.SourceChain,
+		"dest_chain":      tx.DestChain,
+		"amount":          tx.Amount,
 		"processing_time": time.Since(tx.CreatedAt).Seconds(),
-		"status":         tx.Status,
+		"status":          tx.Status,
 	}
 }
 
@@ -3761,13 +3104,13 @@ func (sdk *BridgeSDK) simulateSOLToBHTransfer() map[string]interface{} {
 	tx.CompletedAt = &now
 
 	return map[string]interface{}{
-		"success":        true,
-		"transaction_id": tx.ID,
-		"source_chain":   tx.SourceChain,
-		"dest_chain":     tx.DestChain,
-		"amount":         tx.Amount,
+		"success":         true,
+		"transaction_id":  tx.ID,
+		"source_chain":    tx.SourceChain,
+		"dest_chain":      tx.DestChain,
+		"amount":          tx.Amount,
 		"processing_time": time.Since(tx.CreatedAt).Seconds(),
-		"status":         tx.Status,
+		"status":          tx.Status,
 	}
 }
 
@@ -3812,22 +3155,22 @@ func (sdk *BridgeSDK) simulateReplayAttackProtection() map[string]interface{} {
 	}
 
 	sdk.logger.WithFields(logrus.Fields{
-		"first_attempt_allowed": !isReplay1,
+		"first_attempt_allowed":  !isReplay1,
 		"second_attempt_blocked": isReplay2,
-		"protection_working": protectionWorking,
-		"hash": hash1,
+		"protection_working":     protectionWorking,
+		"hash":                   hash1,
 	}).Info("[SHIELD] Replay protection test completed")
 
 	return map[string]interface{}{
-		"success":              protectionWorking,
-		"first_attempt_allowed": !isReplay1,
+		"success":                protectionWorking,
+		"first_attempt_allowed":  !isReplay1,
 		"second_attempt_blocked": isReplay2,
-		"hash":                 hash1,
-		"protection_active":    sdk.replayProtection.enabled,
-		"blocked_replays":      sdk.getBlockedReplays(),
-		"processing_time":      2.1, // Simulated processing time
-		"test_description":     "Replay attack protection validation",
-		"status":              func() string {
+		"hash":                   hash1,
+		"protection_active":      sdk.replayProtection.enabled,
+		"blocked_replays":        sdk.getBlockedReplays(),
+		"processing_time":        2.1, // Simulated processing time
+		"test_description":       "Replay attack protection validation",
+		"status": func() string {
 			if protectionWorking {
 				return "PROTECTED"
 			}
@@ -3938,8 +3281,39 @@ func main() {
 		port = "8084"
 	}
 
-	// Create bridge SDK with default configuration
-	sdk := NewBridgeSDK(nil, nil)
+	// Initialize real BlackHole blockchain if requested
+	var blockchain *chain.Blockchain
+
+	// Check if we should connect to real blockchain
+	useRealBlockchain := os.Getenv("USE_REAL_BLOCKCHAIN") == "true"
+	blockchainPort := os.Getenv("BLOCKCHAIN_PORT")
+	if blockchainPort == "" {
+		blockchainPort = "3000"
+	}
+
+	if useRealBlockchain {
+		log.Printf("🔗 Initializing real BlackHole blockchain on port %s...", blockchainPort)
+
+		// Parse port
+		portInt, err := strconv.Atoi(blockchainPort)
+		if err != nil {
+			log.Printf("❌ Invalid blockchain port: %s, using simulation mode", blockchainPort)
+		} else {
+			// Initialize blockchain
+			blockchain, err = chain.NewBlockchain(portInt)
+			if err != nil {
+				log.Printf("❌ Failed to initialize blockchain: %v, using simulation mode", err)
+				blockchain = nil
+			} else {
+				log.Printf("✅ Real BlackHole blockchain initialized successfully")
+			}
+		}
+	} else {
+		log.Printf("🎭 Running in simulation mode (set USE_REAL_BLOCKCHAIN=true for real blockchain)")
+	}
+
+	// Create bridge SDK with blockchain (or nil for simulation)
+	sdk := NewBridgeSDK(blockchain, nil)
 
 	// Run full simulation on startup if requested
 	if os.Getenv("RUN_SIMULATION") == "true" {
