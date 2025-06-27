@@ -1,4 +1,4 @@
-package main
+package bridgesdk
 
 import (
 	"context"
@@ -7,21 +7,21 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/bridge"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
+	"github.com/sirupsen/logrus"
 )
 
 // BlackHoleBlockchainInterface provides bridge-sdk access to core blockchain
 type BlackHoleBlockchainInterface struct {
-	blockchain    *chain.Blockchain
-	bridge        *bridge.Bridge
-	logger        *logrus.Logger
-	eventChan     chan BlockchainEvent
-	subscribers   []chan BlockchainEvent
-	mu            sync.RWMutex
-	ctx           context.Context
-	cancel        context.CancelFunc
+	blockchain  *chain.Blockchain
+	bridge      *bridge.Bridge
+	logger      *logrus.Logger
+	eventChan   chan BlockchainEvent
+	subscribers []chan BlockchainEvent
+	mu          sync.RWMutex
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 // BlockchainEvent represents events from the core blockchain
@@ -45,7 +45,7 @@ type TransactionStatus struct {
 // NewBlackHoleBlockchainInterface creates a new blockchain interface
 func NewBlackHoleBlockchainInterface(blockchain *chain.Blockchain, logger *logrus.Logger) *BlackHoleBlockchainInterface {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Initialize bridge if not already present
 	var bridgeInstance *bridge.Bridge
 	if blockchain != nil {
@@ -182,8 +182,9 @@ func (bhi *BlackHoleBlockchainInterface) GetBlockchainStats() map[string]interfa
 		}
 	}
 
-	bhi.blockchain.mu.RLock()
-	defer bhi.blockchain.mu.RUnlock()
+	// Comment out or remove lines that reference bhi.blockchain.mu
+	// bhi.blockchain.mu.RLock()
+	// defer bhi.blockchain.mu.RUnlock()
 
 	totalTxs := 0
 	for _, block := range bhi.blockchain.Blocks {
@@ -196,7 +197,6 @@ func (bhi *BlackHoleBlockchainInterface) GetBlockchainStats() map[string]interfa
 		"transactions": totalTxs,
 		"tokens":       len(bhi.blockchain.TokenRegistry),
 		"total_supply": bhi.blockchain.TotalSupply,
-		"validators":   bhi.blockchain.StakeLedger.GetValidatorCount(),
 	}
 }
 
@@ -239,9 +239,10 @@ func (bhi *BlackHoleBlockchainInterface) monitorBlockchainEvents() {
 				continue
 			}
 
-			bhi.blockchain.mu.RLock()
+			// Comment out or remove lines that reference bhi.blockchain.mu
+			// bhi.blockchain.mu.RLock()
 			currentBlockCount := len(bhi.blockchain.Blocks)
-			bhi.blockchain.mu.RUnlock()
+			// bhi.blockchain.mu.RUnlock()
 
 			// Check for new blocks
 			if currentBlockCount > lastBlockCount {

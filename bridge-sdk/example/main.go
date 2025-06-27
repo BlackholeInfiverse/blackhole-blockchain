@@ -2346,7 +2346,8 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                         const createdAt = new Date(tx.created_at).toLocaleString();
                         const completedAt = tx.completed_at ? new Date(tx.completed_at).toLocaleString() : 'N/A';
                         return `
-                            <div class="transaction">
+                            <
+							div class="transaction">
                                 <div class="transaction-header">
                                     <span class="transaction-id">${tx.id}</span>
                                     <span class="status ${tx.status}">${tx.status.toUpperCase()}</span>

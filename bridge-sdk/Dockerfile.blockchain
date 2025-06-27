@@ -11,7 +11,7 @@ WORKDIR /app
 COPY . .
 
 # Download dependencies
-RUN go mod download
+# RUN go mod download
 
 # Build the blockchain binary
 RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o blackhole-blockchain ./cmd/relay/main.go

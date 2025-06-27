@@ -1,26 +1,24 @@
-package main
+package bridgesdk
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
-
-	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 )
 
 // TestResult represents the result of a test
 type TestResult struct {
-	TestName    string `json:"test_name"`
-	Success     bool   `json:"success"`
-	Message     string `json:"message"`
-	Duration    string `json:"duration"`
-	Timestamp   string `json:"timestamp"`
+	TestName  string `json:"test_name"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	Duration  string `json:"duration"`
+	Timestamp string `json:"timestamp"`
 }
 
 // IntegrationTester handles testing of the bridge-sdk integration
@@ -55,7 +53,7 @@ func NewIntegrationTester() *IntegrationTester {
 // RunAllTests runs all integration tests
 func (it *IntegrationTester) RunAllTests() {
 	fmt.Println("🧪 Starting BlackHole Bridge-SDK Integration Tests")
-	fmt.Println("=" * 60)
+	fmt.Println(strings.Repeat("=", 60))
 
 	tests := []func(){
 		it.TestBridgeHealth,
@@ -182,12 +180,12 @@ func (it *IntegrationTester) TestTokenTransfer() {
 
 	// Create a test transfer request
 	transferData := map[string]interface{}{
-		"from_chain":    "ethereum",
-		"to_chain":      "blackhole",
-		"from_address":  "0x1234567890123456789012345678901234567890",
-		"to_address":    "blackhole1234567890123456789012345678901234567890",
-		"token_symbol":  "ETH",
-		"amount":        "1000000000000000000", // 1 ETH in wei
+		"from_chain":   "ethereum",
+		"to_chain":     "blackhole",
+		"from_address": "0x1234567890123456789012345678901234567890",
+		"to_address":   "blackhole1234567890123456789012345678901234567890",
+		"token_symbol": "ETH",
+		"amount":       "1000000000000000000", // 1 ETH in wei
 	}
 
 	jsonData, err := json.Marshal(transferData)
@@ -349,9 +347,9 @@ func (it *IntegrationTester) addResult(testName string, success bool, message st
 }
 
 func (it *IntegrationTester) PrintResults() {
-	fmt.Println("\n" + "=" * 60)
+	fmt.Println("\n" + strings.Repeat("=", 60))
 	fmt.Println("🧪 Integration Test Results")
-	fmt.Println("=" * 60)
+	fmt.Println(strings.Repeat("=", 60))
 
 	passed := 0
 	total := len(it.results)
@@ -380,9 +378,9 @@ func (it *IntegrationTester) PrintResults() {
 }
 
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && 
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		 findInString(s, substr)))
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
+		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+			findInString(s, substr)))
 }
 
 func findInString(s, substr string) bool {
