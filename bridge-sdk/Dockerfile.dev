@@ -23,7 +23,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 
 # Download dependencies
-RUN go mod download
+# RUN go mod download
 
 # Development stage
 FROM base AS development

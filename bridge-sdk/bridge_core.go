@@ -6,12 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
-	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"go.etcd.io/bbolt"
 )
 
@@ -71,15 +68,15 @@ type Config struct {
 
 // Statistics types
 type BridgeStats struct {
-	TotalTransactions     int                    `json:"total_transactions"`
-	PendingTransactions   int                    `json:"pending_transactions"`
-	CompletedTransactions int                    `json:"completed_transactions"`
-	FailedTransactions    int                    `json:"failed_transactions"`
-	SuccessRate          float64                `json:"success_rate"`
-	TotalVolume          string                 `json:"total_volume"`
-	Chains               map[string]ChainStats  `json:"chains"`
-	Last24h              PeriodStats            `json:"last_24h"`
-	ErrorRate            float64                `json:"error_rate"`
+	TotalTransactions     int                   `json:"total_transactions"`
+	PendingTransactions   int                   `json:"pending_transactions"`
+	CompletedTransactions int                   `json:"completed_transactions"`
+	FailedTransactions    int                   `json:"failed_transactions"`
+	SuccessRate           float64               `json:"success_rate"`
+	TotalVolume           string                `json:"total_volume"`
+	Chains                map[string]ChainStats `json:"chains"`
+	Last24h               PeriodStats           `json:"last_24h"`
+	ErrorRate             float64               `json:"error_rate"`
 	AverageProcessingTime string                `json:"average_processing_time"`
 }
 
@@ -107,8 +104,8 @@ type HealthStatus struct {
 
 // Core bridge methods
 func (sdk *BridgeSDK) GenerateEventHash(tx *Transaction) string {
-	data := fmt.Sprintf("%s:%s:%s:%s:%s:%s", 
-		tx.SourceChain, tx.DestChain, tx.SourceAddress, 
+	data := fmt.Sprintf("%s:%s:%s:%s:%s:%s",
+		tx.SourceChain, tx.DestChain, tx.SourceAddress,
 		tx.DestAddress, tx.TokenSymbol, tx.Amount)
 	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:])
@@ -132,19 +129,19 @@ func (sdk *BridgeSDK) SaveTransaction(tx *Transaction) error {
 	sdk.transactionsMutex.Lock()
 	defer sdk.transactionsMutex.Unlock()
 	sdk.transactions[tx.ID] = tx
-	
+
 	// Also save to database
 	return sdk.db.Update(func(boltTx *bbolt.Tx) error {
 		bucket := boltTx.Bucket([]byte("transactions"))
 		if bucket == nil {
 			return fmt.Errorf("transactions bucket not found")
 		}
-		
+
 		data, err := json.Marshal(tx)
 		if err != nil {
 			return err
 		}
-		
+
 		return bucket.Put([]byte(tx.ID), data)
 	})
 }
@@ -152,19 +149,19 @@ func (sdk *BridgeSDK) SaveTransaction(tx *Transaction) error {
 func (sdk *BridgeSDK) AddEvent(eventType, chain, txHash string, data map[string]interface{}) {
 	sdk.eventsMutex.Lock()
 	defer sdk.eventsMutex.Unlock()
-	
+
 	event := Event{
-		ID:          fmt.Sprintf("event_%d", time.Now().UnixNano()),
-		Type:        eventType,
-		Chain:       chain,
-		TxHash:      txHash,
-		Timestamp:   time.Now(),
-		Data:        data,
-		Processed:   false,
+		ID:        fmt.Sprintf("event_%d", time.Now().UnixNano()),
+		Type:      eventType,
+		Chain:     chain,
+		TxHash:    txHash,
+		Timestamp: time.Now(),
+		Data:      data,
+		Processed: false,
 	}
-	
+
 	sdk.events = append(sdk.events, event)
-	
+
 	// Keep only last 1000 events
 	if len(sdk.events) > 1000 {
 		sdk.events = sdk.events[len(sdk.events)-1000:]
@@ -174,10 +171,10 @@ func (sdk *BridgeSDK) AddEvent(eventType, chain, txHash string, data map[string]
 // StartEthereumListener starts the Ethereum blockchain listener
 func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 	sdk.logger.Info("🔗 Starting Ethereum listener...")
-	
+
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -189,7 +186,7 @@ func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 				sdk.logger.Warn("⚡ Ethereum listener circuit breaker is open")
 				continue
 			}
-			
+
 			// Simulate processing Ethereum transactions
 			if rand.Float32() < 0.3 { // 30% chance of new transaction
 				tx := &Transaction{
@@ -207,7 +204,7 @@ func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 					Confirmations: 0,
 					BlockNumber:   uint64(18500000 + rand.Intn(1000)),
 				}
-				
+
 				// Check replay protection
 				if sdk.replayProtection.enabled {
 					hash := sdk.GenerateEventHash(tx)
@@ -220,15 +217,15 @@ func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 						sdk.logger.Errorf("Failed to mark transaction as processed: %v", err)
 					}
 				}
-				
+
 				sdk.SaveTransaction(tx)
 				sdk.AddEvent("transfer", "ethereum", tx.Hash, map[string]interface{}{
 					"amount": tx.Amount,
 					"token":  tx.TokenSymbol,
 				})
-				
+
 				sdk.logger.Infof("📥 New Ethereum transaction: %s (%s %s)", tx.ID, tx.Amount, tx.TokenSymbol)
-				
+
 				// Simulate processing completion
 				go func(transaction *Transaction) {
 					time.Sleep(time.Duration(5+rand.Intn(10)) * time.Second)
@@ -248,10 +245,10 @@ func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 // StartSolanaListener starts the Solana blockchain listener
 func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 	sdk.logger.Info("🔗 Starting Solana listener...")
-	
+
 	ticker := time.NewTicker(8 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -263,7 +260,7 @@ func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 				sdk.logger.Warn("⚡ Solana listener circuit breaker is open")
 				continue
 			}
-			
+
 			// Simulate processing Solana transactions
 			if rand.Float32() < 0.25 { // 25% chance of new transaction
 				tx := &Transaction{
@@ -281,7 +278,7 @@ func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 					Confirmations: 0,
 					BlockNumber:   uint64(200000000 + rand.Intn(10000)),
 				}
-				
+
 				// Check replay protection
 				if sdk.replayProtection.enabled {
 					hash := sdk.GenerateEventHash(tx)
@@ -294,15 +291,15 @@ func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 						sdk.logger.Errorf("Failed to mark transaction as processed: %v", err)
 					}
 				}
-				
+
 				sdk.SaveTransaction(tx)
 				sdk.AddEvent("transfer", "solana", tx.Hash, map[string]interface{}{
 					"amount": tx.Amount,
 					"token":  tx.TokenSymbol,
 				})
-				
+
 				sdk.logger.Infof("📥 New Solana transaction: %s (%s %s)", tx.ID, tx.Amount, tx.TokenSymbol)
-				
+
 				// Simulate processing completion
 				go func(transaction *Transaction) {
 					time.Sleep(time.Duration(3+rand.Intn(7)) * time.Second)
@@ -331,15 +328,15 @@ func generateSolanaSignature() string {
 // RelayToChain relays a transaction to the specified chain
 func (sdk *BridgeSDK) RelayToChain(tx *Transaction, targetChain string) error {
 	sdk.logger.Infof("🔄 Relaying transaction %s to %s", tx.ID, targetChain)
-	
+
 	// Simulate relay processing
 	time.Sleep(time.Duration(2+rand.Intn(3)) * time.Second)
-	
+
 	tx.Status = "completed"
 	now := time.Now()
 	tx.CompletedAt = &now
 	tx.ProcessingTime = fmt.Sprintf("%.1fs", time.Since(tx.CreatedAt).Seconds())
 	sdk.SaveTransaction(tx)
-	
+
 	return nil
 }
