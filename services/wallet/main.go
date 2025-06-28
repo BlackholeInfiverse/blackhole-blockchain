@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -44,7 +45,16 @@ func main() {
 	var peerAddr = flag.String("peerAddr", "", "Blockchain node peer address (e.g., /ip4/127.0.0.1/tcp/3000/p2p/12D3KooWEHMeACYKmddCU7yvY7FSN78CnhC3bENFmkCcouwu1z8R)")
 	var webMode = flag.Bool("web", false, "Start wallet in web UI mode")
 	var webPort = flag.Int("port", 9000, "Port for web UI server")
+	var dataDir = flag.String("dataDir", "data", "Directory for storing wallet data")
 	flag.Parse()
+
+	// Ensure data directory exists with proper permissions
+	if err := os.MkdirAll(*dataDir, 0700); err != nil {
+		log.Fatalf("Failed to create data directory: %v", err)
+	}
+
+	// Set master key file path
+	wallet.SetMasterKeyFile(filepath.Join(*dataDir, "master.key"))
 
 	reader := bufio.NewReader(os.Stdin)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

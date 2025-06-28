@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -57,6 +59,7 @@ type SecureKeyManager struct {
 	keyCache      map[string]*CachedKey
 	hsmEnabled    bool
 	keyRotationCh chan string
+	masterKeyFile string
 }
 
 // CachedKey represents a temporarily cached decrypted key
@@ -92,6 +95,11 @@ const (
 	// Hardware security module constants
 	HSMKeySize = 32
 	HSMEnabled = false // Set to true when HSM is available
+)
+
+// Constants for master key storage
+const (
+	DefaultMasterKeyFile = "data/master.key"
 )
 
 // MongoDB collections (set these when initializing)
@@ -229,7 +237,73 @@ func NewSecureKeyManager() *SecureKeyManager {
 		keyCache:      make(map[string]*CachedKey),
 		hsmEnabled:    HSMEnabled,
 		keyRotationCh: make(chan string, 100),
+		masterKeyFile: DefaultMasterKeyFile,
 	}
+}
+
+// saveMasterKey saves the master key to a file
+func (skm *SecureKeyManager) saveMasterKey() error {
+	// Create directory if it doesn't exist
+	dir := filepath.Dir(skm.masterKeyFile)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create directory: %v", err)
+	}
+
+	// Create a secure random salt
+	salt := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return fmt.Errorf("failed to generate salt: %v", err)
+	}
+
+	// Derive a key from the salt to encrypt the master key
+	key := argon2.IDKey(salt, salt, ArgonTime, ArgonMemory, ArgonThreads, ArgonKeyLen)
+
+	// Encrypt the master key
+	encryptedKey, err := EncryptData(key, skm.masterKey)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt master key: %v", err)
+	}
+
+	// Combine salt and encrypted key
+	data := append(salt, []byte(encryptedKey)...)
+
+	// Write to file with restricted permissions
+	if err := os.WriteFile(skm.masterKeyFile, data, 0600); err != nil {
+		return fmt.Errorf("failed to write master key file: %v", err)
+	}
+
+	return nil
+}
+
+// loadMasterKey loads the master key from file
+func (skm *SecureKeyManager) loadMasterKey() error {
+	// Read the file
+	data, err := os.ReadFile(skm.masterKeyFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // File doesn't exist, will create new key
+		}
+		return fmt.Errorf("failed to read master key file: %v", err)
+	}
+
+	// Extract salt and encrypted key
+	if len(data) < 32 {
+		return fmt.Errorf("invalid master key file format")
+	}
+	salt := data[:32]
+	encryptedKey := string(data[32:])
+
+	// Derive the key from salt
+	key := argon2.IDKey(salt, salt, ArgonTime, ArgonMemory, ArgonThreads, ArgonKeyLen)
+
+	// Decrypt the master key
+	masterKey, err := DecryptData(key, encryptedKey)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt master key: %v", err)
+	}
+
+	skm.masterKey = masterKey
+	return nil
 }
 
 // InitializeMasterKey initializes the master key for encryption
@@ -239,13 +313,25 @@ func (skm *SecureKeyManager) InitializeMasterKey() error {
 		return skm.initializeHSMMasterKey()
 	}
 
-	// Generate secure random master key
-	masterKey := make([]byte, 32)
-	if _, err := rand.Read(masterKey); err != nil {
-		return fmt.Errorf("failed to generate master key: %v", err)
+	// Try to load existing master key
+	if err := skm.loadMasterKey(); err != nil {
+		return fmt.Errorf("failed to load master key: %v", err)
 	}
 
-	skm.masterKey = masterKey
+	// If no existing key, generate a new one
+	if skm.masterKey == nil {
+		masterKey := make([]byte, 32)
+		if _, err := rand.Read(masterKey); err != nil {
+			return fmt.Errorf("failed to generate master key: %v", err)
+		}
+		skm.masterKey = masterKey
+
+		// Save the new master key
+		if err := skm.saveMasterKey(); err != nil {
+			return fmt.Errorf("failed to save master key: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -913,4 +999,11 @@ func ValidateWalletEncryption(wallet *Wallet) error {
 	}
 
 	return nil
+}
+
+// SetMasterKeyFile sets the path for the master key file
+func SetMasterKeyFile(path string) {
+	if GlobalKeyManager != nil {
+		GlobalKeyManager.masterKeyFile = path
+	}
 }
