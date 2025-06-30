@@ -19,6 +19,7 @@ type AccountState struct {
 	Nonce   uint64
 }
 
+// this is my code
 type Blockchain struct {
 	Blocks           []*Block
 	PendingTxs       []*Transaction
