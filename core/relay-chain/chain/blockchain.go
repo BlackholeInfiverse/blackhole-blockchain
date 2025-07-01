@@ -14,6 +14,16 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
+// AtomicTransaction represents an atomic transaction that can be rolled back
+type AtomicTransaction struct {
+	mu             sync.RWMutex
+	committed      bool
+	rollback       bool
+	operations     []func() error
+	undoOperations []func() error
+	hash           string
+}
+
 type AccountState struct {
 	Balance uint64
 	Nonce   uint64
@@ -41,8 +51,102 @@ type Blockchain struct {
 	OTCManager       interface{} // Will be *otc.OTCManager
 	SlashingManager  *SlashingManager
 }
+
 type RealBlockchain struct {
 	Blockchain *Blockchain // Pointer to the real blockchain
+}
+
+// BeginTransaction starts a new atomic transaction
+func (bc *Blockchain) BeginTransaction() *AtomicTransaction {
+	return &AtomicTransaction{
+		operations:     make([]func() error, 0),
+		undoOperations: make([]func() error, 0),
+		committed:      false,
+		rollback:       false,
+	}
+}
+
+// Transfer adds a token transfer operation to the atomic transaction
+func (tx *AtomicTransaction) Transfer(token *token.Token, from, to string, amount uint64) error {
+	tx.mu.Lock()
+	defer tx.mu.Unlock()
+
+	if tx.committed || tx.rollback {
+		return errors.New("transaction already committed or rolled back")
+	}
+
+	// Add the transfer operation
+	tx.operations = append(tx.operations, func() error {
+		return token.Transfer(from, to, amount)
+	})
+
+	// Add the undo operation (reverse transfer)
+	tx.undoOperations = append(tx.undoOperations, func() error {
+		return token.Transfer(to, from, amount)
+	})
+
+	return nil
+}
+
+// Commit commits all operations in the atomic transaction
+func (tx *AtomicTransaction) Commit() error {
+	tx.mu.Lock()
+	defer tx.mu.Unlock()
+
+	if tx.committed || tx.rollback {
+		return errors.New("transaction already committed or rolled back")
+	}
+
+	// Execute all operations
+	for _, op := range tx.operations {
+		if err := op(); err != nil {
+			// If any operation fails, rollback all previous operations
+			tx.rollback = true
+			for i := len(tx.undoOperations) - 1; i >= 0; i-- {
+				if undoErr := tx.undoOperations[i](); undoErr != nil {
+					// Log the undo error but continue with rollback
+					log.Printf("Error during rollback: %v", undoErr)
+				}
+			}
+			return fmt.Errorf("transaction failed: %v", err)
+		}
+	}
+
+	tx.committed = true
+	tx.hash = fmt.Sprintf("tx_%d", time.Now().UnixNano())
+	return nil
+}
+
+// Rollback rolls back all operations in the atomic transaction
+func (tx *AtomicTransaction) Rollback() error {
+	tx.mu.Lock()
+	defer tx.mu.Unlock()
+
+	if tx.committed {
+		return errors.New("transaction already committed")
+	}
+
+	if tx.rollback {
+		return errors.New("transaction already rolled back")
+	}
+
+	// Execute all undo operations in reverse order
+	for i := len(tx.undoOperations) - 1; i >= 0; i-- {
+		if err := tx.undoOperations[i](); err != nil {
+			// Log the error but continue with remaining rollbacks
+			log.Printf("Error during rollback: %v", err)
+		}
+	}
+
+	tx.rollback = true
+	return nil
+}
+
+// Hash returns the transaction hash
+func (tx *AtomicTransaction) Hash() string {
+	tx.mu.RLock()
+	defer tx.mu.RUnlock()
+	return tx.hash
 }
 
 func NewBlockchain(p2pPort int) (*Blockchain, error) {
@@ -53,7 +157,7 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	
 	// Initialize P2P node
 	node, err := NewNode(context.Background(), p2pPort)
 	if err != nil {
