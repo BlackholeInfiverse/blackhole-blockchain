@@ -10,7 +10,7 @@ services:
     restart: ${RESTART_POLICY:-unless-stopped}
     ports:
       - "${BLOCKCHAIN_PORT:-3000}:3000"
-      - "${BLOCKCHAIN_API_PORT:-8080}:8080"
+      # - "${BLOCKCHAIN_API_PORT:-8080}:8080"  # Commented out to avoid port conflict
     environment:
       - BLOCKCHAIN_PORT=3000
       - API_PORT=8080
@@ -31,8 +31,8 @@ services:
   # BlackHole Bridge Node (Enhanced with Real Blockchain Integration)
   bridge-node:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../
+      dockerfile: bridge-sdk/Dockerfile
     container_name: blackhole-bridge-node
     restart: ${RESTART_POLICY:-unless-stopped}
     ports:
@@ -143,7 +143,7 @@ services:
     container_name: blackhole-bridge-grafana
     restart: ${RESTART_POLICY:-unless-stopped}
     ports:
-      - "3000:3000"
+      - "3001:3000"  # Changed from 3000:3000 to 3001:3000 to avoid port conflict
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin123
       GF_USERS_ALLOW_SIGN_UP: false

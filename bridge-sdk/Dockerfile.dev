@@ -1,5 +1,5 @@
 # Development Dockerfile for BlackHole Bridge
-FROM golang:1.21-alpine AS base
+FROM golang:1.24.3-alpine AS base
 
 # Install development dependencies
 RUN apk add --no-cache \

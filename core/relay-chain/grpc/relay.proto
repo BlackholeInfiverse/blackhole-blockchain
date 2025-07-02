@@ -20,6 +20,15 @@ service RelayService {
     
     // ValidateTransaction validates a transaction before submission
     rpc ValidateTransaction(TransactionRequest) returns (ValidationResponse);
+    
+    // GetLogEvent retrieves log events
+    rpc GetLogEvent(LogEventRequest) returns (LogEventResponse);
+    
+    // GetLogRetry retrieves log retry information
+    rpc GetLogRetry(LogRetryRequest) returns (LogRetryResponse);
+    
+    // GetBridgeStatus retrieves bridge status information
+    rpc GetBridgeStatus(BridgeStatusRequest) returns (BridgeStatusResponse);
 }
 
 // Transaction submission request
@@ -122,4 +131,34 @@ message ValidationResponse {
     uint64 estimated_gas = 4;
     double success_probability = 5;
     repeated string warnings = 6;
+}
+
+// Log event request/response
+message LogEventRequest {}
+message LogEventResponse {
+  repeated Event events = 1;
+  int32 total = 2;
+}
+
+// Log retry request/response
+message LogRetryRequest {}
+message RetryItem {
+  string id = 1;
+  string type = 2;
+  int32 attempts = 3;
+  int32 max_retries = 4;
+  string next_retry = 5;
+  string last_error = 6;
+}
+message LogRetryResponse {
+  string status = 1;
+  repeated RetryItem queue = 2;
+}
+
+// Bridge status request/response
+message BridgeStatusRequest {}
+message BridgeStatusResponse {
+  string status = 1;
+  string uptime = 2;
+  Event last_event = 3;
 }

@@ -66,6 +66,11 @@ func (it *IntegrationTester) RunAllTests() {
 		it.TestReplayProtection,
 		it.TestCircuitBreaker,
 		it.TestErrorHandling,
+		it.TestInfraDashboard,
+		it.TestInfraListenerStatus,
+		it.TestInfraRetryStatus,
+		it.TestInfraRelayStatus,
+		it.TestMockBridge,
 	}
 
 	for _, test := range tests {
@@ -322,6 +327,91 @@ func (it *IntegrationTester) TestErrorHandling() {
 	}
 
 	it.addResult(testName, true, "Error handling system accessible", start)
+}
+
+// TestInfraDashboard tests if the /infra-dashboard endpoint is accessible
+func (it *IntegrationTester) TestInfraDashboard() {
+	start := time.Now()
+	testName := "Infra Dashboard Access"
+	resp, err := http.Get(it.bridgeURL + "/infra-dashboard")
+	if err != nil {
+		it.addResult(testName, false, "Failed to connect: "+err.Error(), start)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		it.addResult(testName, false, fmt.Sprintf("Infra dashboard failed with status: %d", resp.StatusCode), start)
+		return
+	}
+	it.addResult(testName, true, "Infra dashboard accessible", start)
+}
+
+// TestInfraListenerStatus tests if the /infra/listener-status endpoint is accessible
+func (it *IntegrationTester) TestInfraListenerStatus() {
+	start := time.Now()
+	testName := "Infra Listener Status"
+	resp, err := http.Get(it.bridgeURL + "/infra/listener-status")
+	if err != nil {
+		it.addResult(testName, false, "Failed to connect: "+err.Error(), start)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		it.addResult(testName, false, fmt.Sprintf("Listener status failed with status: %d", resp.StatusCode), start)
+		return
+	}
+	it.addResult(testName, true, "Listener status endpoint accessible", start)
+}
+
+// TestInfraRetryStatus tests if the /infra/retry-status endpoint is accessible
+func (it *IntegrationTester) TestInfraRetryStatus() {
+	start := time.Now()
+	testName := "Infra Retry Status"
+	resp, err := http.Get(it.bridgeURL + "/infra/retry-status")
+	if err != nil {
+		it.addResult(testName, false, "Failed to connect: "+err.Error(), start)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		it.addResult(testName, false, fmt.Sprintf("Retry status failed with status: %d", resp.StatusCode), start)
+		return
+	}
+	it.addResult(testName, true, "Retry status endpoint accessible", start)
+}
+
+// TestInfraRelayStatus tests if the /infra/relay-status endpoint is accessible
+func (it *IntegrationTester) TestInfraRelayStatus() {
+	start := time.Now()
+	testName := "Infra Relay Status"
+	resp, err := http.Get(it.bridgeURL + "/infra/relay-status")
+	if err != nil {
+		it.addResult(testName, false, "Failed to connect: "+err.Error(), start)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		it.addResult(testName, false, fmt.Sprintf("Relay status failed with status: %d", resp.StatusCode), start)
+		return
+	}
+	it.addResult(testName, true, "Relay status endpoint accessible", start)
+}
+
+// TestMockBridge tests if the /mock/bridge endpoint is accessible
+func (it *IntegrationTester) TestMockBridge() {
+	start := time.Now()
+	testName := "Mock Bridge Endpoint"
+	resp, err := http.Post(it.bridgeURL+"/mock/bridge", "application/json", nil)
+	if err != nil {
+		it.addResult(testName, false, "Failed to connect: "+err.Error(), start)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		it.addResult(testName, false, fmt.Sprintf("Mock bridge failed with status: %d", resp.StatusCode), start)
+		return
+	}
+	it.addResult(testName, true, "Mock bridge endpoint accessible", start)
 }
 
 // Helper functions
