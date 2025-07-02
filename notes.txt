@@ -1,0 +1,9 @@
+block weight
+✅ Estimated Number of Transactions per Relay Chain Block (Polkadot):
+Average range: 10 to 100+ transactions per block
+
+Under high load: Can reach up to several hundred transactions per block (though not common)
+
+Block time: 6 seconds
+
+block weight
