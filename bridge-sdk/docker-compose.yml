@@ -58,6 +58,7 @@ services:
       - BLACKHOLE_PRIVATE_KEY=${BLACKHOLE_PRIVATE_KEY}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - DEBUG_MODE=${DEBUG_MODE:-false}
+      - DOCKER_MODE=true
       - REDIS_URL=${REDIS_URL}
       - POSTGRES_URL=${POSTGRES_URL}
     volumes:

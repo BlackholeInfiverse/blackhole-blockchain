@@ -1,4 +1,4 @@
-module github.com/blackhole-network/bridge-sdk
+module blackhole-bridge-sdk
 
 go 1.24.2
 
