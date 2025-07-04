@@ -6,12 +6,13 @@ RUN apk add --no-cache git gcc musl-dev
 # Set working directory
 WORKDIR /app
 
-# Copy everything (assuming build context is project root)
-COPY . .
+# Copy the core blockchain module first
+COPY core/ ./core/
 
-WORKDIR /app/bridge-sdk/example
+# Copy the example directory as the main application
+COPY bridge-sdk/example/ ./
 
-# Download dependencies
+# Download dependencies and build
 RUN go mod tidy && go build -o main .
 
 # Final stage
@@ -28,10 +29,10 @@ RUN addgroup -g 1001 -S appgroup && \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/bridge-sdk/example/main .
+COPY --from=builder /app/main .
 
 # Copy static assets
-COPY --from=builder /app/bridge-sdk/example/blackhole-logo.jpg .
+COPY --from=builder /app/blackhole-logo.jpg .
 
 # Create necessary directories
 RUN mkdir -p data logs && \
