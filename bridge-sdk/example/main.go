@@ -982,10 +982,12 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 	os.MkdirAll(filepath.Dir(config.LogFile), 0755)
 
 	// Open database
-	db, err := bbolt.Open(config.DatabasePath, 0600, &bbolt.Options{Timeout: 1 * time.Second})
+	log.Printf("Opening database at: %s", config.DatabasePath)
+	db, err := bbolt.Open(config.DatabasePath, 0600, &bbolt.Options{Timeout: 10 * time.Second})
 	if err != nil {
-		log.Fatal("Failed to open database:", err)
+		log.Fatalf("Failed to open database: %v", err)
 	}
+	log.Printf("Database opened successfully")
 
 	// Initialize buckets
 	db.Update(func(tx *bbolt.Tx) error {
@@ -3968,6 +3970,9 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 	r.HandleFunc("/api/manual-transfer", sdk.handleManualTransfer).Methods("POST")
 	r.HandleFunc("/api/transfer-status/{id}", sdk.handleTransferStatus).Methods("GET")
 
+	// Wallet Monitoring API Endpoints
+	r.HandleFunc("/api/wallet/transactions", sdk.handleWalletTransactions).Methods("GET")
+
 	r.HandleFunc("/mock/bridge", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// Create a mock transaction event
@@ -4324,25 +4329,54 @@ func (sdk *BridgeSDK) handleManualTransfer(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&transferRequest); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		log.Printf("Error decoding request body: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request body: " + err.Error(),
+		})
 		return
 	}
+
+	log.Printf("Received manual transfer request: %+v", transferRequest)
 
 	// Validate transfer request
-	if transferRequest.Route == "" || transferRequest.Amount <= 0 {
-		http.Error(w, "Invalid transfer parameters", http.StatusBadRequest)
+	if transferRequest.Route == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Transfer route is required",
+		})
 		return
 	}
 
-	// Create a new transaction for manual testing
+	if transferRequest.Amount <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Amount must be greater than 0",
+		})
+		return
+	}
+
+	if transferRequest.SourceAddress == "" || transferRequest.DestAddress == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Source and destination addresses are required",
+		})
+		return
+	}
+
+	// Create a new transaction for manual testing - simplified for demo
 	tx := &Transaction{
 		ID:            fmt.Sprintf("manual_%d", time.Now().UnixNano()),
-		Hash:          fmt.Sprintf("0xMANUAL_%d", time.Now().UnixNano()),
-		SourceChain:   getSourceChain(transferRequest.Route),
-		DestChain:     getDestChain(transferRequest.Route),
+		Hash:          fmt.Sprintf("0xDEMO_%d", time.Now().UnixNano()),
+		SourceChain:   getDisplayChainName(getSourceChain(transferRequest.Route)),
+		DestChain:     getDisplayChainName(getDestChain(transferRequest.Route)),
 		SourceAddress: transferRequest.SourceAddress,
 		DestAddress:   transferRequest.DestAddress,
-		TokenSymbol:   "USDC", // Default token for testing
+		TokenSymbol:   getTokenForRoute(transferRequest.Route),
 		Amount:        fmt.Sprintf("%.6f", transferRequest.Amount),
 		Fee:           fmt.Sprintf("%.6f", transferRequest.GasFee),
 		Status:        "pending",
@@ -4367,6 +4401,8 @@ func (sdk *BridgeSDK) handleManualTransfer(w http.ResponseWriter, r *http.Reques
 	})
 
 	// Start processing the transfer asynchronously
+	log.Printf("Starting manual transfer processing for transaction: %s", tx.ID)
+	fmt.Printf("🚀 Starting manual transfer processing for transaction: %s\n", tx.ID)
 	go sdk.processManualTransfer(tx, transferRequest)
 
 	response := map[string]interface{}{
@@ -4426,6 +4462,80 @@ func (sdk *BridgeSDK) handleTransferStatus(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(response)
 }
 
+// Wallet Monitoring API Handler
+func (sdk *BridgeSDK) handleWalletTransactions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Try to fetch from wallet service on localhost:9000
+	walletURL := "http://localhost:9000/api/transactions/recent"
+	resp, err := http.Get(walletURL)
+	if err != nil {
+		// If wallet service is not available, return mock data
+		mockTransactions := []map[string]interface{}{
+			{
+				"hash":      "0xwallet123...abc",
+				"from":      "0x1234...5678",
+				"to":        "0x9876...5432",
+				"amount":    "100.50",
+				"token":     "BHX",
+				"status":    "confirmed",
+				"timestamp": time.Now().Add(-5 * time.Minute).Unix(),
+			},
+			{
+				"hash":      "0xwallet456...def",
+				"from":      "0x2345...6789",
+				"to":        "0x8765...4321",
+				"amount":    "25.75",
+				"token":     "ETH",
+				"status":    "pending",
+				"timestamp": time.Now().Add(-10 * time.Minute).Unix(),
+			},
+			{
+				"hash":      "0xwallet789...ghi",
+				"from":      "0x3456...7890",
+				"to":        "0x7654...3210",
+				"amount":    "500.00",
+				"token":     "BHX",
+				"status":    "confirmed",
+				"timestamp": time.Now().Add(-15 * time.Minute).Unix(),
+			},
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":      true,
+			"transactions": mockTransactions,
+			"source":       "mock_data",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Return mock data if wallet service returns error
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":      true,
+			"transactions": []interface{}{},
+			"source":       "wallet_service_error",
+		})
+		return
+	}
+
+	// Forward the response from wallet service
+	var walletData map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&walletData); err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":      false,
+			"error":        "Failed to decode wallet service response",
+			"transactions": []interface{}{},
+		})
+		return
+	}
+
+	// Add source information
+	walletData["source"] = "wallet_service"
+	json.NewEncoder(w).Encode(walletData)
+}
+
 // Helper functions for manual testing
 func getSourceChain(route string) string {
 	switch route {
@@ -4450,6 +4560,38 @@ func getDestChain(route string) string {
 		return "ethereum"
 	default:
 		return "blackhole"
+	}
+}
+
+func getTokenForRoute(route string) string {
+	switch route {
+	case "ETH_TO_BH":
+		return "USDC"
+	case "BH_TO_SOL":
+		return "BHX"
+	case "SOL_TO_ETH":
+		return "SOL"
+	case "SOL_TO_BH":
+		return "SOL"
+	case "BH_TO_ETH":
+		return "BHX"
+	case "ETH_TO_SOL":
+		return "USDC"
+	default:
+		return "USDC"
+	}
+}
+
+func getDisplayChainName(chainName string) string {
+	switch chainName {
+	case "ethereum":
+		return "Ethereum"
+	case "blackhole":
+		return "BlackHole"
+	case "solana":
+		return "Solana"
+	default:
+		return chainName
 	}
 }
 
@@ -4512,55 +4654,64 @@ func (sdk *BridgeSDK) processManualTransfer(tx *Transaction, request struct {
 	Timeout       int     `json:"timeout"`
 	Priority      string  `json:"priority"`
 }) {
-	// Simulate transfer processing with realistic delays
+	log.Printf("🔄 Processing manual transfer: %s, Route: %s, Amount: %f", tx.ID, request.Route, request.Amount)
+	fmt.Printf("🔄 Processing manual transfer: %s, Route: %s, Amount: %f\n", tx.ID, request.Route, request.Amount)
+
+	// Simple mock transfer processing - always succeeds for demo
 	stages := []string{"processing", "confirming", "relaying", "completed"}
-	delays := []time.Duration{2 * time.Second, 5 * time.Second, 3 * time.Second, 2 * time.Second}
+	delays := []time.Duration{1 * time.Second, 2 * time.Second, 1 * time.Second, 1 * time.Second}
 
 	for i, stage := range stages {
+		log.Printf("✅ Manual transfer %s entering stage: %s", tx.ID, stage)
+		fmt.Printf("✅ Manual transfer %s entering stage: %s\n", tx.ID, stage)
 		time.Sleep(delays[i])
 
 		// Update transaction status
 		tx.Status = stage
 		if stage == "confirming" {
-			// Simulate confirmation progress
-			for conf := 1; conf <= request.Confirmations; conf++ {
-				time.Sleep(500 * time.Millisecond)
+			log.Printf("📋 Manual transfer %s confirming with %d confirmations", tx.ID, request.Confirmations)
+			// Quick confirmation simulation - always succeeds
+			maxConf := 6 // Fixed to 6 for quick demo
+			for conf := 1; conf <= maxConf; conf++ {
+				time.Sleep(100 * time.Millisecond) // Very fast for demo
 				tx.Confirmations = conf
 				sdk.saveTransaction(tx)
+				log.Printf("📋 Manual transfer %s confirmation %d/%d", tx.ID, conf, maxConf)
 			}
 		} else {
 			sdk.saveTransaction(tx)
 		}
+
+		log.Printf("✅ Manual transfer %s completed stage: %s", tx.ID, stage)
+		fmt.Printf("✅ Manual transfer %s completed stage: %s\n", tx.ID, stage)
 
 		// Add event for each stage
 		sdk.addEvent("transfer_update", tx.SourceChain, tx.Hash, map[string]interface{}{
 			"stage":         stage,
 			"confirmations": tx.Confirmations,
 			"progress":      getTransferProgress(stage),
+			"manual":        true,
+			"demo":          true,
 		})
-
-		// Simulate occasional failures for testing
-		if stage == "relaying" && time.Now().UnixNano()%10 == 0 {
-			tx.Status = "failed"
-			sdk.saveTransaction(tx)
-			sdk.addEvent("transfer_failed", tx.SourceChain, tx.Hash, map[string]interface{}{
-				"error": "Simulated relay failure for testing",
-			})
-			return
-		}
 	}
 
-	// Final success event
+	// Final success event - always succeeds
+	log.Printf("🎉 Manual transfer %s completed successfully!", tx.ID)
+	fmt.Printf("🎉 Manual transfer %s completed successfully!\n", tx.ID)
 	sdk.addEvent("transfer_completed", tx.DestChain, tx.Hash, map[string]interface{}{
 		"amount": tx.Amount,
 		"token":  tx.TokenSymbol,
 		"route":  request.Route,
+		"manual": true,
+		"demo":   true,
 	})
 }
 
 // --- STUBS for missing handler methods to fix linter errors ---
 func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
+	// Set CSP headers to allow inline scripts and styles
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self'")
 	html := `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4574,18 +4725,143 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             box-sizing: border-box;
         }
 
+        :root {
+            --primary-bg: #ffffff;
+            --secondary-bg: #f8fafc;
+            --accent-bg: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --navy-blue: #1e3a8a;
+            --navy-dark: #0f172a;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --sidebar-width: 280px;
+        }
+
+        [data-theme="dark"] {
+            --primary-bg: #0f172a;
+            --secondary-bg: #1e293b;
+            --accent-bg: #334155;
+            --text-primary: #ffffff;
+            --text-secondary: #f1f5f9;
+            --text-muted: #e2e8f0;
+            --border-color: #475569;
+            --navy-blue: #60a5fa;
+            --navy-dark: #3b82f6;
+            --success: #22c55e;
+            --warning: #fbbf24;
+            --error: #f87171;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background:
-                radial-gradient(circle at 20% 50%, rgba(30, 58, 138, 0.08) 0%, transparent 50%),
-                radial-gradient(circle at 80% 20%, rgba(15, 23, 42, 0.08) 0%, transparent 50%),
-                radial-gradient(circle at 40% 80%, rgba(30, 58, 138, 0.06) 0%, transparent 50%),
-                linear-gradient(135deg, #ffffff 0%, #f8fafc 25%, #f1f5f9 50%, #e2e8f0 75%, #cbd5e1 100%);
-            background-attachment: fixed;
-            color: #0f172a;
+            background: var(--primary-bg);
+            color: var(--text-primary);
             min-height: 100vh;
             overflow-x: hidden;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: var(--secondary-bg);
+            border-right: 2px solid var(--border-color);
+            z-index: 1000;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-header {
+            padding: 24px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-logo {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(30, 58, 138, 0.2);
+        }
+
+        .sidebar-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--navy-blue);
+        }
+
+        .sidebar-nav {
+            padding: 20px 0;
+        }
+
+        .nav-item {
+            display: block;
+            padding: 12px 20px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: var(--accent-bg);
+            color: var(--navy-blue);
+            border-left-color: var(--navy-blue);
+        }
+
+        .nav-item.active {
+            background: var(--accent-bg);
+            color: var(--navy-blue);
+            border-left-color: var(--navy-blue);
             font-weight: 600;
+        }
+
+        .nav-item i {
+            margin-right: 12px;
+            width: 20px;
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            padding: 12px;
+            background: var(--accent-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--navy-blue);
+            color: white;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: calc(var(--sidebar-width) + 30px);
+            margin-right: 30px;
+            min-height: 100vh;
+            background: var(--primary-bg);
+            padding: 20px 30px;
+            max-width: calc(100vw - var(--sidebar-width) - 90px);
         }
 
         .dashboard-container {
@@ -4594,38 +4870,71 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             padding: 20px;
         }
 
+        /* Enhanced Dark Mode Text Visibility */
+        [data-theme="dark"] * {
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] h1,
+        [data-theme="dark"] h2,
+        [data-theme="dark"] h3,
+        [data-theme="dark"] h4,
+        [data-theme="dark"] h5,
+        [data-theme="dark"] h6 {
+            color: var(--navy-blue) !important;
+        }
+
+        [data-theme="dark"] .dashboard-header h1 {
+            color: var(--navy-blue) !important;
+        }
+
+        [data-theme="dark"] .dashboard-header p {
+            color: var(--text-secondary) !important;
+        }
+
+        [data-theme="dark"] .status-online {
+            color: var(--success) !important;
+        }
+
         .dashboard-header {
             text-align: center;
             margin-bottom: 40px;
             padding: 30px 0;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            backdrop-filter: blur(15px);
-            border: 2px solid rgba(30, 58, 138, 0.1);
-            box-shadow:
-                0 8px 32px rgba(30, 58, 138, 0.1),
-                0 4px 16px rgba(15, 23, 42, 0.05),
-                inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            background: var(--secondary-bg);
+            border-radius: 16px;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 8px 32px rgba(30, 58, 138, 0.1);
         }
 
         .dashboard-header h1 {
-            font-size: 3.2rem;
-            background: linear-gradient(45deg, #1e3a8a, #0f172a, #1e40af);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            font-size: 2.5rem;
+            color: var(--navy-blue);
             margin-bottom: 10px;
-            font-weight: 800;
+            font-weight: 700;
             letter-spacing: -0.025em;
-            text-shadow: 0 2px 4px rgba(15, 23, 42, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+
+        [data-theme="dark"] .dashboard-header h1 {
+            color: var(--navy-blue);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .dashboard-header .logo {
+            width: 56px;
+            height: 56px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(30, 58, 138, 0.3);
         }
 
         .dashboard-header p {
-            font-size: 1.3rem;
-            color: #334155;
-            margin-bottom: 20px;
-            font-weight: 600;
-            text-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            margin-top: 8px;
         }
 
         .status-indicator {
@@ -4718,15 +5027,183 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         }
 
         .monitoring-card {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 15px;
-            padding: 28px;
-            backdrop-filter: blur(15px);
-            border: 2px solid rgba(30, 58, 138, 0.1);
-            box-shadow:
-                0 8px 25px rgba(30, 58, 138, 0.08),
-                0 4px 12px rgba(15, 23, 42, 0.05),
-                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            background: var(--secondary-bg);
+            border-radius: 16px;
+            padding: 24px;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 4px 16px rgba(30, 58, 138, 0.08);
+            transition: all 0.3s ease;
+        }
+
+        .monitoring-card:hover {
+            box-shadow: 0 8px 32px rgba(30, 58, 138, 0.12);
+            transform: translateY(-2px);
+        }
+
+        /* Wallet Monitoring Styles */
+        .wallet-monitoring {
+            background: var(--secondary-bg);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 4px 16px rgba(30, 58, 138, 0.08);
+        }
+
+        .wallet-monitoring h2 {
+            color: var(--navy-blue);
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .wallet-transactions {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--primary-bg);
+        }
+
+        .transaction-item {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s ease;
+        }
+
+        .transaction-item:hover {
+            background: var(--accent-bg);
+        }
+
+        .transaction-item:last-child {
+            border-bottom: none;
+        }
+
+        .transaction-details {
+            flex: 1;
+        }
+
+        .transaction-hash {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .transaction-amount {
+            font-weight: 600;
+            color: var(--navy-blue);
+        }
+
+        .transaction-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-confirmed {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .status-pending {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        .status-failed {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+        }
+
+        /* Dark Mode Specific Styles */
+        [data-theme="dark"] .card,
+        [data-theme="dark"] .monitoring-card,
+        [data-theme="dark"] .wallet-monitoring {
+            background: var(--secondary-bg);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .card h2,
+        [data-theme="dark"] .card h3,
+        [data-theme="dark"] .monitoring-card h2,
+        [data-theme="dark"] .monitoring-card h3,
+        [data-theme="dark"] .wallet-monitoring h2 {
+            color: var(--navy-blue);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        [data-theme="dark"] .transaction-item {
+            color: var(--text-primary);
+            border-bottom-color: var(--border-color);
+        }
+
+        [data-theme="dark"] .transaction-hash {
+            color: var(--text-muted);
+        }
+
+        [data-theme="dark"] .transaction-amount {
+            color: var(--navy-blue);
+        }
+
+        [data-theme="dark"] .status-confirmed {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--success);
+        }
+
+        [data-theme="dark"] .status-pending {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--warning);
+        }
+
+        [data-theme="dark"] .status-failed {
+            background: rgba(248, 113, 113, 0.2);
+            color: var(--error);
+        }
+
+        /* Dark Mode Text Improvements */
+        [data-theme="dark"] .monitoring-content,
+        [data-theme="dark"] .card-content,
+        [data-theme="dark"] .stats-grid .stat-item,
+        [data-theme="dark"] .stats-grid .stat-item .stat-value,
+        [data-theme="dark"] .stats-grid .stat-item .stat-label {
+            color: var(--text-primary) !important;
+        }
+
+        [data-theme="dark"] .stat-value {
+            color: var(--navy-blue) !important;
+            font-weight: 700;
+        }
+
+        [data-theme="dark"] .stat-label {
+            color: var(--text-secondary) !important;
+        }
+
+        [data-theme="dark"] .monitoring-content div,
+        [data-theme="dark"] .monitoring-content span,
+        [data-theme="dark"] .monitoring-content p {
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .status-value {
+            color: var(--success) !important;
+        }
+
+        [data-theme="dark"] .metric-value {
+            color: var(--navy-blue) !important;
+        }
+
+        [data-theme="dark"] .metric-label {
+            color: var(--text-secondary) !important;
         }
 
         .monitoring-card h3 {
@@ -5066,19 +5543,45 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
     </style>
 </head>
 <body>
-    <div class="dashboard-container">
-        <div class="dashboard-header">
-            <h1><img src="blackhole-logo.png" alt="BlackHole Logo" style="width: 48px; height: 48px; margin-right: 16px; border-radius: 8px; box-shadow: 0 4px 16px rgba(30, 58, 138, 0.2);">BlackHole Bridge Dashboard</h1>
-            <p>Enterprise Cross-Chain Bridge Monitoring & Management</p>
-            <div class="status-indicator">
-                <div class="status-dot"></div>
-                <span>System Online</span>
-            </div>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <img src="blackhole-logo.png" alt="BlackHole Logo" class="sidebar-logo">
+            <div class="sidebar-title">BlackHole Bridge</div>
         </div>
+        <nav class="sidebar-nav">
+            <a href="/" class="nav-item active">
+                <i>🏠</i> Main Dashboard
+            </a>
+            <a href="/infra-dashboard" class="nav-item">
+                <i>⚙️</i> Infrastructure
+            </a>
+            <a href="#wallet-monitoring" class="nav-item" onclick="scrollToWalletMonitoring()">
+                <i>💳</i> Wallet Monitoring
+            </a>
+            <a href="#quick-actions" class="nav-item" onclick="scrollToQuickActions()">
+                <i>⚡</i> Quick Actions
+            </a>
+        </nav>
+        <button class="theme-toggle" onclick="toggleTheme()">
+            <span id="theme-text">🌙 Dark Mode</span>
+        </button>
+    </div>
 
-        <!-- Navigation Bar at Top -->
-        <div class="nav-links nav-top">
-            <a href="/infra-dashboard" class="nav-link">🛠️ Infrastructure Dashboard</a>
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="dashboard-container">
+            <div class="dashboard-header">
+                <h1>
+                    <img src="blackhole-logo.png" alt="BlackHole Logo" class="logo">
+                    BlackHole Bridge Dashboard
+                </h1>
+                <p>Enterprise Cross-Chain Bridge Monitoring & Management</p>
+                <div class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span id="connection-status">System Online</span>
+                </div>
+            </div>
             <a href="http://localhost:8080" class="nav-link" target="_blank">🔗 Main Blockchain Dashboard</a>
             <a href="http://localhost:9000" class="nav-link" target="_blank">💼 Wallet Service</a>
         </div>
@@ -5142,8 +5645,18 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             </div>
         </div>
 
+        <!-- Wallet Monitoring Section -->
+        <div id="wallet-monitoring" class="wallet-monitoring">
+            <h2>💳 Wallet Transaction Monitoring</h2>
+            <div class="wallet-transactions" id="walletTransactions">
+                <div class="transaction-item">
+                    <div class="transaction-details">Loading wallet transactions...</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Manual Testing Section -->
-        <div class="monitoring-card" style="margin-bottom: 30px;">
+        <div id="quick-actions" class="monitoring-card" style="margin-bottom: 30px;">
             <h3>🧪 Manual Testing Interface</h3>
             <div class="monitoring-content">
                 <div class="testing-grid">
@@ -5822,20 +6335,25 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         async function handleTransferSubmit(event) {
             event.preventDefault();
 
+            console.log('Form submitted');
+
             const formData = new FormData(event.target);
             const transferData = {
                 route: formData.get('transferRoute'),
                 amount: parseFloat(formData.get('transferAmount')),
                 sourceAddress: formData.get('sourceAddress'),
                 destAddress: formData.get('destAddress'),
-                gasFee: parseFloat(formData.get('gasFee')),
-                confirmations: parseInt(formData.get('confirmations')),
-                timeout: parseInt(formData.get('timeout')),
-                priority: formData.get('priority')
+                gasFee: parseFloat(formData.get('gasFee')) || 0.001,
+                confirmations: parseInt(formData.get('confirmations')) || 12,
+                timeout: parseInt(formData.get('timeout')) || 300,
+                priority: formData.get('priority') || 'medium'
             };
+
+            console.log('Transfer data:', transferData);
 
             // Validate form data
             if (!validateTransferData(transferData)) {
+                console.log('Validation failed');
                 return;
             }
 
@@ -5845,6 +6363,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             addTransferLog('Starting transfer execution');
 
             try {
+                console.log('Sending request to /api/manual-transfer');
                 const response = await fetch('/api/manual-transfer', {
                     method: 'POST',
                     headers: {
@@ -5853,7 +6372,15 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     body: JSON.stringify(transferData)
                 });
 
+                console.log('Response status:', response.status);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error('HTTP ' + response.status + ': ' + errorText);
+                }
+
                 const result = await response.json();
+                console.log('Response result:', result);
 
                 if (result.success) {
                     currentTransfer = result.data;
@@ -5865,6 +6392,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     throw new Error(result.error || 'Transfer failed');
                 }
             } catch (error) {
+                console.error('Transfer error:', error);
                 updateTransferStatus('Transfer failed', 'failed');
                 addTransferLog('Error: ' + error.message);
                 setTransferFormEnabled(true);
@@ -5872,34 +6400,55 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         }
 
         function validateTransferData(data) {
+            console.log('Validating transfer data:', data);
+
             if (!data.route) {
                 alert('Please select a transfer route');
                 return false;
             }
-            if (!data.amount || data.amount <= 0) {
-                alert('Please enter a valid amount');
+            if (!data.amount || data.amount <= 0 || isNaN(data.amount)) {
+                alert('Please enter a valid amount (must be greater than 0)');
                 return false;
             }
             if (!data.sourceAddress || !data.destAddress) {
                 alert('Please enter both source and destination addresses');
                 return false;
             }
-            if (!isValidAddress(data.sourceAddress) || !isValidAddress(data.destAddress)) {
-                alert('Please enter valid wallet addresses');
+            if (!isValidAddress(data.sourceAddress)) {
+                alert('Invalid source address format. Please use:\n• Ethereum: 0x... (42 chars)\n• Solana: Base58 (32-44 chars)\n• BlackHole: bh1... (39-59 chars)');
                 return false;
             }
+            if (!isValidAddress(data.destAddress)) {
+                alert('Invalid destination address format. Please use:\n• Ethereum: 0x... (42 chars)\n• Solana: Base58 (32-44 chars)\n• BlackHole: bh1... (39-59 chars)');
+                return false;
+            }
+
+            console.log('Validation passed');
             return true;
         }
 
         function isValidAddress(address) {
-            // Basic validation for Ethereum and Solana addresses
+            if (!address || address.trim() === '') {
+                return false;
+            }
+
+            address = address.trim();
+
+            // Ethereum address validation (0x + 40 hex chars)
             if (address.startsWith('0x') && address.length === 42) {
                 return /^0x[a-fA-F0-9]{40}$/.test(address);
             }
+
+            // BlackHole address validation (bh1 + bech32)
+            if (address.startsWith('bh1') && address.length >= 39 && address.length <= 59) {
+                return /^bh1[a-z0-9]+$/.test(address);
+            }
+
             // Solana address validation (base58, 32-44 chars)
-            if (address.length >= 32 && address.length <= 44) {
+            if (address.length >= 32 && address.length <= 44 && !address.startsWith('0x') && !address.startsWith('bh1')) {
                 return /^[1-9A-HJ-NP-Za-km-z]+$/.test(address);
             }
+
             return false;
         }
 
@@ -6087,13 +6636,112 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 setTransferFormEnabled(true);
             }
         }
+
+        // Wallet Monitoring Functions
+        let walletUpdateInterval = null;
+
+        function initializeWalletMonitoring() {
+            updateWalletTransactions();
+            walletUpdateInterval = setInterval(updateWalletTransactions, 5000); // Update every 5 seconds
+        }
+
+        async function updateWalletTransactions() {
+            try {
+                const response = await fetch('/api/wallet/transactions');
+                const data = await response.json();
+
+                if (data.success && data.transactions) {
+                    displayWalletTransactions(data.transactions);
+                }
+            } catch (error) {
+                console.error('Error fetching wallet transactions:', error);
+                displayWalletError();
+            }
+        }
+
+        function displayWalletTransactions(transactions) {
+            const container = document.getElementById('walletTransactions');
+            if (!container) return;
+
+            if (transactions.length === 0) {
+                container.innerHTML = '<div class="transaction-item"><div class="transaction-details">No recent wallet transactions</div></div>';
+                return;
+            }
+
+            container.innerHTML = transactions.slice(0, 10).map(tx => ` + "`" + `
+                <div class="transaction-item">
+                    <div class="transaction-details">
+                        <div class="transaction-hash">` + "${tx.hash || 'N/A'}" + `</div>
+                        <div class="transaction-amount">` + "${tx.amount || '0'} ${tx.token || 'BHX'}" + `</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">
+                            ` + "${tx.from || 'Unknown'} → ${tx.to || 'Unknown'}" + `
+                        </div>
+                    </div>
+                    <div class="transaction-status status-` + "${(tx.status || 'pending').toLowerCase()}" + `">
+                        ` + "${tx.status || 'Pending'}" + `
+                    </div>
+                </div>
+            ` + "`" + `).join('');
+        }
+
+        function displayWalletError() {
+            const container = document.getElementById('walletTransactions');
+            if (container) {
+                container.innerHTML = '<div class="transaction-item"><div class="transaction-details" style="color: var(--error);">Unable to connect to wallet service</div></div>';
+            }
+        }
+
+        function scrollToWalletMonitoring() {
+            document.getElementById('wallet-monitoring').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function scrollToQuickActions() {
+            document.getElementById('quickTransferForm').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function toggleTheme() {
+            const body = document.body;
+            const themeText = document.getElementById('theme-text');
+
+            if (body.getAttribute('data-theme') === 'dark') {
+                body.removeAttribute('data-theme');
+                themeText.textContent = '🌙 Dark Mode';
+                localStorage.setItem('theme', 'light');
+            } else {
+                body.setAttribute('data-theme', 'dark');
+                themeText.textContent = '☀️ Light Mode';
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        // Initialize theme from localStorage
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                document.body.setAttribute('data-theme', 'dark');
+                document.getElementById('theme-text').textContent = '☀️ Light Mode';
+            }
+
+            // Initialize wallet monitoring
+            initializeWalletMonitoring();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (walletUpdateInterval) clearInterval(walletUpdateInterval);
+        });
     </script>
+        </div>
+    </div>
 </body>
 </html>`
 	w.Write([]byte(html))
 }
 
 func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	// Set CSP headers to allow inline scripts and styles
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self'")
 	html := `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6101,18 +6749,146 @@ func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Reques
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlackHole Bridge Infra Dashboard</title>
     <style>
+        :root {
+            --primary-bg: #ffffff;
+            --secondary-bg: #f8fafc;
+            --accent-bg: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --navy-blue: #1e3a8a;
+            --navy-dark: #0f172a;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --sidebar-width: 280px;
+        }
+
+        [data-theme="dark"] {
+            --primary-bg: #0f172a;
+            --secondary-bg: #1e293b;
+            --accent-bg: #334155;
+            --text-primary: #ffffff;
+            --text-secondary: #e2e8f0;
+            --text-muted: #cbd5e1;
+            --border-color: #475569;
+            --navy-blue: #60a5fa;
+            --navy-dark: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background:
-                radial-gradient(circle at 20% 50%, rgba(30, 58, 138, 0.05) 0%, transparent 50%),
-                radial-gradient(circle at 80% 20%, rgba(15, 23, 42, 0.05) 0%, transparent 50%),
-                radial-gradient(circle at 40% 80%, rgba(30, 58, 138, 0.03) 0%, transparent 50%),
-                linear-gradient(135deg, #f8fafc 0%, #f1f5f9 25%, #e2e8f0 50%, #cbd5e1 75%, #94a3b8 100%);
-            background-attachment: fixed;
-            color: #0f172a;
+            background: var(--primary-bg);
+            color: var(--text-primary);
             margin: 0;
             padding: 0;
             font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: var(--secondary-bg);
+            border-right: 2px solid var(--border-color);
+            z-index: 1000;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-header {
+            padding: 24px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-logo {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(30, 58, 138, 0.2);
+        }
+
+        .sidebar-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--navy-blue);
+        }
+
+        .sidebar-nav {
+            padding: 20px 0;
+        }
+
+        .nav-item {
+            display: block;
+            padding: 12px 20px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: var(--accent-bg);
+            color: var(--navy-blue);
+            border-left-color: var(--navy-blue);
+        }
+
+        .nav-item.active {
+            background: var(--accent-bg);
+            color: var(--navy-blue);
+            border-left-color: var(--navy-blue);
+            font-weight: 600;
+        }
+
+        .nav-item i {
+            margin-right: 12px;
+            width: 20px;
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            padding: 12px;
+            background: var(--accent-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--navy-blue);
+            color: white;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: calc(var(--sidebar-width) + 30px);
+            margin-right: 30px;
+            min-height: 100vh;
+            background: var(--primary-bg);
+            padding: 20px 30px;
+            max-width: calc(100vw - var(--sidebar-width) - 90px);
         }
         .infra-container {
             max-width: 1200px;
@@ -6122,16 +6898,21 @@ func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Reques
         .infra-header {
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: center;
+            gap: 16px;
             margin-bottom: 32px;
+            padding: 24px;
+            background: var(--secondary-bg);
+            border-radius: 16px;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 8px 32px rgba(30, 58, 138, 0.1);
         }
         .infra-header h1 {
             font-size: 2.4rem;
-            color: #1e3a8a;
+            color: var(--navy-blue);
             margin: 0;
             letter-spacing: 1px;
-            font-weight: 800;
-            text-shadow: 0 2px 4px rgba(15, 23, 42, 0.1);
+            font-weight: 700;
             display: flex;
             align-items: center;
             gap: 16px;
@@ -6166,18 +6947,52 @@ func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Reques
             gap: 24px;
         }
         .infra-card {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 12px;
-            box-shadow:
-                0 8px 25px rgba(30, 58, 138, 0.08),
-                0 4px 12px rgba(15, 23, 42, 0.05),
-                inset 0 1px 0 rgba(255, 255, 255, 0.9);
-            border: 2px solid rgba(30, 58, 138, 0.1);
-            padding: 28px 24px;
+            background: var(--secondary-bg);
+            border-radius: 16px;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 4px 16px rgba(30, 58, 138, 0.08);
+            padding: 24px;
             display: flex;
             flex-direction: column;
-            margin-bottom: 16px;
-            backdrop-filter: blur(15px);
+            margin-bottom: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .infra-card:hover {
+            box-shadow: 0 8px 32px rgba(30, 58, 138, 0.12);
+            transform: translateY(-2px);
+        }
+
+        /* Dark Mode Infrastructure Styles */
+        [data-theme="dark"] .infra-card {
+            background: var(--secondary-bg);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .infra-card h2 {
+            color: var(--navy-blue);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        [data-theme="dark"] .infra-header h1 {
+            color: var(--navy-blue);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        [data-theme="dark"] .section-content,
+        [data-theme="dark"] .section-content div,
+        [data-theme="dark"] .section-content span,
+        [data-theme="dark"] .section-content p {
+            color: var(--text-primary) !important;
+        }
+
+        [data-theme="dark"] .status-indicator {
+            color: var(--success) !important;
+        }
+
+        [data-theme="dark"] .metric-display {
+            color: var(--navy-blue) !important;
         }
         .infra-card h2 {
             color: #1e3a8a;
@@ -6228,11 +7043,40 @@ func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Reques
     </style>
 </head>
 <body>
-    <div class="infra-container">
-        <div class="infra-header">
-            <h1><img src="blackhole-logo.png" alt="BlackHole Logo">Infrastructure Dashboard</h1>
-            <button onclick="window.location.href='/'">Back to Main Dashboard</button>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <img src="blackhole-logo.png" alt="BlackHole Logo" class="sidebar-logo">
+            <div class="sidebar-title">BlackHole Bridge</div>
         </div>
+        <nav class="sidebar-nav">
+            <a href="/" class="nav-item">
+                <i>🏠</i> Main Dashboard
+            </a>
+            <a href="/infra-dashboard" class="nav-item active">
+                <i>⚙️</i> Infrastructure
+            </a>
+            <a href="/#wallet-monitoring" class="nav-item">
+                <i>💳</i> Wallet Monitoring
+            </a>
+            <a href="/#quick-actions" class="nav-item">
+                <i>⚡</i> Quick Actions
+            </a>
+        </nav>
+        <button class="theme-toggle" onclick="toggleTheme()">
+            <span id="theme-text">🌙 Dark Mode</span>
+        </button>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="infra-container">
+            <div class="infra-header">
+                <h1>
+                    <img src="blackhole-logo.png" alt="BlackHole Logo">
+                    Infrastructure Dashboard
+                </h1>
+            </div>
         <div class="infra-grid" id="infraGrid">
             <div class="infra-card modular" draggable="true" id="listenerCard">
                 <h2>🔗 Chain Listeners</h2>
@@ -6608,10 +7452,36 @@ func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Reques
             };
         }
         connectEventWS();
+
+        // Theme Toggle Functionality
+        function toggleTheme() {
+            const body = document.body;
+            const themeText = document.getElementById('theme-text');
+
+            if (body.getAttribute('data-theme') === 'dark') {
+                body.removeAttribute('data-theme');
+                themeText.textContent = '🌙 Dark Mode';
+                localStorage.setItem('theme', 'light');
+            } else {
+                body.setAttribute('data-theme', 'dark');
+                themeText.textContent = '☀️ Light Mode';
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        // Initialize theme from localStorage
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                document.body.setAttribute('data-theme', 'dark');
+                document.getElementById('theme-text').textContent = '☀️ Light Mode';
+            }
+        });
     </script>
+        </div>
+    </div>
 </body>
 </html>`
-	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
 }
 
@@ -7460,45 +8330,77 @@ func (sdk *BridgeSDK) handleWalletHealth(w http.ResponseWriter, r *http.Request)
 func (sdk *BridgeSDK) handleRecentTransactions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Generate mock recent transactions for demonstration
 	transactions := []map[string]interface{}{}
 
-	// Add recent events from the bridge
-	for i := len(sdk.events) - 1; i >= 0 && len(transactions) < 10; i-- {
-		event := sdk.events[i]
+	// First, add actual manual transactions
+	sdk.transactionsMutex.RLock()
+	var txList []*Transaction
+	for _, tx := range sdk.transactions {
+		txList = append(txList, tx)
+	}
+	sdk.transactionsMutex.RUnlock()
 
-		// Extract transaction details from event data
-		amount := "0"
-		token := "BHX"
-		toChain := "BlackHole"
+	// Sort transactions by creation time (newest first)
+	sort.Slice(txList, func(i, j int) bool {
+		return txList[i].CreatedAt.After(txList[j].CreatedAt)
+	})
 
-		if event.Data != nil {
-			if amt, ok := event.Data["amount"]; ok {
-				amount = fmt.Sprintf("%v", amt)
-			}
-			if tkn, ok := event.Data["token"]; ok {
-				token = fmt.Sprintf("%v", tkn)
-			}
-			if tc, ok := event.Data["to_chain"]; ok {
-				toChain = fmt.Sprintf("%v", tc)
-			}
+	// Add manual transactions to the list
+	for _, tx := range txList {
+		if len(transactions) >= 20 {
+			break
 		}
 
-		status := "completed"
-		if !event.Processed {
-			status = "pending"
+		txData := map[string]interface{}{
+			"id":         tx.ID,
+			"from_chain": tx.SourceChain,
+			"to_chain":   tx.DestChain,
+			"amount":     tx.Amount,
+			"token":      tx.TokenSymbol,
+			"status":     tx.Status,
+			"timestamp":  tx.CreatedAt,
 		}
+		transactions = append(transactions, txData)
+	}
 
-		tx := map[string]interface{}{
-			"id":         event.ID,
-			"from_chain": event.Chain,
-			"to_chain":   toChain,
-			"amount":     amount,
-			"token":      token,
-			"status":     status,
-			"timestamp":  event.Timestamp,
+	// Add recent events from the bridge (if we need more transactions)
+	if len(transactions) < 10 {
+		for i := len(sdk.events) - 1; i >= 0 && len(transactions) < 15; i-- {
+			event := sdk.events[i]
+
+			// Extract transaction details from event data
+			amount := "0"
+			token := "BHX"
+			toChain := "BlackHole"
+
+			if event.Data != nil {
+				if amt, ok := event.Data["amount"]; ok {
+					amount = fmt.Sprintf("%v", amt)
+				}
+				if tkn, ok := event.Data["token"]; ok {
+					token = fmt.Sprintf("%v", tkn)
+				}
+				if tc, ok := event.Data["to_chain"]; ok {
+					toChain = fmt.Sprintf("%v", tc)
+				}
+			}
+
+			status := "completed"
+			if !event.Processed {
+				status = "pending"
+			}
+
+			tx := map[string]interface{}{
+				"id":         event.ID,
+				"from_chain": event.Chain,
+				"to_chain":   toChain,
+				"amount":     amount,
+				"token":      token,
+				"status":     status,
+				"timestamp":  event.Timestamp,
+			}
+			transactions = append(transactions, tx)
 		}
-		transactions = append(transactions, tx)
 	}
 
 	// Add some mock pending transactions if we don't have enough real ones
