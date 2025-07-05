@@ -9,6 +9,24 @@ import (
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 )
 
+// Interfaces to break import cycle
+type Token interface {
+	BalanceOf(address string) (uint64, error)
+	Transfer(from, to string, amount uint64) error
+}
+
+type Transaction interface {
+	Transfer(token Token, from, to string, amount uint64) error
+	Commit() error
+	Rollback()
+	Hash() string
+}
+
+type Blockchain interface {
+	TokenRegistry() map[string]Token
+	BeginTransaction() Transaction
+}
+
 // OTCOrderType represents the type of OTC order
 type OTCOrderType string
 
