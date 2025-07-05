@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌌 BlackHole Wallet Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <h1>🌌 BlackHole Wallet Dashboard</h1>
+        <div class="header-controls">
+            <span id="userInfo">Loading...</span>
+            <span id="connectionStatus" class="status status-disconnected">Disconnected</span>
+            <button class="btn btn-danger" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <div id="alert" class="alert"></div>
+
+        <!-- Dashboard Grid -->
+        <div class="dashboard-grid">
+            <!-- Wallet Management -->
+            <div class="card">
+                <h3>💼 Wallet Management</h3>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="createWallet()">Create New Wallet</button>
+                    <button class="btn btn-secondary" onclick="loadWallets()">Refresh Wallets</button>
+                </div>
+                <div id="walletsList" class="content-area">
+                    <p class="loading">Loading wallets...</p>
+                </div>
+            </div>
+
+            <!-- Token Operations -->
+            <div class="card">
+                <h3>🪙 Token Operations</h3>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="showTransferModal()">Transfer</button>
+                    <button class="btn btn-success" onclick="showMintModal()">Mint</button>
+                    <button class="btn btn-warning" onclick="showBurnModal()">Burn</button>
+                    <button class="btn btn-info" onclick="checkBalance()">Check Balance</button>
+                </div>
+                <div id="balancesList" class="content-area">
+                    <p class="loading">Loading balances...</p>
+                </div>
+            </div>
+
+            <!-- OTC Trading -->
+            <div class="card">
+                <h3>🔄 OTC Trading</h3>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="showOTCModal()">Create Order</button>
+                    <button class="btn btn-secondary" onclick="loadOTCOrders()">View Orders</button>
+                    <button class="btn btn-info" onclick="loadOTCEvents()">View Events</button>
+                </div>
+                <div id="otcOrdersList" class="content-area">
+                    <p class="loading">Loading OTC orders...</p>
+                </div>
+            </div>
+
+            <!-- Advanced Features -->
+            <div class="card">
+                <h3>🚀 Advanced Features</h3>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="showEscrowModal()">Escrow</button>
+                    <button class="btn btn-success" onclick="showStakingModal()">Staking</button>
+                    <button class="btn btn-info" onclick="showAllowanceModal()">Allowances</button>
+                </div>
+                <div id="advancedContent" class="content-area">
+                    <p>Select a feature above to get started</p>
+                </div>
+            </div>
+
+            <!-- Transaction History -->
+            <div class="card full-width">
+                <h3>📊 Transaction History</h3>
+                <div class="card-actions">
+                    <button class="btn btn-secondary" onclick="loadTransactions()">Refresh</button>
+                    <input type="text" id="addressFilter" placeholder="Filter by address" class="input-small">
+                    <button class="btn btn-info" onclick="filterTransactions()">Filter</button>
+                </div>
+                <div id="transactionsList" class="content-area">
+                    <p class="loading">Loading transactions...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals Container -->
+    <div id="modalsContainer"></div>
+
+    <!-- Scripts -->
+    <script src="core.js"></script>
+    <script src="wallet-functions.js"></script>
+    <script src="token-functions.js"></script>
+    <script src="otc-functions.js"></script>
+    <script src="advanced-functions.js"></script>
+    <script src="ui-helpers.js"></script>
+    
+    <script>
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', initializeDashboard);
+    </script>
+</body>
+</html>

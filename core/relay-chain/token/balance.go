@@ -39,6 +39,25 @@ func (t *Token) BalanceOf(address string) (uint64, error) {
 	return t.balances[address], nil
 }
 
+// SetBalance sets the balance for an address (used for loading from persistence)
+func (t *Token) SetBalance(address string, balance uint64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.balances[address] = balance
+}
+
+// GetAllBalances returns a copy of all balances (used for saving to persistence)
+func (t *Token) GetAllBalances() map[string]uint64 {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	balances := make(map[string]uint64)
+	for addr, balance := range t.balances {
+		balances[addr] = balance
+	}
+	return balances
+}
+
 // GetAllAddressesWithBalances returns all addresses that have non-zero balances
 func (t *Token) GetAllAddressesWithBalances() []string {
 	t.mu.RLock()

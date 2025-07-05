@@ -10,6 +10,7 @@ import (
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/bridge"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/escrow"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
 )
 
 type APIServer struct {
@@ -56,6 +57,12 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/dev/test-escrow", s.enableCORS(s.testEscrow))
 	http.HandleFunc("/api/escrow/request", s.enableCORS(s.handleEscrowRequest))
 	http.HandleFunc("/api/balance/query", s.enableCORS(s.handleBalanceQuery))
+
+	// Production Cache Balance API endpoints
+	http.HandleFunc("/api/balance/cached", s.enableCORS(s.handleBalanceCached))
+	http.HandleFunc("/api/balance/all", s.enableCORS(s.handleBalanceAll))
+	http.HandleFunc("/api/balance/preload", s.enableCORS(s.handleBalancePreload))
+	http.HandleFunc("/api/balance", s.enableCORS(s.handleBalanceSimple))
 
 	// OTC Trading API endpoints
 	http.HandleFunc("/api/otc/create", s.enableCORS(s.handleOTCCreate))
@@ -1516,6 +1523,269 @@ func (s *APIServer) handleBalanceQuery(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Production Cache Balance API Handlers
+
+// handleBalanceCached handles cached balance requests with user isolation
+func (s *APIServer) handleBalanceCached(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		UserID        string `json:"user_id"`
+		Address       string `json:"address"`
+		TokenSymbol   string `json:"token_symbol"`
+		ForValidation bool   `json:"for_validation"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	// Validate inputs
+	if req.UserID == "" || req.Address == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "UserID and Address are required",
+		})
+		return
+	}
+
+	if req.TokenSymbol == "" {
+		req.TokenSymbol = "BHX" // Default to BHX
+	}
+
+	fmt.Printf("🚀 Cached balance query: user=%s, address=%s, token=%s, validation=%v\n",
+		req.UserID, req.Address, req.TokenSymbol, req.ForValidation)
+
+	// Register wallet address in account registry
+	if s.blockchain.AccountRegistry != nil {
+		s.blockchain.AccountRegistry.RegisterAccount(req.Address, "wallet_api", false, req.UserID, "")
+	}
+
+	// Get cached balance
+	balance, err := s.blockchain.GetTokenBalanceWithCache(req.UserID, req.Address, req.TokenSymbol, req.ForValidation)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Failed to get cached balance: %v", err),
+		})
+		return
+	}
+
+	fmt.Printf("✅ Cached balance found: %d %s for address %s (user: %s)\n",
+		balance, req.TokenSymbol, req.Address, req.UserID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"address":      req.Address,
+			"token_symbol": req.TokenSymbol,
+			"balance":      balance,
+			"user_id":      req.UserID,
+			"cached":       true,
+			"validation":   req.ForValidation,
+		},
+	})
+}
+
+// handleBalanceAll handles requests for all token balances for an address
+func (s *APIServer) handleBalanceAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		UserID  string `json:"user_id"`
+		Address string `json:"address"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	// Validate inputs
+	if req.UserID == "" || req.Address == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "UserID and Address are required",
+		})
+		return
+	}
+
+	fmt.Printf("🚀 All balances query: user=%s, address=%s\n", req.UserID, req.Address)
+
+	// Register wallet address in account registry
+	if s.blockchain.AccountRegistry != nil {
+		s.blockchain.AccountRegistry.RegisterAccount(req.Address, "wallet_api", false, req.UserID, "")
+	}
+
+	// Get all cached balances
+	balances, err := s.blockchain.GetAllTokenBalancesWithCache(req.UserID, req.Address)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Failed to get all balances: %v", err),
+		})
+		return
+	}
+
+	fmt.Printf("✅ All balances found for address %s (user: %s): %v\n", req.Address, req.UserID, balances)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"address":  req.Address,
+			"balances": balances,
+			"user_id":  req.UserID,
+			"cached":   true,
+		},
+	})
+}
+
+// handleBalancePreload handles preloading balances for multiple addresses into cache
+func (s *APIServer) handleBalancePreload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		UserID    string   `json:"user_id"`
+		Addresses []string `json:"addresses"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	// Validate inputs
+	if req.UserID == "" || len(req.Addresses) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "UserID and Addresses are required",
+		})
+		return
+	}
+
+	fmt.Printf("🚀 Preload balances: user=%s, addresses=%v\n", req.UserID, req.Addresses)
+
+	// Register all addresses in account registry
+	if s.blockchain.AccountRegistry != nil {
+		for _, address := range req.Addresses {
+			s.blockchain.AccountRegistry.RegisterAccount(address, "wallet_api", false, req.UserID, "")
+		}
+	}
+
+	// Preload balances into cache
+	err := s.blockchain.PreloadUserBalances(req.UserID, req.Addresses)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Failed to preload balances: %v", err),
+		})
+		return
+	}
+
+	fmt.Printf("✅ Preloaded balances for %d addresses (user: %s)\n", len(req.Addresses), req.UserID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"user_id":         req.UserID,
+			"preloaded_count": len(req.Addresses),
+			"addresses":       req.Addresses,
+			"preloaded":       true,
+		},
+	})
+}
+
+// handleBalanceSimple handles simple balance requests (for backward compatibility)
+func (s *APIServer) handleBalanceSimple(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse query parameters
+	address := r.URL.Query().Get("address")
+	tokenSymbol := r.URL.Query().Get("token")
+
+	// Validate inputs
+	if address == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Address parameter is required",
+		})
+		return
+	}
+
+	if tokenSymbol == "" {
+		tokenSymbol = "BHX" // Default to BHX
+	}
+
+	fmt.Printf("🔍 Simple balance query: address=%s, token=%s\n", address, tokenSymbol)
+
+	// Get token from blockchain
+	token, exists := s.blockchain.TokenRegistry[tokenSymbol]
+	if !exists {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Token %s not found", tokenSymbol),
+		})
+		return
+	}
+
+	// Get balance directly (no cache)
+	balance, err := token.BalanceOf(address)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Failed to get balance: %v", err),
+		})
+		return
+	}
+
+	fmt.Printf("✅ Simple balance found: %d %s for address %s\n", balance, tokenSymbol, address)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"balance": balance,
+		"address": address,
+		"token":   tokenSymbol,
+	})
+}
+
 // OTC Trading API Handlers
 func (s *APIServer) handleOTCCreate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -1549,43 +1819,66 @@ func (s *APIServer) handleOTCCreate(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("🤝 Creating OTC order: %+v\n", req)
 
-	// For now, simulate OTC order creation since we don't have the OTC manager initialized
-	// In a real implementation, this would use: s.blockchain.OTCManager.CreateOrder(...)
+	// Create OTC order with real token locking
+	// Generate order ID
 	orderID := fmt.Sprintf("otc_%d_%s", time.Now().UnixNano(), req.Creator[:8])
 
-	// Simulate token balance check
-	if token, exists := s.blockchain.TokenRegistry[req.TokenOffered]; exists {
-		balance, err := token.BalanceOf(req.Creator)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": false,
-				"error":   "Failed to check balance: " + err.Error(),
-			})
-			return
-		}
-
-		if balance < req.AmountOffered {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": false,
-				"error":   fmt.Sprintf("Insufficient balance: has %d, needs %d", balance, req.AmountOffered),
-			})
-			return
-		}
-
-		// Lock tokens by transferring to OTC contract
-		err = token.Transfer(req.Creator, "otc_contract", req.AmountOffered)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": false,
-				"error":   "Failed to lock tokens: " + err.Error(),
-			})
-			return
-		}
+	// Validate tokens exist
+	offeredToken, exists := s.blockchain.TokenRegistry[req.TokenOffered]
+	if !exists {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Token %s not found", req.TokenOffered),
+		})
+		return
 	}
 
+	_, exists = s.blockchain.TokenRegistry[req.TokenRequested]
+	if !exists {
+		fmt.Printf("❌ Token %s not found in registry. Available tokens: %v\n", req.TokenRequested, getTokenNames(s.blockchain.TokenRegistry))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Token %s not found", req.TokenRequested),
+		})
+		return
+	}
+
+	// Check creator's balance
+	balance, err := offeredToken.BalanceOf(req.Creator)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Failed to check balance: " + err.Error(),
+		})
+		return
+	}
+
+	if balance < req.AmountOffered {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Insufficient balance: has %d, needs %d", balance, req.AmountOffered),
+		})
+		return
+	}
+
+	// Lock offered tokens in OTC contract
+	err = offeredToken.Transfer(req.Creator, "otc_contract", req.AmountOffered)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Failed to lock tokens: " + err.Error(),
+		})
+		return
+	}
+
+	fmt.Printf("✅ OTC order created: %s\n", orderID)
+
+	// Store the order for future operations
 	orderData := map[string]interface{}{
 		"order_id":         orderID,
 		"creator":          req.Creator,
@@ -1603,11 +1896,6 @@ func (s *APIServer) handleOTCCreate(w http.ResponseWriter, r *http.Request) {
 
 	// Store the order for future operations
 	s.storeOTCOrder(orderID, orderData)
-
-	// Broadcast order creation event
-	s.broadcastOTCEvent("order_created", orderData)
-
-	fmt.Printf("✅ OTC order created: %s\n", orderID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1632,39 +1920,32 @@ func (s *APIServer) handleOTCOrders(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("🔍 Getting OTC orders for user: %s\n", userAddress)
 
-	// For now, return simulated orders
-	// In a real implementation, this would use: s.blockchain.OTCManager.GetUserOrders(userAddress)
-	orders := []map[string]interface{}{
-		{
-			"order_id":         "otc_example_1",
-			"creator":          userAddress,
-			"token_offered":    "BHX",
-			"amount_offered":   1000,
-			"token_requested":  "USDT",
-			"amount_requested": 5000,
-			"status":           "open",
-			"created_at":       time.Now().Unix() - 3600,
-			"expires_at":       time.Now().Unix() + 82800,
-			"note":             "Simulated order from blockchain",
-		},
-		{
-			"order_id":         "otc_market_1",
-			"creator":          "0x9876...4321",
-			"token_offered":    "USDT",
-			"amount_offered":   2000,
-			"token_requested":  "BHX",
-			"amount_requested": 400,
-			"status":           "open",
-			"created_at":       time.Now().Unix() - 1800,
-			"expires_at":       time.Now().Unix() + 84600,
-			"note":             "Market order from another user",
-		},
+	// Get orders from storage
+	var orderData []map[string]interface{}
+
+	for _, order := range otcOrderStore {
+		// Filter by user if specified
+		if userAddress != "" {
+			creator, ok := order["creator"].(string)
+			if !ok || creator != userAddress {
+				continue
+			}
+		}
+
+		// Check if order is still valid (not expired)
+		expiresAt, ok := order["expires_at"].(int64)
+		if ok && time.Now().Unix() > expiresAt {
+			// Mark as expired
+			order["status"] = "expired"
+		}
+
+		orderData = append(orderData, order)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"data":    orders,
+		"data":    orderData,
 	})
 }
 
@@ -1694,36 +1975,67 @@ func (s *APIServer) handleOTCMatch(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("🤝 Matching OTC order %s with counterparty %s\n", req.OrderID, req.Counterparty)
 
-	// Real order matching implementation
-	success, err := s.executeOTCOrderMatch(req.OrderID, req.Counterparty)
+	// Get the order from storage
+	order, exists := s.getOTCOrder(req.OrderID)
+	if !exists {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Order not found",
+		})
+		return
+	}
+
+	// Check if order is still open
+	status, ok := order["status"].(string)
+	if !ok || status != "open" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Order is not available for matching",
+		})
+		return
+	}
+
+	// Check if order has expired
+	expiresAt, ok := order["expires_at"].(int64)
+	if ok && time.Now().Unix() > expiresAt {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Order has expired",
+		})
+		return
+	}
+
+	// Perform the token swap
+	err := s.executeRealOTCTokenSwap(order, req.Counterparty)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
-			"error":   err.Error(),
+			"error":   "Failed to execute token swap: " + err.Error(),
 		})
 		return
 	}
 
-	if !success {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Order matching failed",
-		})
-		return
-	}
+	// Update order status
+	order["status"] = "completed"
+	order["matched_with"] = req.Counterparty
+	order["matched_at"] = time.Now().Unix()
+	order["completed_at"] = time.Now().Unix()
+	s.storeOTCOrder(req.OrderID, order)
+
+	fmt.Printf("✅ OTC order %s matched with %s\n", req.OrderID, req.Counterparty)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"message": "OTC order matched and executed successfully",
+		"message": "OTC order matched successfully",
 		"data": map[string]interface{}{
 			"order_id":     req.OrderID,
 			"counterparty": req.Counterparty,
-			"status":       "completed",
 			"matched_at":   time.Now().Unix(),
-			"completed_at": time.Now().Unix(),
 		},
 	})
 }
@@ -1754,8 +2066,56 @@ func (s *APIServer) handleOTCCancel(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("❌ Cancelling OTC order %s by %s\n", req.OrderID, req.Canceller)
 
-	// For now, simulate order cancellation
-	// In a real implementation, this would use: s.blockchain.OTCManager.CancelOrder(req.OrderID, req.Canceller)
+	// Get the order from storage
+	order, exists := s.getOTCOrder(req.OrderID)
+	if !exists {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Order not found",
+		})
+		return
+	}
+
+	// Check if canceller is the creator
+	creator, ok := order["creator"].(string)
+	if !ok || creator != req.Canceller {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Only order creator can cancel",
+		})
+		return
+	}
+
+	// Check if order can be cancelled
+	status, ok := order["status"].(string)
+	if !ok || status != "open" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Order cannot be cancelled in current status",
+		})
+		return
+	}
+
+	// Release locked tokens back to creator
+	err := s.releaseOTCTokens(order)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Failed to release tokens: " + err.Error(),
+		})
+		return
+	}
+
+	// Update order status
+	order["status"] = "cancelled"
+	order["cancelled_at"] = time.Now().Unix()
+	s.storeOTCOrder(req.OrderID, order)
+
+	fmt.Printf("✅ OTC order %s cancelled by %s\n", req.OrderID, req.Canceller)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1842,6 +2202,134 @@ func (s *APIServer) storeOTCOrder(orderID string, orderData map[string]interface
 func (s *APIServer) getOTCOrder(orderID string) (map[string]interface{}, bool) {
 	order, exists := otcOrderStore[orderID]
 	return order, exists
+}
+
+// executeRealOTCTokenSwap performs the actual token swap for OTC orders
+func (s *APIServer) executeRealOTCTokenSwap(order map[string]interface{}, counterparty string) error {
+	// Extract order details
+	creator, ok := order["creator"].(string)
+	if !ok {
+		return fmt.Errorf("invalid creator")
+	}
+
+	tokenOffered, ok := order["token_offered"].(string)
+	if !ok {
+		return fmt.Errorf("invalid token offered")
+	}
+
+	tokenRequested, ok := order["token_requested"].(string)
+	if !ok {
+		return fmt.Errorf("invalid token requested")
+	}
+
+	amountOffered, ok := order["amount_offered"].(uint64)
+	if !ok {
+		// Try to convert from float64 (JSON number)
+		if amountFloat, ok := order["amount_offered"].(float64); ok {
+			amountOffered = uint64(amountFloat)
+		} else {
+			return fmt.Errorf("invalid amount offered")
+		}
+	}
+
+	amountRequested, ok := order["amount_requested"].(uint64)
+	if !ok {
+		// Try to convert from float64 (JSON number)
+		if amountFloat, ok := order["amount_requested"].(float64); ok {
+			amountRequested = uint64(amountFloat)
+		} else {
+			return fmt.Errorf("invalid amount requested")
+		}
+	}
+
+	// Get tokens from registry
+	offeredToken, exists := s.blockchain.TokenRegistry[tokenOffered]
+	if !exists {
+		return fmt.Errorf("offered token %s not found", tokenOffered)
+	}
+
+	requestedToken, exists := s.blockchain.TokenRegistry[tokenRequested]
+	if !exists {
+		return fmt.Errorf("requested token %s not found", tokenRequested)
+	}
+
+	// Check counterparty has enough of the requested token
+	counterpartyBalance, err := requestedToken.BalanceOf(counterparty)
+	if err != nil {
+		return fmt.Errorf("failed to check counterparty balance: %v", err)
+	}
+
+	if counterpartyBalance < amountRequested {
+		return fmt.Errorf("counterparty has insufficient balance: has %d, needs %d", counterpartyBalance, amountRequested)
+	}
+
+	// Execute the swap:
+	// 1. Transfer offered tokens from OTC contract to counterparty
+	err = offeredToken.Transfer("otc_contract", counterparty, amountOffered)
+	if err != nil {
+		return fmt.Errorf("failed to transfer offered tokens: %v", err)
+	}
+
+	// 2. Transfer requested tokens from counterparty to creator
+	err = requestedToken.Transfer(counterparty, creator, amountRequested)
+	if err != nil {
+		// Rollback: transfer offered tokens back to OTC contract
+		offeredToken.Transfer(counterparty, "otc_contract", amountOffered)
+		return fmt.Errorf("failed to transfer requested tokens: %v", err)
+	}
+
+	fmt.Printf("✅ OTC token swap completed: %s gave %d %s, %s gave %d %s\n",
+		creator, amountOffered, tokenOffered, counterparty, amountRequested, tokenRequested)
+
+	return nil
+}
+
+// releaseOTCTokens releases locked tokens back to the creator when an order is cancelled
+func (s *APIServer) releaseOTCTokens(order map[string]interface{}) error {
+	// Extract order details
+	creator, ok := order["creator"].(string)
+	if !ok {
+		return fmt.Errorf("invalid creator")
+	}
+
+	tokenOffered, ok := order["token_offered"].(string)
+	if !ok {
+		return fmt.Errorf("invalid token offered")
+	}
+
+	amountOffered, ok := order["amount_offered"].(uint64)
+	if !ok {
+		// Try to convert from float64 (JSON number)
+		if amountFloat, ok := order["amount_offered"].(float64); ok {
+			amountOffered = uint64(amountFloat)
+		} else {
+			return fmt.Errorf("invalid amount offered")
+		}
+	}
+
+	// Get token from registry
+	offeredToken, exists := s.blockchain.TokenRegistry[tokenOffered]
+	if !exists {
+		return fmt.Errorf("offered token %s not found", tokenOffered)
+	}
+
+	// Transfer tokens back from OTC contract to creator
+	err := offeredToken.Transfer("otc_contract", creator, amountOffered)
+	if err != nil {
+		return fmt.Errorf("failed to release tokens: %v", err)
+	}
+
+	fmt.Printf("✅ Released %d %s tokens back to %s\n", amountOffered, tokenOffered, creator)
+	return nil
+}
+
+// getTokenNames returns a list of available token names
+func getTokenNames(tokenRegistry map[string]*token.Token) []string {
+	names := make([]string, 0, len(tokenRegistry))
+	for name := range tokenRegistry {
+		names = append(names, name)
+	}
+	return names
 }
 
 // Cross-Chain DEX order storage functions

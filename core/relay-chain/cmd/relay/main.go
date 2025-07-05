@@ -160,7 +160,7 @@ func main() {
 	bridgeInstance := bridge.NewBridge(bc)
 
 	// Start API server for UI
-	apiServer := api.NewAPIServer(bc, bridgeInstance, 8080)
+	apiServer := api.NewAPIServer(bc, bridgeInstance, 8081)
 	go apiServer.Start()
 
 	// Start CLI only if not in Docker mode
@@ -169,8 +169,8 @@ func main() {
 	} else {
 		fmt.Println("🔄 Running in Docker daemon mode - use Docker logs to monitor")
 		fmt.Printf("   P2P Port: %d\n", port)
-		fmt.Printf("   HTTP API Port: %d\n", 8080)
-		fmt.Println("🌐 Access dashboard at http://localhost:8080")
+		fmt.Printf("   HTTP API Port: %d\n", 8081)
+		fmt.Println("🌐 Access dashboard at http://localhost:8081")
 
 		// Keep the container running
 		<-ctx.Done()
