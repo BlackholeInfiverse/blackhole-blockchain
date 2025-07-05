@@ -145,9 +145,9 @@ func (client *BlockchainClient) GetTokenBalance(address, tokenSymbol string) (ui
 		fmt.Printf("⚠️ No connected peers available\n")
 	}
 
-	// Try default blockchain API port (8080) with dedicated balance endpoint
-	fmt.Printf("🔄 Trying dedicated balance query endpoint on port 8080...\n")
-	balance, err := client.queryBalanceViaDedicatedEndpoint(address, tokenSymbol, "8080")
+	// Try default blockchain API port (8081) with dedicated balance endpoint
+	fmt.Printf("🔄 Trying dedicated balance query endpoint on port 8081...\n")
+	balance, err := client.queryBalanceViaDedicatedEndpoint(address, tokenSymbol, "8081")
 	if err == nil {
 		fmt.Printf("✅ Retrieved balance from dedicated endpoint: %d %s for address %s\n", balance, tokenSymbol, address)
 		return balance, nil
@@ -155,8 +155,8 @@ func (client *BlockchainClient) GetTokenBalance(address, tokenSymbol string) (ui
 	fmt.Printf("⚠️ Failed to query balance from dedicated endpoint: %v\n", err)
 
 	// Fallback to general blockchain info endpoint
-	fmt.Printf("🔄 Trying general blockchain info endpoint on port 8080...\n")
-	balance, err = client.queryBalanceViaHTTPPort(address, tokenSymbol, "8080")
+	fmt.Printf("🔄 Trying general blockchain info endpoint on port 8081...\n")
+	balance, err = client.queryBalanceViaHTTPPort(address, tokenSymbol, "8081")
 	if err == nil {
 		fmt.Printf("✅ Retrieved balance from general endpoint: %d %s for address %s\n", balance, tokenSymbol, address)
 		return balance, nil
@@ -676,9 +676,9 @@ func (client *BlockchainClient) queryBalanceViaDedicatedEndpoint(address, tokenS
 // extractAPIPortFromPeer extracts the API port from a peer address
 func (client *BlockchainClient) extractAPIPortFromPeer(peerAddr string) string {
 	// Parse peer address like /ip4/127.0.0.1/tcp/3000/p2p/12D3KooW...
-	// The API server typically runs on port 8080 when blockchain runs on 3000
+	// The API server typically runs on port 8081 when blockchain runs on 3000
 	if strings.Contains(peerAddr, "/tcp/3000/") {
-		return "8080"
+		return "8081"
 	}
 	if strings.Contains(peerAddr, "/tcp/3001/") {
 		return "8081"
