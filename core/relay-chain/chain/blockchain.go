@@ -277,9 +277,12 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		fmt.Printf("✅ Genesis validator initialized with %d stake and %d BHX tokens\n",
 			genesisValidatorStake, genesisValidatorStake)
 	} else {
-		fmt.Printf("🔄 Skipping token minting for existing blockchain\n")
+		fmt.Printf("🔄 Loading existing blockchain - restoring token balances...\n")
 
-		// For existing blockchain, just initialize genesis validator stake from saved data
+		// For existing blockchain, load token balances from persistent storage
+		bc.loadTokenBalances()
+
+		// Initialize genesis validator stake from saved data
 		genesisValidatorStake := uint64(1000)
 		stakeLedger.SetStake("genesis-validator", genesisValidatorStake)
 		fmt.Printf("🔄 Restored genesis validator with %d stake\n", genesisValidatorStake)

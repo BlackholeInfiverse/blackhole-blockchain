@@ -602,11 +602,100 @@ func setSessionID(w http.ResponseWriter, sessionID string) {
 	})
 }
 
-// sendJSONResponse sends JSON response
+// Enhanced sendJSONResponse with better error categorization
 func sendJSONResponse(w http.ResponseWriter, response APIResponse, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
+
+	// Enhance error responses with better categorization
+	if !response.Success && statusCode >= 400 {
+		enhancedResponse := map[string]interface{}{
+			"success":    false,
+			"message":    getUserFriendlyErrorMessage(response.Message, statusCode),
+			"error_type": getErrorType(statusCode),
+			"error_code": statusCode,
+			"timestamp":  time.Now().Unix(),
+		}
+
+		// Include original data if present
+		if response.Data != nil {
+			enhancedResponse["data"] = response.Data
+		}
+
+		// Include debug message for development
+		enhancedResponse["debug_message"] = response.Message
+
+		json.NewEncoder(w).Encode(enhancedResponse)
+	} else {
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+// getUserFriendlyErrorMessage converts technical errors to user-friendly messages
+func getUserFriendlyErrorMessage(message string, statusCode int) string {
+	lowerMessage := strings.ToLower(message)
+
+	// Common error patterns
+	if strings.Contains(lowerMessage, "insufficient") {
+		return "Insufficient balance for this transaction"
+	}
+	if strings.Contains(lowerMessage, "invalid username or password") {
+		return "Invalid username or password. Please check your credentials and try again."
+	}
+	if strings.Contains(lowerMessage, "authentication") {
+		return "Authentication required. Please log in and try again."
+	}
+	if strings.Contains(lowerMessage, "wallet not found") || strings.Contains(lowerMessage, "failed to access wallet") {
+		return "Wallet not found or access denied. Please check your wallet name and password."
+	}
+	if strings.Contains(lowerMessage, "connection") || strings.Contains(lowerMessage, "network") {
+		return "Network connection error. Please check your internet connection and try again."
+	}
+	if strings.Contains(lowerMessage, "timeout") {
+		return "Request timed out. Please try again."
+	}
+
+	// Status code based messages
+	switch statusCode {
+	case 400:
+		return "Invalid request. Please check your input and try again."
+	case 401:
+		return "Authentication required. Please log in and try again."
+	case 403:
+		return "You don't have permission to perform this action."
+	case 404:
+		return "The requested resource was not found."
+	case 429:
+		return "Too many requests. Please wait a moment and try again."
+	case 500:
+		return "An internal server error occurred. Please try again later."
+	case 503:
+		return "Service temporarily unavailable. Please try again in a few moments."
+	default:
+		return message // Return original message if no pattern matches
+	}
+}
+
+// getErrorType categorizes errors by type
+func getErrorType(statusCode int) string {
+	switch statusCode {
+	case 400:
+		return "validation_error"
+	case 401:
+		return "auth_error"
+	case 403:
+		return "permission_error"
+	case 404:
+		return "not_found_error"
+	case 429:
+		return "rate_limit_error"
+	case 500:
+		return "server_error"
+	case 503:
+		return "service_unavailable"
+	default:
+		return "error"
+	}
 }
 
 // serveLogin serves the login page
@@ -5070,7 +5159,7 @@ func matchOTCOrderOnBlockchain(orderID, counterparty string) (bool, error) {
 // Blockchain connection testing functions
 func testBlockchainConnection() bool {
 	// Test basic connectivity to blockchain API
-	testURL := "http://localhost:8081/api/health"
+	testURL := "http://localhost:8080/api/health"
 
 	client := &http.Client{
 		Timeout: 5 * time.Second, // 5 second timeout
@@ -5108,7 +5197,7 @@ func retryBlockchainConnection(maxRetries int) bool {
 // getTokenBalanceFromBlockchainCached gets a single token balance using the cache system
 func getTokenBalanceFromBlockchainCached(userID, address, tokenSymbol string, forValidation bool) (uint64, error) {
 	// Try to connect to blockchain API with cache support
-	blockchainURL := "http://localhost:8081/api/balance/cached"
+	blockchainURL := "http://localhost:8080/api/balance/cached"
 
 	requestData := map[string]interface{}{
 		"user_id":        userID,
@@ -5160,7 +5249,7 @@ func getTokenBalanceFromBlockchainCached(userID, address, tokenSymbol string, fo
 // getAllTokenBalancesFromBlockchainCached gets all token balances for an address using cache
 func getAllTokenBalancesFromBlockchainCached(userID, address string) (map[string]uint64, error) {
 	// Try to connect to blockchain API with cache support
-	blockchainURL := "http://localhost:8081/api/balance/all"
+	blockchainURL := "http://localhost:8080/api/balance/all"
 
 	requestData := map[string]interface{}{
 		"user_id": userID,
@@ -5218,7 +5307,7 @@ func getAllTokenBalancesFromBlockchainCached(userID, address string) (map[string
 // preloadUserBalancesInBlockchain preloads balances for user's addresses into blockchain cache
 func preloadUserBalancesInBlockchain(userID string, addresses []string) error {
 	// Try to connect to blockchain API
-	blockchainURL := "http://localhost:8081/api/balance/preload"
+	blockchainURL := "http://localhost:8080/api/balance/preload"
 
 	requestData := map[string]interface{}{
 		"user_id":   userID,
@@ -5260,7 +5349,7 @@ func preloadUserBalancesInBlockchain(userID string, addresses []string) error {
 // getTokenBalanceFromBlockchain gets balance directly from blockchain (fallback)
 func getTokenBalanceFromBlockchain(address, tokenSymbol string) (uint64, error) {
 	// Try to connect to blockchain API
-	blockchainURL := fmt.Sprintf("http://localhost:8081/api/balance?address=%s&token=%s", address, tokenSymbol)
+	blockchainURL := fmt.Sprintf("http://localhost:8080/api/balance?address=%s&token=%s", address, tokenSymbol)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(blockchainURL)
