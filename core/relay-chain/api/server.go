@@ -64,6 +64,9 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/balance/preload", s.enableCORS(s.handleBalancePreload))
 	http.HandleFunc("/api/balance", s.enableCORS(s.handleBalanceSimple))
 
+	// Health check endpoint
+	http.HandleFunc("/api/health", s.enableCORS(s.handleHealth))
+
 	// OTC Trading API endpoints
 	http.HandleFunc("/api/otc/create", s.enableCORS(s.handleOTCCreate))
 	http.HandleFunc("/api/otc/orders", s.enableCORS(s.handleOTCOrders))
@@ -95,8 +98,7 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/relay/events", s.enableCORS(s.handleRelayEvents))
 	http.HandleFunc("/api/relay/validate", s.enableCORS(s.handleRelayValidate))
 
-	// Health check endpoint
-	http.HandleFunc("/api/health", s.enableCORS(s.handleHealthCheck))
+	// Health check endpoint (using handleHealth instead of duplicate handleHealthCheck)
 
 	fmt.Printf("🌐 API Server starting on port %d\n", s.port)
 	fmt.Printf("🌐 Open http://localhost:%d in your browser\n", s.port)
@@ -2826,46 +2828,6 @@ func (s *APIServer) handleValidatorStatus(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (s *APIServer) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Method not allowed",
-		})
-		return
-	}
-
-	// Get blockchain status
-	latestBlock := s.blockchain.GetLatestBlock()
-	blockHeight := uint64(0)
-	if latestBlock != nil {
-		blockHeight = latestBlock.Header.Index
-	}
-
-	// Get validator count
-	validators := s.blockchain.StakeLedger.GetAllStakes()
-	validatorCount := len(validators)
-
-	// Get pending transactions
-	pendingTxs := len(s.blockchain.GetPendingTransactions())
-
-	health := map[string]interface{}{
-		"status":          "healthy",
-		"block_height":    blockHeight,
-		"validator_count": validatorCount,
-		"pending_txs":     pendingTxs,
-		"timestamp":       time.Now().Unix(),
-		"version":         "1.0.0",
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"data":    health,
-	})
-}
-
 // Cross-Chain DEX API Handlers
 func (s *APIServer) handleCrossChainQuote(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -3245,4 +3207,19 @@ func (s *APIServer) handleBridgeApprovalSimulation(w http.ResponseWriter, r *htt
 			"error":   "Bridge not available",
 		})
 	}
+}
+
+// handleHealth handles health check requests
+func (s *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"status":  "healthy",
+		"message": "Blockchain API is running",
+		"data": map[string]interface{}{
+			"block_height": len(s.blockchain.Blocks),
+			"pending_txs":  len(s.blockchain.PendingTxs),
+			"total_supply": s.blockchain.TotalSupply,
+		},
+	})
 }

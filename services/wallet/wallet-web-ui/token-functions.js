@@ -43,6 +43,20 @@ async function submitTransfer() {
         return;
     }
 
+    // Additional validation
+    if (fromAddress === toAddress) {
+        showAlert('Cannot transfer to the same address', 'error');
+        return;
+    }
+
+    // Show loading state
+    const submitButton = form.querySelector('button[type="submit"]') || form.querySelector('.btn-primary');
+    const originalText = submitButton ? submitButton.textContent : '';
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<div class="loading-spinner" style="width: 16px; height: 16px; margin-right: 8px; display: inline-block;"></div>Processing...';
+    }
+
     try {
         const result = await apiCall('/api/transfer', 'POST', {
             from: fromAddress,
@@ -52,15 +66,22 @@ async function submitTransfer() {
         });
 
         if (result.success) {
-            showAlert('Transfer successful!', 'success');
+            showAlert(`Transfer of ${amount} tokens completed successfully!`, 'success');
             closeModal(form.closest('.modal-overlay').id);
             loadTransactions(); // Refresh transaction list
             loadWallets(); // Refresh wallet balances
         } else {
-            showAlert('Transfer failed: ' + result.message, 'error');
+            showAlert('Transfer failed: ' + result.message, 'error', 0);
         }
     } catch (error) {
-        showAlert('Error during transfer: ' + error.message, 'error');
+        const errorMessage = getErrorMessage ? getErrorMessage(error) : error.message;
+        showAlert('Error during transfer: ' + errorMessage, 'error', 0);
+    } finally {
+        // Restore button state
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = originalText;
+        }
     }
 }
 

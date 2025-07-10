@@ -90,18 +90,84 @@ async function initializeDashboard() {
     await app.initialize();
 }
 
-// Utility functions
-function showAlert(message, type = 'info') {
+// Enhanced Utility functions
+function showAlert(message, type = 'info', duration = 5000) {
     const alertDiv = document.getElementById('alert');
     if (alertDiv) {
+        // Clear any existing timeout
+        if (alertDiv.hideTimeout) {
+            clearTimeout(alertDiv.hideTimeout);
+        }
+
         alertDiv.textContent = message;
         alertDiv.className = `alert alert-${type}`;
         alertDiv.style.display = 'block';
-        
-        // Auto-hide after 5 seconds
-        setTimeout(() => {
-            alertDiv.style.display = 'none';
-        }, 5000);
+
+        // Add close button for persistent alerts
+        if (type === 'error' || duration === 0) {
+            alertDiv.innerHTML = `
+                <span>${message}</span>
+                <button class="alert-close" onclick="hideAlert()">&times;</button>
+            `;
+        }
+
+        // Auto-hide after specified duration (0 = no auto-hide)
+        if (duration > 0) {
+            alertDiv.hideTimeout = setTimeout(() => {
+                hideAlert();
+            }, duration);
+        }
+    }
+}
+
+function hideAlert() {
+    const alertDiv = document.getElementById('alert');
+    if (alertDiv) {
+        alertDiv.style.display = 'none';
+        if (alertDiv.hideTimeout) {
+            clearTimeout(alertDiv.hideTimeout);
+        }
+    }
+}
+
+function showLoadingState(elementId, show = true, message = 'Loading...') {
+    const element = document.getElementById(elementId);
+    if (element) {
+        if (show) {
+            element.innerHTML = `
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+    }
+}
+
+function showErrorState(elementId, message, retryFunction = null) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        element.innerHTML = `
+            <div class="error-state">
+                <div class="error-icon">⚠️</div>
+                <p class="error-message">${message}</p>
+                ${retryFunction ? `<button class="btn btn-secondary" onclick="${retryFunction}()">Try Again</button>` : ''}
+            </div>
+        `;
+    }
+}
+
+function showEmptyState(elementId, title, description, actionText = null, actionFunction = null) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        element.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">📭</div>
+                <h4>${title}</h4>
+                <p class="text-muted">${description}</p>
+                ${actionText && actionFunction ? `<button class="btn btn-primary" onclick="${actionFunction}()">${actionText}</button>` : ''}
+            </div>
+        `;
     }
 }
 
@@ -119,31 +185,118 @@ function truncateAddress(address, length = 8) {
     return `${address.slice(0, length)}...${address.slice(-length)}`;
 }
 
-// API helper function
-async function apiCall(endpoint, method = 'GET', data = null) {
-    try {
-        const options = {
-            method,
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        };
+// Enhanced API helper function with retry logic and better error handling
+async function apiCall(endpoint, method = 'GET', data = null, options = {}) {
+    const {
+        retries = 2,
+        timeout = 10000,
+        showLoading = false,
+        loadingElement = null
+    } = options;
 
-        if (data && method !== 'GET') {
-            options.body = JSON.stringify(data);
+    if (showLoading && loadingElement) {
+        showLoadingState(loadingElement, true);
+    }
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+            const fetchOptions = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                signal: controller.signal,
+            };
+
+            if (data && method !== 'GET') {
+                fetchOptions.body = JSON.stringify(data);
+            }
+
+            const response = await fetch(endpoint, fetchOptions);
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                let errorMessage;
+
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    errorMessage = errorJson.message || errorJson.error || 'API call failed';
+                } catch {
+                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                }
+
+                throw new APIError(errorMessage, response.status, endpoint);
+            }
+
+            const result = await response.json();
+
+            if (showLoading && loadingElement) {
+                showLoadingState(loadingElement, false);
+            }
+
+            return result;
+
+        } catch (error) {
+            console.error(`API call to ${endpoint} failed (attempt ${attempt + 1}):`, error);
+
+            // Don't retry on certain errors
+            if (error instanceof APIError && error.status >= 400 && error.status < 500) {
+                if (showLoading && loadingElement) {
+                    showErrorState(loadingElement, error.message);
+                }
+                throw error;
+            }
+
+            // If this was the last attempt, throw the error
+            if (attempt === retries) {
+                if (showLoading && loadingElement) {
+                    showErrorState(loadingElement, getErrorMessage(error), 'retryLastOperation');
+                }
+                throw error;
+            }
+
+            // Wait before retrying (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
         }
+    }
+}
 
-        const response = await fetch(endpoint, options);
-        const result = await response.json();
+// Custom error class for API errors
+class APIError extends Error {
+    constructor(message, status, endpoint) {
+        super(message);
+        this.name = 'APIError';
+        this.status = status;
+        this.endpoint = endpoint;
+    }
+}
 
-        if (!response.ok) {
-            throw new Error(result.message || 'API call failed');
-        }
+// Helper function to get user-friendly error messages
+function getErrorMessage(error) {
+    if (error instanceof APIError) {
+        return error.message;
+    }
 
-        return result;
-    } catch (error) {
-        console.error(`API call to ${endpoint} failed:`, error);
-        throw error;
+    if (error.name === 'AbortError') {
+        return 'Request timed out. Please check your connection and try again.';
+    }
+
+    if (error.message.includes('Failed to fetch')) {
+        return 'Unable to connect to server. Please check your internet connection.';
+    }
+
+    return error.message || 'An unexpected error occurred. Please try again.';
+}
+
+// Global retry function for error states
+let lastFailedOperation = null;
+function retryLastOperation() {
+    if (lastFailedOperation) {
+        lastFailedOperation();
     }
 }
 
