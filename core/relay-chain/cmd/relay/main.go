@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"strconv"
@@ -160,7 +161,22 @@ func main() {
 	bridgeInstance := bridge.NewBridge(bc)
 
 	// Start API server for UI
-	apiServer := api.NewAPIServer(bc, bridgeInstance, 8080)
+	availablePort := 0
+	for port := 8080; port <= 8084; port++ {
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err == nil {
+			ln.Close() // Close immediately so the server can re-bind
+			availablePort = port
+			break
+		}
+	}
+	if availablePort == 0 {
+		fmt.Println("❌ No available ports found between 8080 and 8084")
+		os.Exit(1)
+	}
+
+	// Start API server for UI on available port
+	apiServer := api.NewAPIServer(bc, bridgeInstance, availablePort)
 	go apiServer.Start()
 
 	// Start CLI only if not in Docker mode
@@ -169,10 +185,10 @@ func main() {
 	} else {
 		fmt.Println("🔄 Running in Docker daemon mode - use Docker logs to monitor")
 		fmt.Printf("   P2P Port: %d\n", port)
-		fmt.Printf("   HTTP API Port: %d\n", 8080)
-		fmt.Println("🌐 Access dashboard at http://localhost:8080")
 
 		// Keep the container running
+		fmt.Printf("   HTTP API Port: %d\n", availablePort)
+		fmt.Printf("🌐 Access dashboard at http://localhost:%d\n", availablePort)
 		<-ctx.Done()
 	}
 }
