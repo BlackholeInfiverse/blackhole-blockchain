@@ -62,7 +62,7 @@ func main() {
 	defer cancel()
 
 	// 🧩 MongoDB setup
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb+srv://blackholeinfiverse13:Ramcreator@cluster0.ypzydfh.mongodb.net/BlackHoleWallet?retryWrites=true&w=majority&appName=Cluster0"))
 	if err != nil {
 		fmt.Println("MongoDB connection error:", err)
 		return
