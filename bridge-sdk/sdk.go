@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/bridge/core"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"go.uber.org/zap"
 )
