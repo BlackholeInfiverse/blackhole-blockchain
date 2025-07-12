@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
@@ -19,12 +20,37 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
+// BridgeEvent represents a bridge event notification
+type BridgeEvent struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"` // "transfer", "swap", "confirmation"
+	SourceChain string `json:"source_chain"`
+	DestChain   string `json:"dest_chain"`
+	TokenSymbol string `json:"token_symbol"`
+	Amount      uint64 `json:"amount"`
+	FromAddress string `json:"from_address"`
+	ToAddress   string `json:"to_address"`
+	Status      string `json:"status"`
+	TxHash      string `json:"tx_hash"`
+	Timestamp   int64  `json:"timestamp"`
+}
+
+// BridgeEventSubscription manages bridge event subscriptions
+type BridgeEventSubscription struct {
+	WalletAddress string
+	EventChannel  chan BridgeEvent
+	Active        bool
+}
+
 // BlockchainClient handles communication with the blockchain
 type BlockchainClient struct {
-	Blockchain     *chain.Blockchain
-	P2PHost        host.Host
-	ConnectedPeers []string
-	APIEndpoint    string // HTTP API endpoint for balance queries
+	Blockchain          *chain.Blockchain
+	P2PHost             host.Host
+	ConnectedPeers      []string
+	APIEndpoint         string                              // HTTP API endpoint for balance queries
+	BridgeEndpoint      string                              // Bridge API endpoint
+	BridgeSubscriptions map[string]*BridgeEventSubscription // wallet address -> subscription
+	bridgeMutex         sync.RWMutex
 }
 
 // BalanceQuery represents a balance query request
@@ -51,9 +77,11 @@ func NewBlockchainClient(port int) (*BlockchainClient, error) {
 	}
 
 	return &BlockchainClient{
-		P2PHost:        h,
-		ConnectedPeers: make([]string, 0),
-		APIEndpoint:    "", // Will be set when connecting to peers
+		P2PHost:             h,
+		ConnectedPeers:      make([]string, 0),
+		APIEndpoint:         "",                      // Will be set when connecting to peers
+		BridgeEndpoint:      "http://localhost:8083", // Default bridge endpoint
+		BridgeSubscriptions: make(map[string]*BridgeEventSubscription),
 	}, nil
 }
 
@@ -319,6 +347,169 @@ func (client *BlockchainClient) sendTransactionToNetwork(tx *chain.Transaction) 
 	}
 
 	return nil
+}
+
+// SubscribeToBridgeEvents subscribes a wallet to bridge events
+func (client *BlockchainClient) SubscribeToBridgeEvents(walletAddress string) error {
+	client.bridgeMutex.Lock()
+	defer client.bridgeMutex.Unlock()
+
+	// Check if already subscribed
+	if subscription, exists := client.BridgeSubscriptions[walletAddress]; exists && subscription.Active {
+		return fmt.Errorf("wallet %s already subscribed to bridge events", walletAddress)
+	}
+
+	// Create new subscription
+	subscription := &BridgeEventSubscription{
+		WalletAddress: walletAddress,
+		EventChannel:  make(chan BridgeEvent, 100), // Buffer for 100 events
+		Active:        true,
+	}
+
+	client.BridgeSubscriptions[walletAddress] = subscription
+
+	// Start event listener goroutine
+	go client.bridgeEventListener(subscription)
+
+	fmt.Printf("✅ Wallet %s subscribed to bridge events\n", walletAddress)
+	return nil
+}
+
+// UnsubscribeFromBridgeEvents unsubscribes a wallet from bridge events
+func (client *BlockchainClient) UnsubscribeFromBridgeEvents(walletAddress string) error {
+	client.bridgeMutex.Lock()
+	defer client.bridgeMutex.Unlock()
+
+	subscription, exists := client.BridgeSubscriptions[walletAddress]
+	if !exists {
+		return fmt.Errorf("wallet %s not subscribed to bridge events", walletAddress)
+	}
+
+	subscription.Active = false
+	close(subscription.EventChannel)
+	delete(client.BridgeSubscriptions, walletAddress)
+
+	fmt.Printf("✅ Wallet %s unsubscribed from bridge events\n", walletAddress)
+	return nil
+}
+
+// GetBridgeEvents retrieves bridge events for a specific wallet
+func (client *BlockchainClient) GetBridgeEvents(walletAddress string) ([]BridgeEvent, error) {
+	// Make HTTP request to bridge API
+	url := fmt.Sprintf("%s/api/bridge/events?wallet=%s", client.BridgeEndpoint, walletAddress)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch bridge events: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bridge API returned status %d", resp.StatusCode)
+	}
+
+	var response struct {
+		Success bool          `json:"success"`
+		Data    []BridgeEvent `json:"data"`
+		Error   string        `json:"error"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode bridge events response: %v", err)
+	}
+
+	if !response.Success {
+		return nil, fmt.Errorf("bridge API error: %s", response.Error)
+	}
+
+	return response.Data, nil
+}
+
+// HandleBridgeNotification processes incoming bridge event notifications
+func (client *BlockchainClient) HandleBridgeNotification(event BridgeEvent) error {
+	client.bridgeMutex.RLock()
+	defer client.bridgeMutex.RUnlock()
+
+	// Find subscriptions for the relevant wallet addresses
+	relevantAddresses := []string{event.FromAddress, event.ToAddress}
+
+	for _, address := range relevantAddresses {
+		if subscription, exists := client.BridgeSubscriptions[address]; exists && subscription.Active {
+			select {
+			case subscription.EventChannel <- event:
+				fmt.Printf("📡 Bridge event sent to wallet %s: %s\n", address, event.Type)
+			default:
+				fmt.Printf("⚠️ Bridge event channel full for wallet %s, dropping event\n", address)
+			}
+		}
+	}
+
+	return nil
+}
+
+// bridgeEventListener listens for bridge events and processes them
+func (client *BlockchainClient) bridgeEventListener(subscription *BridgeEventSubscription) {
+	fmt.Printf("🎧 Started bridge event listener for wallet %s\n", subscription.WalletAddress)
+
+	for subscription.Active {
+		select {
+		case event, ok := <-subscription.EventChannel:
+			if !ok {
+				fmt.Printf("🔇 Bridge event channel closed for wallet %s\n", subscription.WalletAddress)
+				return
+			}
+
+			// Process the bridge event
+			client.processBridgeEvent(subscription.WalletAddress, event)
+
+		case <-time.After(30 * time.Second):
+			// Periodic check for new events from bridge API
+			if subscription.Active {
+				client.pollBridgeEvents(subscription.WalletAddress)
+			}
+		}
+	}
+}
+
+// processBridgeEvent processes a single bridge event for a wallet
+func (client *BlockchainClient) processBridgeEvent(walletAddress string, event BridgeEvent) {
+	fmt.Printf("🌉 Processing bridge event for wallet %s:\n", walletAddress)
+	fmt.Printf("   Type: %s\n", event.Type)
+	fmt.Printf("   From: %s → To: %s\n", event.SourceChain, event.DestChain)
+	fmt.Printf("   Amount: %d %s\n", event.Amount, event.TokenSymbol)
+	fmt.Printf("   Status: %s\n", event.Status)
+
+	// Here you could add wallet-specific logic:
+	// - Update local balance cache
+	// - Trigger UI notifications
+	// - Log transaction history
+	// - etc.
+}
+
+// pollBridgeEvents polls the bridge API for new events
+func (client *BlockchainClient) pollBridgeEvents(walletAddress string) {
+	events, err := client.GetBridgeEvents(walletAddress)
+	if err != nil {
+		fmt.Printf("⚠️ Failed to poll bridge events for wallet %s: %v\n", walletAddress, err)
+		return
+	}
+
+	// Send new events to the subscription channel
+	client.bridgeMutex.RLock()
+	subscription, exists := client.BridgeSubscriptions[walletAddress]
+	client.bridgeMutex.RUnlock()
+
+	if exists && subscription.Active {
+		for _, event := range events {
+			select {
+			case subscription.EventChannel <- event:
+				// Event sent successfully
+			default:
+				// Channel full, skip this event
+				fmt.Printf("⚠️ Skipping bridge event due to full channel\n")
+			}
+		}
+	}
 }
 
 // sendMessageToPeer sends a message to a specific peer

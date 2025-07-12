@@ -49,3 +49,6 @@
 2025-06-17T12:49:06.836+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
 2025-06-17T12:49:06.837+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
 2025-06-17T12:49:07.543+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T14:23:49.548+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T14:23:49.549+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T14:23:50.638+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}

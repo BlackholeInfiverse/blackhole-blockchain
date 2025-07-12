@@ -1,23 +1,19 @@
 # Multi-stage build for BlackHole Bridge
-FROM golang:1.21-alpine AS builder
-
+FROM golang:1.24.3-alpine AS builder
 # Install build dependencies
 RUN apk add --no-cache git gcc musl-dev
 
 # Set working directory
 WORKDIR /app
 
-# Copy go mod files
-COPY go.mod go.sum ./
+# Copy the core blockchain module first
+COPY core/ ./core/
 
-# Download dependencies
-RUN go mod download
+# Copy the example directory as the main application
+COPY bridge-sdk/example/ ./
 
-# Copy source code
-COPY . .
-
-# Build the application
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o bridge-node ./example/main.go
+# Download dependencies and build
+RUN go mod tidy && go build -o main .
 
 # Final stage
 FROM alpine:latest
@@ -33,10 +29,10 @@ RUN addgroup -g 1001 -S appgroup && \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/bridge-node .
+COPY --from=builder /app/main .
 
 # Copy static assets
-COPY --from=builder /app/example/blackhole-logo.jpg .
+COPY --from=builder /app/blackhole-logo.jpg .
 
 # Create necessary directories
 RUN mkdir -p data logs && \
@@ -53,4 +49,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8084/health || exit 1
 
 # Run the application
-CMD ["./bridge-node"]
+CMD ["./main"]

@@ -15,7 +15,7 @@ type ChainType string
 const (
 	ChainTypeBlackhole ChainType = "blackhole"
 	ChainTypeEthereum  ChainType = "ethereum"
-	ChainTypeSolana  ChainType = "solana"
+	ChainTypeSolana    ChainType = "solana"
 	ChainTypePolkadot  ChainType = "polkadot"
 )
 
@@ -48,11 +48,11 @@ type RelayNode struct {
 
 // Bridge manages cross-chain operations
 type Bridge struct {
-	SupportedChains map[ChainType]bool                    `json:"supported_chains"`
-	Transactions    map[string]*BridgeTransaction         `json:"transactions"`
-	RelayNodes      map[string]*RelayNode                 `json:"relay_nodes"`
-	TokenMappings   map[ChainType]map[string]string       `json:"token_mappings"` // chain -> original_token -> wrapped_token
-	Blockchain      *chain.Blockchain                     `json:"-"`
+	SupportedChains map[ChainType]bool              `json:"supported_chains"`
+	Transactions    map[string]*BridgeTransaction   `json:"transactions"`
+	RelayNodes      map[string]*RelayNode           `json:"relay_nodes"`
+	TokenMappings   map[ChainType]map[string]string `json:"token_mappings"` // chain -> original_token -> wrapped_token
+	Blockchain      *chain.Blockchain               `json:"-"`
 	mu              sync.RWMutex
 }
 
@@ -162,7 +162,7 @@ func (b *Bridge) InitiateBridgeTransfer(sourceChain, destChain ChainType, source
 	}
 
 	b.Transactions[bridgeTxID] = bridgeTx
-	fmt.Printf("✅ Bridge transfer initiated: %s (%d %s from %s to %s)\n", 
+	fmt.Printf("✅ Bridge transfer initiated: %s (%d %s from %s to %s)\n",
 		bridgeTxID, amount, tokenSymbol, sourceChain, destChain)
 
 	// Simulate relay processing
@@ -308,18 +308,164 @@ func (b *Bridge) GetTokenMapping(chain ChainType) map[string]string {
 // GenerateTestBridgeTransaction creates a test bridge transaction JSON
 func (b *Bridge) GenerateTestBridgeTransaction() string {
 	testTx := map[string]interface{}{
-		"id":              "bridge_test_12345",
-		"source_chain":    "blackhole",
-		"dest_chain":      "ethereum",
-		"source_address":  "blackhole_addr_123",
-		"dest_address":    "0x742d35Cc6634C0532925a3b8D4C9db96590b5",
-		"token_symbol":    "BHX",
-		"amount":          1000,
-		"status":          "pending",
-		"created_at":      time.Now().Unix(),
+		"id":               "bridge_test_12345",
+		"source_chain":     "blackhole",
+		"dest_chain":       "ethereum",
+		"source_address":   "blackhole_addr_123",
+		"dest_address":     "0x742d35Cc6634C0532925a3b8D4C9db96590b5",
+		"token_symbol":     "BHX",
+		"amount":           1000,
+		"status":           "pending",
+		"created_at":       time.Now().Unix(),
 		"relay_signatures": []string{},
 	}
 
 	jsonData, _ := json.MarshalIndent(testTx, "", "  ")
 	return string(jsonData)
+}
+
+// ApprovalSimulation represents the result of a bridge approval simulation
+type ApprovalSimulation struct {
+	Valid               bool     `json:"valid"`
+	TokenSymbol         string   `json:"token_symbol"`
+	Owner               string   `json:"owner"`
+	Spender             string   `json:"spender"`
+	RequestedAmount     uint64   `json:"requested_amount"`
+	CurrentAllowance    uint64   `json:"current_allowance"`
+	CurrentBalance      uint64   `json:"current_balance"`
+	SufficientBalance   bool     `json:"sufficient_balance"`
+	SufficientAllowance bool     `json:"sufficient_allowance"`
+	Warnings            []string `json:"warnings"`
+	EstimatedGasCost    uint64   `json:"estimated_gas_cost"`
+	Timestamp           int64    `json:"timestamp"`
+}
+
+// SimulateApproval simulates a token approval for bridge operations
+func (b *Bridge) SimulateApproval(sourceChain ChainType, tokenSymbol, owner, spender string, amount uint64) (*ApprovalSimulation, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	simulation := &ApprovalSimulation{
+		TokenSymbol:      tokenSymbol,
+		Owner:            owner,
+		Spender:          spender,
+		RequestedAmount:  amount,
+		Warnings:         make([]string, 0),
+		EstimatedGasCost: 45000, // Standard ERC-20 approval gas cost
+		Timestamp:        time.Now().Unix(),
+	}
+
+	// Get token from blockchain registry
+	token, exists := b.Blockchain.TokenRegistry[tokenSymbol]
+	if !exists {
+		simulation.Valid = false
+		simulation.Warnings = append(simulation.Warnings, fmt.Sprintf("Token %s not found", tokenSymbol))
+		return simulation, nil
+	}
+
+	// Check current balance
+	balance, err := token.BalanceOf(owner)
+	if err != nil {
+		simulation.Valid = false
+		simulation.Warnings = append(simulation.Warnings, fmt.Sprintf("Failed to check balance: %v", err))
+		return simulation, nil
+	}
+	simulation.CurrentBalance = balance
+	simulation.SufficientBalance = balance >= amount
+
+	// Check current allowance
+	allowance, err := token.Allowance(owner, spender)
+	if err != nil {
+		simulation.Valid = false
+		simulation.Warnings = append(simulation.Warnings, fmt.Sprintf("Failed to check allowance: %v", err))
+		return simulation, nil
+	}
+	simulation.CurrentAllowance = allowance
+	simulation.SufficientAllowance = allowance >= amount
+
+	// Validate approval requirements
+	if !simulation.SufficientBalance {
+		simulation.Warnings = append(simulation.Warnings,
+			fmt.Sprintf("Insufficient balance: has %d, needs %d", balance, amount))
+	}
+
+	if !simulation.SufficientAllowance {
+		simulation.Warnings = append(simulation.Warnings,
+			fmt.Sprintf("Insufficient allowance: has %d, needs %d", allowance, amount))
+	}
+
+	// Check for common issues
+	if amount > 1000000000 { // Very large amount
+		simulation.Warnings = append(simulation.Warnings, "Large amount detected - please verify")
+	}
+
+	if owner == spender {
+		simulation.Warnings = append(simulation.Warnings, "Owner and spender are the same address")
+	}
+
+	// Simulation is valid if balance and allowance are sufficient
+	simulation.Valid = simulation.SufficientBalance && simulation.SufficientAllowance
+
+	return simulation, nil
+}
+
+// ValidateApprovalForBridge validates that a bridge transaction has proper approvals
+func (b *Bridge) ValidateApprovalForBridge(bridgeTx *BridgeTransaction) error {
+	if bridgeTx.SourceChain != ChainTypeBlackhole {
+		// For external chains, we assume approvals are handled externally
+		return nil
+	}
+
+	// For Blackhole chain, validate token approval
+	simulation, err := b.SimulateApproval(
+		bridgeTx.SourceChain,
+		bridgeTx.TokenSymbol,
+		bridgeTx.SourceAddress,
+		"bridge_contract", // Bridge contract as spender
+		bridgeTx.Amount,
+	)
+	if err != nil {
+		return fmt.Errorf("approval simulation failed: %v", err)
+	}
+
+	if !simulation.Valid {
+		return fmt.Errorf("bridge approval validation failed: %v", simulation.Warnings)
+	}
+
+	if len(simulation.Warnings) > 0 {
+		fmt.Printf("⚠️ Bridge approval warnings: %v\n", simulation.Warnings)
+	}
+
+	return nil
+}
+
+// PreValidateBridgeTransfer performs pre-flight validation of a bridge transfer
+func (b *Bridge) PreValidateBridgeTransfer(sourceAddr, tokenSymbol string, amount uint64) error {
+	// Check if token exists
+	token, exists := b.Blockchain.TokenRegistry[tokenSymbol]
+	if !exists {
+		return fmt.Errorf("token %s not found", tokenSymbol)
+	}
+
+	// Check balance
+	balance, err := token.BalanceOf(sourceAddr)
+	if err != nil {
+		return fmt.Errorf("failed to check balance: %v", err)
+	}
+
+	if balance < amount {
+		return fmt.Errorf("insufficient balance: has %d, needs %d", balance, amount)
+	}
+
+	// Check allowance for bridge contract
+	allowance, err := token.Allowance(sourceAddr, "bridge_contract")
+	if err != nil {
+		return fmt.Errorf("failed to check bridge allowance: %v", err)
+	}
+
+	if allowance < amount {
+		return fmt.Errorf("insufficient bridge allowance: has %d, needs %d. Please approve bridge contract first", allowance, amount)
+	}
+
+	return nil
 }

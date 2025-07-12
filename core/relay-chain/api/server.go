@@ -7,17 +7,19 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/bridge"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/escrow"
 )
 
 type APIServer struct {
 	blockchain    *chain.Blockchain
+	bridge        *bridge.Bridge
 	port          int
 	escrowManager interface{} // Will be initialized as *escrow.EscrowManager
 }
 
-func NewAPIServer(blockchain *chain.Blockchain, port int) *APIServer {
+func NewAPIServer(blockchain *chain.Blockchain, bridgeInstance *bridge.Bridge, port int) *APIServer {
 	// Initialize proper escrow manager using dependency injection
 	escrowManager := NewEscrowManagerForBlockchain(blockchain)
 
@@ -26,6 +28,7 @@ func NewAPIServer(blockchain *chain.Blockchain, port int) *APIServer {
 
 	return &APIServer{
 		blockchain:    blockchain,
+		bridge:        bridgeInstance,
 		port:          port,
 		escrowManager: escrowManager,
 	}
@@ -73,6 +76,17 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/cross-chain/order", s.enableCORS(s.handleCrossChainOrder))
 	http.HandleFunc("/api/cross-chain/orders", s.enableCORS(s.handleCrossChainOrders))
 	http.HandleFunc("/api/cross-chain/supported-chains", s.enableCORS(s.handleSupportedChains))
+
+	// Bridge event endpoints
+	http.HandleFunc("/api/bridge/events", s.enableCORS(s.handleBridgeEvents))
+	http.HandleFunc("/api/bridge/subscribe", s.enableCORS(s.handleBridgeSubscribe))
+	http.HandleFunc("/api/bridge/approval/simulate", s.enableCORS(s.handleBridgeApprovalSimulation))
+
+	// Relay endpoints for external chains
+	http.HandleFunc("/api/relay/submit", s.enableCORS(s.handleRelaySubmit))
+	http.HandleFunc("/api/relay/status", s.enableCORS(s.handleRelayStatus))
+	http.HandleFunc("/api/relay/events", s.enableCORS(s.handleRelayEvents))
+	http.HandleFunc("/api/relay/validate", s.enableCORS(s.handleRelayValidate))
 
 	// Health check endpoint
 	http.HandleFunc("/api/health", s.enableCORS(s.handleHealthCheck))
@@ -1872,6 +1886,201 @@ func (s *APIServer) updateCrossChainOrderStatus(orderID, status string) {
 	}
 }
 
+// handleRelaySubmit handles transaction submission from external chains
+func (s *APIServer) handleRelaySubmit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Type      string `json:"type"`
+		From      string `json:"from"`
+		To        string `json:"to"`
+		Amount    uint64 `json:"amount"`
+		TokenID   string `json:"token_id"`
+		Fee       uint64 `json:"fee"`
+		Nonce     uint64 `json:"nonce"`
+		Timestamp int64  `json:"timestamp"`
+		Signature string `json:"signature"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	// Convert string type to int type
+	txType := chain.RegularTransfer // Default
+	switch req.Type {
+	case "transfer":
+		txType = chain.RegularTransfer
+	case "token_transfer":
+		txType = chain.TokenTransfer
+	case "stake_deposit":
+		txType = chain.StakeDeposit
+	case "stake_withdraw":
+		txType = chain.StakeWithdraw
+	case "mint":
+		txType = chain.TokenMint
+	case "burn":
+		txType = chain.TokenBurn
+	}
+
+	// Create transaction
+	tx := &chain.Transaction{
+		Type:      txType,
+		From:      req.From,
+		To:        req.To,
+		Amount:    req.Amount,
+		TokenID:   req.TokenID,
+		Fee:       req.Fee,
+		Nonce:     req.Nonce,
+		Timestamp: req.Timestamp,
+	}
+	tx.ID = tx.CalculateHash()
+
+	// Validate and add to pending transactions
+	err := s.blockchain.ValidateTransaction(tx)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":        true,
+		"transaction_id": tx.ID,
+		"status":         "pending",
+		"submitted_at":   time.Now().Unix(),
+	})
+}
+
+// handleRelayStatus handles relay status requests
+func (s *APIServer) handleRelayStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	latestBlock := s.blockchain.GetLatestBlock()
+	pendingTxs := s.blockchain.GetPendingTransactions()
+
+	status := map[string]interface{}{
+		"chain_id":             "blackhole-mainnet",
+		"block_height":         latestBlock.Header.Index,
+		"latest_block_hash":    latestBlock.Hash,
+		"latest_block_time":    latestBlock.Header.Timestamp,
+		"pending_transactions": len(pendingTxs),
+		"relay_active":         true,
+		"timestamp":            time.Now().Unix(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    status,
+	})
+}
+
+// handleRelayEvents handles relay event streaming
+func (s *APIServer) handleRelayEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Simple event list (in production, this would be a real-time stream)
+	events := []map[string]interface{}{
+		{
+			"id":           "relay_event_1",
+			"type":         "block_created",
+			"block_height": s.blockchain.GetLatestBlock().Header.Index,
+			"timestamp":    time.Now().Unix(),
+			"data": map[string]interface{}{
+				"validator":  "node1",
+				"tx_count":   5,
+				"block_size": 2048,
+			},
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    events,
+	})
+}
+
+// handleRelayValidate handles transaction validation
+func (s *APIServer) handleRelayValidate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Type    string `json:"type"`
+		From    string `json:"from"`
+		To      string `json:"to"`
+		Amount  uint64 `json:"amount"`
+		TokenID string `json:"token_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	// Basic validation
+	warnings := []string{}
+	valid := true
+
+	if req.From == "" || req.To == "" {
+		valid = false
+		warnings = append(warnings, "from and to addresses are required")
+	}
+
+	if req.Amount == 0 {
+		valid = false
+		warnings = append(warnings, "amount must be greater than 0")
+	}
+
+	// Check token exists
+	if req.TokenID != "" {
+		if _, exists := s.blockchain.TokenRegistry[req.TokenID]; !exists {
+			valid = false
+			warnings = append(warnings, fmt.Sprintf("token %s not found", req.TokenID))
+		}
+	}
+
+	validation := map[string]interface{}{
+		"valid":               valid,
+		"warnings":            warnings,
+		"estimated_fee":       uint64(1000),
+		"estimated_gas":       uint64(21000),
+		"success_probability": 0.95,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    validation,
+	})
+}
+
 // processCrossChainSwap simulates the cross-chain swap process
 func (s *APIServer) processCrossChainSwap(orderID string) {
 	_, exists := s.getCrossChainOrder(orderID)
@@ -2421,4 +2630,131 @@ func (s *APIServer) handleSupportedChains(w http.ResponseWriter, r *http.Request
 		"success": true,
 		"data":    supportedChains,
 	})
+}
+
+// handleBridgeEvents handles bridge event queries
+func (s *APIServer) handleBridgeEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	walletAddress := r.URL.Query().Get("wallet")
+	if walletAddress == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "wallet parameter required",
+		})
+		return
+	}
+
+	// Get bridge events for the wallet (simplified implementation)
+	events := []map[string]interface{}{
+		{
+			"id":           "bridge_event_1",
+			"type":         "transfer",
+			"source_chain": "ethereum",
+			"dest_chain":   "blackhole",
+			"token_symbol": "USDT",
+			"amount":       1000000,
+			"from_address": walletAddress,
+			"to_address":   "0x8ba1f109551bD432803012645",
+			"status":       "confirmed",
+			"tx_hash":      "0xabcdef1234567890",
+			"timestamp":    time.Now().Unix() - 3600,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    events,
+	})
+}
+
+// handleBridgeSubscribe handles bridge event subscriptions
+func (s *APIServer) handleBridgeSubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		WalletAddress string `json:"wallet_address"`
+		Endpoint      string `json:"endpoint"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	// Subscribe wallet to bridge events (simplified implementation)
+	fmt.Printf("📡 Wallet %s subscribed to bridge events at %s\n", req.WalletAddress, req.Endpoint)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Successfully subscribed to bridge events",
+	})
+}
+
+// handleBridgeApprovalSimulation handles bridge approval simulation
+func (s *APIServer) handleBridgeApprovalSimulation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		TokenSymbol string `json:"token_symbol"`
+		Owner       string `json:"owner"`
+		Spender     string `json:"spender"`
+		Amount      uint64 `json:"amount"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	// Simulate bridge approval using the bridge
+	if s.bridge != nil {
+		simulation, err := s.bridge.SimulateApproval(
+			bridge.ChainTypeBlackhole,
+			req.TokenSymbol,
+			req.Owner,
+			req.Spender,
+			req.Amount,
+		)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   err.Error(),
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"data":    simulation,
+		})
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Bridge not available",
+		})
+	}
 }

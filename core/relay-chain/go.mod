@@ -6,11 +6,13 @@ require (
 	github.com/libp2p/go-libp2p v0.41.1
 	github.com/multiformats/go-multiaddr v0.15.0
 	github.com/stretchr/testify v1.10.0
+	google.golang.org/grpc v1.19.0
 
 )
 
 require (
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
+	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/libp2p/go-yamux/v5 v5.0.0 // indirect
@@ -35,6 +37,7 @@ require (
 	github.com/pion/turn/v4 v4.0.0 // indirect
 	github.com/pion/webrtc/v4 v4.0.10 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
+	google.golang.org/genproto v0.0.0-20190306203927-b5d61aea6440 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

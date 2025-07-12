@@ -1,0 +1,10 @@
+{
+  "route": "ETH_TO_BH",
+  "amount": 0.05,
+  "sourceAddress": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+  "destAddress": "bh1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+  "gasFee": 0.001,
+  "confirmations": 12,
+  "timeout": 300,
+  "priority": "medium"
+}

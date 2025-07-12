@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # Blockchain Node
+  blockchain-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.simple
+    container_name: blackhole-blockchain
+    restart: unless-stopped
+    ports:
+      - "3000:3000"  # P2P port
+      - "8080:8080"  # API/Dashboard port
+    volumes:
+      - blockchain_data:/app/data
+      - blockchain_logs:/app/logs
+    environment:
+      - BLACKHOLE_PORT=3000
+      - BLACKHOLE_API_PORT=8080
+      - BLACKHOLE_NODE_ID=node-1
+    networks:
+      - blackhole-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Simple Web Dashboard
+  dashboard:
+    image: nginx:alpine
+    container_name: blackhole-dashboard
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx-simple.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - blackhole-network
+    depends_on:
+      - blockchain-node
+
+# Networks
+networks:
+  blackhole-network:
+    driver: bridge
+
+# Volumes
+volumes:
+  blockchain_data:
+    driver: local
+  blockchain_logs:
+    driver: local
