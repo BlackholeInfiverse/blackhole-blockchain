@@ -152,7 +152,7 @@ func (bhi *BlackHoleBlockchainInterface) processTransactionViaHTTP(bridgeTx *Tra
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("failed to decode blockchain response: %v", err)
-	}
+	} 
 
 	// Update bridge transaction status
 	bridgeTx.Status = "confirmed"

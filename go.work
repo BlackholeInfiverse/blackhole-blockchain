@@ -7,4 +7,9 @@ use (
     ./libs
     ./parachains
     ./services/wallet
+	./bridge-sdk
+	./core/relay-chain
+	./libs
+	./parachains
+	./services/wallet
 )
