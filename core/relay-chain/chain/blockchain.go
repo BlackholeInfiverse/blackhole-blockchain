@@ -53,6 +53,9 @@ type Blockchain struct {
 	OTCManager       interface{} // Will be *otc.OTCManager
 	SlashingManager  *SlashingManager
 
+	// Economic system
+	RewardInflationMgr *RewardInflationManager
+
 	// Production-grade caching and registry
 	BalanceCache    *cache.ProductionBalanceCache
 	AccountRegistry *registry.AccountRegistry
@@ -320,6 +323,11 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 	// Start validator monitoring in background
 	go bc.MonitorValidatorPerformance()
 	fmt.Printf("⚡ Slashing manager initialized and monitoring started\n")
+
+	// Initialize Reward Inflation Manager
+	bc.RewardInflationMgr = NewRewardInflationManager(bc)
+	bc.RewardInflationMgr.StartInflationAdjustment()
+	fmt.Printf("💰 Reward inflation manager initialized and started\n")
 
 	// Initialize OTC Manager (temporarily disabled due to import cycle)
 	// TODO: Fix import cycle and re-enable
