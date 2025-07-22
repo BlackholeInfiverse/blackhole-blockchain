@@ -14,8 +14,11 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 
+// TransactionType represents the type of transaction
+type TransactionType int
+
 const (
-	RegularTransfer = iota
+	RegularTransfer TransactionType = iota
 	TokenTransfer
 	TokenMint
 	TokenBurn
@@ -24,28 +27,29 @@ const (
 	SmartContractCall
 )
 
+// Transaction represents a blockchain transaction
 type Transaction struct {
-	ID        string
-	Type      int
-	From      string
-	To        string
-	Amount    uint64
-	TokenID   string // Add token identifier
-	Data      []byte // For staking parameters or contract calls
-	Timestamp int64
-	Nonce     uint64
-	Signature []byte
-	Fee       uint64
-	GasLimit  uint64
-	GasPrice  uint64
-	PublicKey []byte
+	ID        string          `json:"id"`
+	Type      TransactionType `json:"type"`
+	From      string          `json:"from"`
+	To        string          `json:"to"`
+	Amount    uint64          `json:"amount"`
+	TokenID   string          `json:"token_id"` // Add token identifier
+	Data      []byte          `json:"data"`     // For staking parameters or contract calls
+	Timestamp int64           `json:"timestamp"`
+	Nonce     uint64          `json:"nonce"`
+	Signature []byte          `json:"signature"`
+	Fee       uint64          `json:"fee"`
+	GasLimit  uint64          `json:"gas_limit"`
+	GasPrice  uint64          `json:"gas_price"`
+	PublicKey []byte          `json:"public_key"`
 }
 
 func (tx *Transaction) Serialize() (any, any) {
 	panic("unimplemented")
 }
 
-func NewTransaction(txType int, from, to string, amount uint64, publicKey []byte) *Transaction {
+func NewTransaction(txType TransactionType, from, to string, amount uint64, publicKey []byte) *Transaction {
 	tx := &Transaction{
 		ID:        "",
 		Type:      txType,
@@ -67,15 +71,15 @@ func NewTransaction(txType int, from, to string, amount uint64, publicKey []byte
 
 func (tx *Transaction) CalculateHash() string {
 	data, _ := json.Marshal(struct {
-		Type      int
-		From      string
-		To        string
-		Amount    uint64
-		TokenID   string
-		Data      []byte
-		Nonce     uint64
-		Timestamp int64
-		PublicKey []byte
+		Type      TransactionType `json:"type"`
+		From      string          `json:"from"`
+		To        string          `json:"to"`
+		Amount    uint64          `json:"amount"`
+		TokenID   string          `json:"token_id"`
+		Data      []byte          `json:"data"`
+		Nonce     uint64          `json:"nonce"`
+		Timestamp int64           `json:"timestamp"`
+		PublicKey []byte          `json:"public_key"`
 	}{
 		tx.Type,
 		tx.From,

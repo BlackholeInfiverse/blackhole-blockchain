@@ -48,12 +48,15 @@ type RelayNode struct {
 
 // Bridge manages cross-chain operations
 type Bridge struct {
-	SupportedChains map[ChainType]bool              `json:"supported_chains"`
-	Transactions    map[string]*BridgeTransaction   `json:"transactions"`
-	RelayNodes      map[string]*RelayNode           `json:"relay_nodes"`
-	TokenMappings   map[ChainType]map[string]string `json:"token_mappings"` // chain -> original_token -> wrapped_token
-	Blockchain      *chain.Blockchain               `json:"-"`
-	mu              sync.RWMutex
+	SupportedChains         map[ChainType]bool              `json:"supported_chains"`
+	Transactions            map[string]*BridgeTransaction   `json:"transactions"`
+	RelayNodes              map[string]*RelayNode           `json:"relay_nodes"`
+	TokenMappings           map[ChainType]map[string]string `json:"token_mappings"` // chain -> original_token -> wrapped_token
+	Blockchain              *chain.Blockchain               `json:"-"`
+	EventEmitter            *BridgeEventEmitter             `json:"-"`
+	ApprovalManager         *BridgeApprovalManager          `json:"-"`
+	CrossContractApprovals  *CrossContractApprovalManager   `json:"-"`
+	mu                      sync.RWMutex
 }
 
 // NewBridge creates a new bridge instance
@@ -64,7 +67,14 @@ func NewBridge(blockchain *chain.Blockchain) *Bridge {
 		RelayNodes:      make(map[string]*RelayNode),
 		TokenMappings:   make(map[ChainType]map[string]string),
 		Blockchain:      blockchain,
+		EventEmitter:    NewBridgeEventEmitter(),
 	}
+
+	// Initialize approval manager
+	bridge.ApprovalManager = NewBridgeApprovalManager(bridge)
+
+	// Initialize cross-contract approval manager
+	bridge.CrossContractApprovals = NewCrossContractApprovalManager(bridge)
 
 	// Initialize supported chains
 	bridge.SupportedChains[ChainTypeBlackhole] = true
@@ -152,8 +162,13 @@ func (b *Bridge) InitiateBridgeTransfer(sourceChain, destChain ChainType, source
 			return nil, fmt.Errorf("insufficient balance: has %d, needs %d", balance, amount)
 		}
 
-		// Lock tokens in bridge contract
-		err = token.Transfer(sourceAddr, "bridge_contract", amount)
+		// Ensure proper cross-contract approvals before locking tokens
+		if err := b.CrossContractApprovals.ValidateAndFixApprovals(bridgeTx); err != nil {
+			return nil, fmt.Errorf("cross-contract approval failed: %v", err)
+		}
+
+		// Lock tokens in bridge contract using TransferFrom (requires approval)
+		err = token.TransferFrom(sourceAddr, "bridge_contract", "bridge_contract", amount)
 		if err != nil {
 			return nil, fmt.Errorf("failed to lock tokens: %v", err)
 		}
@@ -162,6 +177,17 @@ func (b *Bridge) InitiateBridgeTransfer(sourceChain, destChain ChainType, source
 	}
 
 	b.Transactions[bridgeTxID] = bridgeTx
+
+	// Emit bridge initiated event
+	initiatedEvent := CreateBridgeInitiatedEvent(bridgeTx)
+	b.EventEmitter.EmitEvent(initiatedEvent)
+
+	// If tokens were locked, emit token locked event
+	if sourceChain == ChainTypeBlackhole && bridgeTx.SourceTxHash != "" {
+		lockedEvent := CreateTokenLockedEvent(bridgeTx, bridgeTx.SourceTxHash, 21000) // Estimated gas
+		b.EventEmitter.EmitEvent(lockedEvent)
+	}
+
 	fmt.Printf("✅ Bridge transfer initiated: %s (%d %s from %s to %s)\n",
 		bridgeTxID, amount, tokenSymbol, sourceChain, destChain)
 
@@ -193,12 +219,36 @@ func (b *Bridge) processRelayConfirmation(bridgeTxID string) {
 		if relayCount >= 2 {
 			break
 		}
-		bridgeTx.RelaySignatures = append(bridgeTx.RelaySignatures, fmt.Sprintf("sig_%s_%s", relayID, bridgeTxID))
+		signature := fmt.Sprintf("sig_%s_%s", relayID, bridgeTxID)
+		bridgeTx.RelaySignatures = append(bridgeTx.RelaySignatures, signature)
+
+		// Emit relay signature event
+		sigEvent := CreateRelaySignatureEvent(bridgeTx, relayID, signature)
+		b.EventEmitter.EmitEvent(sigEvent)
+
 		relayCount++
 	}
 
 	bridgeTx.Status = "confirmed"
 	bridgeTx.ConfirmedAt = time.Now().Unix()
+
+	// Emit bridge confirmed event
+	confirmedEvent := BridgeEvent{
+		Type:            EventBridgeConfirmed,
+		BridgeID:        bridgeTx.ID,
+		SourceChain:     bridgeTx.SourceChain,
+		DestChain:       bridgeTx.DestChain,
+		TokenSymbol:     bridgeTx.TokenSymbol,
+		Amount:          bridgeTx.Amount,
+		RelaySignatures: bridgeTx.RelaySignatures,
+		Status:          "confirmed",
+		Metadata: map[string]interface{}{
+			"confirmation_time": time.Now().Unix(),
+			"relay_count":       len(bridgeTx.RelaySignatures),
+			"required_sigs":     2,
+		},
+	}
+	b.EventEmitter.EmitEvent(confirmedEvent)
 
 	fmt.Printf("✅ Bridge transaction %s confirmed by %d relays\n", bridgeTxID, len(bridgeTx.RelaySignatures))
 
@@ -240,6 +290,10 @@ func (b *Bridge) processDestinationTransfer(bridgeTxID string) {
 
 	bridgeTx.Status = "completed"
 	bridgeTx.CompletedAt = time.Now().Unix()
+
+	// Emit bridge completed event
+	completedEvent := CreateBridgeCompletedEvent(bridgeTx, bridgeTx.DestTxHash, 42000) // Estimated gas
+	b.EventEmitter.EmitEvent(completedEvent)
 
 	fmt.Printf("✅ Bridge transfer completed: %s (tx: %s)\n", bridgeTxID, bridgeTx.DestTxHash)
 }

@@ -1,0 +1,11 @@
+
+Deployment Information
+=====================
+Time: 2025-06-26T12:26:30+05:30
+Contract Address: 0xd3c21bcecceda1000000
+Token Name: BlackHole Token
+Token Symbol: BHT
+Decimals: 18
+Initial Supply: 1000000000000000000000000
+Owner Address: 03e2459b73c0c6522530f6b26e834d992dfc55d170bee35d0bcdc047fe0d61c25b
+RPC Endpoint: http://localhost:8080

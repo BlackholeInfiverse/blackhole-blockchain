@@ -676,9 +676,9 @@ func (client *BlockchainClient) queryBalanceViaDedicatedEndpoint(address, tokenS
 // extractAPIPortFromPeer extracts the API port from a peer address
 func (client *BlockchainClient) extractAPIPortFromPeer(peerAddr string) string {
 	// Parse peer address like /ip4/127.0.0.1/tcp/3000/p2p/12D3KooW...
-	// The API server typically runs on port 8080 when blockchain runs on 3000
+	// The API server typically runs on port 8081 when blockchain runs on 3000
 	if strings.Contains(peerAddr, "/tcp/3000/") {
-		return "8080"
+		return "8081"
 	}
 	if strings.Contains(peerAddr, "/tcp/3001/") {
 		return "8081"
