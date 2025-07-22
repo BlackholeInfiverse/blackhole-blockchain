@@ -19,6 +19,8 @@ type AccountState struct {
 	Nonce   uint64
 }
 
+// hello this is me
+
 type Blockchain struct {
 	Blocks           []*Block
 	PendingTxs       []*Transaction
@@ -40,6 +42,7 @@ type Blockchain struct {
 	MultiSigManager  interface{}
 	OTCManager       interface{} // Will be *otc.OTCManager
 	SlashingManager  *SlashingManager
+	ValidatorFaucet  interface{} // Will be *faucet.ValidatorFaucet
 }
 type RealBlockchain struct {
 	Blockchain *Blockchain // Pointer to the real blockchain
