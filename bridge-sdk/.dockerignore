@@ -1,0 +1,115 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+DEPLOYMENT.md
+README.md
+IMPLEMENTATION_SUMMARY.md
+
+# Development files
+.env
+.env.local
+.env.example
+*.log
+*.tmp
+*.temp
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+main
+bridge-node
+bridge-system
+example
+tmp/
+dist/
+build/
+
+# Test files
+*_test.go
+test/
+tests/
+coverage.out
+coverage.html
+
+# Logs and data
+logs/
+data/
+backups/
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+blockchaindb_*/
+
+# Docker files (except main ones)
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Scripts (keep only essential ones)
+start-bridge.sh
+start-bridge.bat
+start-bridge-docker.bat
+
+# Monitoring configs (will be mounted)
+monitoring/grafana/data/
+monitoring/prometheus/data/
+
+# SSL certificates
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/ssl/*.crt
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Rust
+target/
+Cargo.lock
+
+# Go
+vendor/
+*.sum
+
+# Temporary files
+*.tmp
+*.temp
+*.cache

@@ -1,0 +1,32 @@
+2025-06-16T14:42:56.923+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T14:42:57.544+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-16T14:43:22.067+0530	INFO	bridge-sdk/logger.go:426	New WebSocket client connected	{"client_id": "client_1750065202067072600", "remote_addr": "[::1]:58760", "component": "log_streamer"}
+2025-06-16T14:43:30.070+0530	INFO	bridge-sdk/logger.go:426	WebSocket client disconnected	{"client_id": "client_1750065202067072600", "component": "log_streamer"}
+2025-06-16T14:43:40.023+0530	INFO	bridge-sdk/logger.go:426	New WebSocket client connected	{"client_id": "client_1750065220023061200", "remote_addr": "[::1]:58765", "component": "log_streamer"}
+2025-06-16T14:43:45.693+0530	INFO	bridge-sdk/logger.go:426	WebSocket client disconnected	{"client_id": "client_1750065220023061200", "component": "log_streamer"}
+2025-06-16T14:43:48.879+0530	INFO	bridge-sdk/logger.go:426	New WebSocket client connected	{"client_id": "client_1750065228879273700", "remote_addr": "[::1]:58767", "component": "log_streamer"}
+2025-06-16T14:43:52.771+0530	INFO	bridge-sdk/logger.go:426	WebSocket client disconnected	{"client_id": "client_1750065228879273700", "component": "log_streamer"}
+2025-06-16T14:43:56.642+0530	INFO	bridge-sdk/logger.go:426	New WebSocket client connected	{"client_id": "client_1750065236642597100", "remote_addr": "[::1]:58771", "component": "log_streamer"}
+2025-06-16T14:43:59.257+0530	INFO	bridge-sdk/logger.go:426	WebSocket client disconnected	{"client_id": "client_1750065236642597100", "component": "log_streamer"}
+2025-06-16T15:17:43.337+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T15:17:43.337+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-16T15:17:43.944+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-16T15:18:50.418+0530	INFO	bridge-sdk/logger.go:426	New WebSocket client connected	{"client_id": "client_1750067330418314700", "remote_addr": "[::1]:50181", "component": "log_streamer"}
+2025-06-16T15:18:52.488+0530	INFO	bridge-sdk/logger.go:426	WebSocket client disconnected	{"client_id": "client_1750067330418314700", "component": "log_streamer"}
+2025-06-16T15:19:11.316+0530	INFO	bridge-sdk/logger.go:426	Initiating cross-chain token transfer	{"request_id": "transfer_20250616151911", "from_chain": "ethereum", "to_chain": "blackhole", "amount": "1000000000000000000", "token": "ETH", "component": "transfer"}
+2025-06-16T15:19:17.968+0530	INFO	bridge-sdk/logger.go:426	New WebSocket client connected	{"client_id": "client_1750067357968046000", "remote_addr": "[::1]:50187", "component": "log_streamer"}
+2025-06-16T15:19:24.387+0530	INFO	bridge-sdk/logger.go:426	WebSocket client disconnected	{"client_id": "client_1750067357968046000", "component": "log_streamer"}
+2025-06-16T15:26:09.493+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T15:26:09.493+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-16T15:26:10.086+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-16T15:26:59.706+0530	INFO	bridge-sdk/logger.go:426	Initiating cross-chain token transfer	{"request_id": "direct_transfer_20250616152659", "from_chain": "ethereum", "to_chain": "blackhole", "amount": "500000000000000000", "token": "ETH", "component": "transfer"}
+2025-06-16T15:33:55.469+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T15:33:55.469+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-16T15:33:56.086+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-16T15:34:41.258+0530	INFO	bridge-sdk/logger.go:426	Initiating cross-chain token transfer	{"request_id": "enhanced_transfer_20250616153440", "from_chain": "ethereum", "to_chain": "blackhole", "amount": "1000000", "token": "USDC", "component": "transfer"}
+2025-06-16T15:34:58.228+0530	INFO	bridge-sdk/logger.go:426	Initiating cross-chain token transfer	{"request_id": "sol_transfer_20250616153458", "from_chain": "solana", "to_chain": "blackhole", "amount": "1000000000", "token": "SOL", "component": "transfer"}
+2025-06-16T15:35:39.194+0530	INFO	bridge-sdk/logger.go:426	Initiating cross-chain token transfer	{"request_id": "sol_transfer_20250616153539", "from_chain": "solana", "to_chain": "blackhole", "amount": "1000000000", "token": "SOL", "component": "transfer"}
+2025-06-16T15:43:26.515+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T15:43:26.515+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-16T15:43:27.168+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-16T15:44:56.641+0530	INFO	bridge-sdk/logger.go:426	Initiating cross-chain token transfer	{"request_id": "transfer_1750068896618", "from_chain": "solana", "to_chain": "blackhole", "amount": "1000", "token": "SOL", "component": "transfer"}

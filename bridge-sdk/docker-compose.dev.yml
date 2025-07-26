@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # Development overrides for bridge-node
+  bridge-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - DEBUG_MODE=true
+      - LOG_LEVEL=debug
+      - USE_TESTNET=true
+      - ETHEREUM_RPC_URL=${ETHEREUM_TESTNET_RPC}
+      - SOLANA_RPC_URL=${SOLANA_TESTNET_RPC}
+      - ENABLE_PROFILING=true
+      - ENABLE_TRACING=true
+    ports:
+      - "8084:8084"
+      - "9090:9090"
+      - "6060:6060"  # pprof debugging
+    command: ["go", "run", "./example/main.go"]
+
+  # Development database with exposed ports
+  postgres:
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: bridge_dev
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev123
+
+  # Development Redis
+  redis:
+    ports:
+      - "6380:6379"
+
+  # Hot reload file watcher (optional)
+  watcher:
+    image: cosmtrek/air
+    container_name: blackhole-bridge-watcher
+    working_dir: /app
+    volumes:
+      - .:/app
+    networks:
+      - bridge-network
+    depends_on:
+      - bridge-node
+    command: ["air", "-c", ".air.toml"]
+
+  # Test runner service
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: test
+    volumes:
+      - .:/app
+      - test-cache:/go/pkg/mod
+    networks:
+      - bridge-network
+    command: ["go", "test", "-v", "./..."]
+    profiles:
+      - test
+
+volumes:
+  test-cache:
+    driver: local

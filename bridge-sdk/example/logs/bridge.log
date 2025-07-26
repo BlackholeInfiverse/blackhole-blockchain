@@ -1,0 +1,51 @@
+2025-06-16T14:49:27.543+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T14:49:28.227+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-16T15:55:59.779+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T15:55:59.779+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-16T15:56:00.406+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-16T16:02:54.170+0530	INFO	bridge-sdk/logger.go:426	Initiating cross-chain token transfer	{"request_id": "transfer_1750069974124", "from_chain": "ethereum", "to_chain": "blackhole", "amount": "3", "token": "USDT", "component": "transfer"}
+2025-06-16T16:16:56.928+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T16:16:56.929+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-16T16:16:57.571+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-16T16:28:25.883+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T16:28:25.884+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-16T16:28:26.578+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-16T16:42:46.614+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T16:42:46.614+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-16T16:42:47.246+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-16T16:47:47.118+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-16T16:47:47.118+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-16T16:47:47.772+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T10:15:58.728+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T10:15:58.729+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T10:15:59.545+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T10:32:55.000+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T10:32:55.000+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T10:32:55.665+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T10:42:24.623+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T10:42:24.623+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T10:42:25.351+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T10:51:32.901+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T10:51:32.901+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T10:51:33.588+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T10:56:06.531+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T10:56:06.531+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T10:56:07.178+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T11:03:40.707+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T11:03:40.707+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T11:03:41.414+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T11:05:55.754+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T11:05:55.754+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T11:05:56.431+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T11:07:17.594+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T11:07:17.594+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T11:07:18.249+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T11:24:31.429+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T11:24:31.430+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T11:24:32.168+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T11:29:54.591+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T11:29:54.591+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T11:29:55.298+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}
+2025-06-17T12:49:06.836+0530	INFO	bridge-sdk/logger.go:426	Bridge SDK logger initialized successfully	{"component": "sdk"}
+2025-06-17T12:49:06.837+0530	INFO	bridge-sdk/logger.go:426	Token transfer manager initialized successfully	{"component": "sdk"}
+2025-06-17T12:49:07.543+0530	INFO	bridge-sdk/logger.go:426	Log streaming service started	{"component": "log_streamer"}

@@ -1,0 +1,34 @@
+{
+  "name": "blackhole-bridge-erc20",
+  "version": "1.0.0",
+  "description": "ERC-20 token for BlackHole Bridge testnet demonstration",
+  "main": "index.js",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "deploy:sepolia": "npx hardhat run scripts/deploy.js --network sepolia",
+    "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
+    "test": "npx hardhat test",
+    "verify:sepolia": "npx hardhat verify --network sepolia",
+    "send-transaction": "node scripts/send-transaction.js",
+    "monitor": "node scripts/monitor.js"
+  },
+  "keywords": [
+    "ethereum",
+    "erc20",
+    "bridge",
+    "testnet",
+    "blackhole"
+  ],
+  "author": "BlackHole Bridge Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0",
+    "ethers": "^6.8.0",
+    "dotenv": "^16.3.1",
+    "web3": "^4.2.0"
+  }
+}
