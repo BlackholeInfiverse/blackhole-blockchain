@@ -1,0 +1,7 @@
+Generated new key pair:
+Private Key: 0a1994d79b88dc756473e80d20eac4933dfb2de6afa162d4be1b12f9b1455bd7
+Public Key: 02d288052301f9b89a703b573e006f4127d05e54ac651f423e36f2914e63b26cea
+
+Connection Details:
+RPC URL: http://localhost:8080
+Contract Address: 0xd3c21bcecceda1000000

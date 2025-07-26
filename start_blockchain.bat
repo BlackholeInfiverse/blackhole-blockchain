@@ -10,4 +10,4 @@ echo The blockchain will also start an HTML dashboard on http://localhost:8080
 echo.
 pause
 cd core\relay-chain\cmd\relay
-go run main.go 3000
+go run main.go 4000
