@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	
 	"os"
 	"os/signal"
 	"strconv"
@@ -177,6 +178,7 @@ func main() {
 
 	// Start API server for UI on available port
 	apiServer := api.NewAPIServer(bc, bridgeInstance, availablePort)
+
 	go apiServer.Start()
 
 	// Start CLI only if not in Docker mode
@@ -185,6 +187,8 @@ func main() {
 	} else {
 		fmt.Println("🔄 Running in Docker daemon mode - use Docker logs to monitor")
 		fmt.Printf("   P2P Port: %d\n", port)
+		fmt.Printf("   HTTP API Port: %d\n", availablePort)
+		fmt.Printf("🌐 Access dashboard at http://localhost:%d\n", availablePort)
 
 		// Keep the container running
 		fmt.Printf("   HTTP API Port: %d\n", availablePort)
