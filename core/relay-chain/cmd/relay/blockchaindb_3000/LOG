@@ -94,3 +94,78 @@
 16:53:14.573922 version@stat F·[] S·0B[] Sc·[]
 16:53:14.579717 db@janitor F·2 G·0
 16:53:14.579717 db@open done T·7.9721ms
+=============== Jul 22, 2025 (IST) ===============
+16:32:19.161197 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:32:19.169637 CURRENT: missing target file: MANIFEST-000021
+16:32:19.174891 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 22, 2025 (IST) ===============
+16:33:31.577218 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:33:31.577744 CURRENT: missing target file: MANIFEST-000021
+16:33:31.578266 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 22, 2025 (IST) ===============
+16:33:38.653252 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:33:38.653778 CURRENT: missing target file: MANIFEST-000021
+16:33:38.653778 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 22, 2025 (IST) ===============
+16:34:25.181264 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:34:25.182317 CURRENT: missing target file: MANIFEST-000021
+16:34:25.182317 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 22, 2025 (IST) ===============
+16:35:40.653677 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:35:40.654719 CURRENT: missing target file: MANIFEST-000021
+16:35:40.654719 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 22, 2025 (IST) ===============
+16:41:41.533612 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:41:41.534657 CURRENT: missing target file: MANIFEST-000021
+16:41:41.534657 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 22, 2025 (IST) ===============
+17:21:35.240399 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+17:21:35.240926 CURRENT: missing target file: MANIFEST-000021
+17:21:35.241450 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 23, 2025 (IST) ===============
+12:04:09.078877 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:04:09.087873 CURRENT: missing target file: MANIFEST-000021
+12:04:09.093691 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 23, 2025 (IST) ===============
+12:06:15.891761 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:06:15.892283 CURRENT: missing target file: MANIFEST-000021
+12:06:15.892283 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 23, 2025 (IST) ===============
+12:12:04.211346 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:12:04.219301 CURRENT: missing target file: MANIFEST-000021
+12:12:04.224610 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 23, 2025 (IST) ===============
+12:13:58.606041 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:13:58.607082 CURRENT: missing target file: MANIFEST-000021
+12:13:58.607082 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 23, 2025 (IST) ===============
+12:14:28.929057 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:14:28.929583 CURRENT: missing target file: MANIFEST-000021
+12:14:28.930104 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 23, 2025 (IST) ===============
+12:30:01.674570 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:30:01.675609 CURRENT: missing target file: MANIFEST-000021
+12:30:01.676127 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 23, 2025 (IST) ===============
+12:42:23.240031 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:42:23.241081 CURRENT: missing target file: MANIFEST-000021
+12:42:23.241081 CURRENT.bak: missing target file: MANIFEST-000019
+=============== Jul 23, 2025 (IST) ===============
+12:44:04.527779 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:44:04.528810 version@stat F·[] S·0B[] Sc·[]
+12:44:04.528810 db@open opening
+12:44:04.528810 journal@recovery F·1
+12:44:04.529330 journal@recovery recovering @30
+12:44:04.529854 version@stat F·[] S·0B[] Sc·[]
+12:44:04.603040 db@janitor F·2 G·0
+12:44:04.603040 db@open done T·74.2305ms
+=============== Jul 28, 2025 (IST) ===============
+12:51:06.223306 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:51:06.236912 version@stat F·[] S·0B[] Sc·[]
+12:51:06.236912 db@open opening
+12:51:06.237426 journal@recovery F·1
+12:51:06.237426 journal@recovery recovering @32
+12:51:06.247340 memdb@flush created L0@34 N·50 S·3KiB "acc..dd1,v44":"tok..BHX,v26"
+12:51:06.247340 version@stat F·[1] S·3KiB[3KiB] Sc·[0.25]
+12:51:06.252033 db@janitor F·3 G·0
+12:51:06.252033 db@open done T·15.1209ms
