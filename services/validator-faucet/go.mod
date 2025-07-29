@@ -1,4 +1,4 @@
-module validator-faucet
+module github.com/Shivam-Patel-G/blackhole-blockchain/services/validator-faucet
 
 go 1.24.3
 

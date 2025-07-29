@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/cache"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/cybersecurity"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/registry"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -62,6 +63,12 @@ type Blockchain struct {
 	// Production-grade caching and registry
 	BalanceCache    *cache.ProductionBalanceCache
 	AccountRegistry *registry.AccountRegistry
+
+	// Cybersecurity system
+	SecurityManager *cybersecurity.SecurityManager
+
+	// Mempool configuration
+	MempoolThreshold int // Number of transactions to trigger auto block creation
 }
 
 type RealBlockchain struct {
@@ -211,6 +218,7 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		txPool:           &TxPool{Transactions: make([]*Transaction, 0)},
 		validatorManager: NewValidatorManager(stakeLedger),
 		TokenRegistry:    make(map[string]*token.Token),
+		MempoolThreshold: 3, // Default: create block when 3 transactions are pending
 	}
 
 	// Initialize slashing manager after TokenRegistry is created
@@ -1018,7 +1026,13 @@ func (bc *Blockchain) ProcessTransaction(tx *Transaction) error {
 
 	// Queue transaction for block inclusion
 	bc.PendingTxs = append(bc.PendingTxs, tx)
-	fmt.Printf("✅ Transaction validated and added to pending pool\n")
+	fmt.Printf("✅ Transaction validated and added to pending pool (%d/%d transactions)\n", len(bc.PendingTxs), bc.MempoolThreshold)
+
+	// Auto-create block when we reach the threshold
+	if len(bc.PendingTxs) >= bc.MempoolThreshold {
+		fmt.Printf("🔥 Mempool threshold reached! Auto-creating block with %d transactions...\n", len(bc.PendingTxs))
+		go bc.autoCreateBlock()
+	}
 
 	return nil
 }
@@ -1034,6 +1048,45 @@ func (bc *Blockchain) getOrCreateAccount(address string) *AccountState {
 	}
 	bc.GlobalState[address] = newState
 	return newState
+}
+
+// autoCreateBlock automatically creates a block when mempool threshold is reached
+func (bc *Blockchain) autoCreateBlock() {
+	// Small delay to allow for more transactions to accumulate
+	time.Sleep(100 * time.Millisecond)
+
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	// Double-check we still have enough transactions
+	if len(bc.PendingTxs) < bc.MempoolThreshold {
+		fmt.Printf("⚠️ Transaction count dropped below threshold (%d), skipping auto-block creation\n", bc.MempoolThreshold)
+		return
+	}
+
+	// Select a validator (simplified - use first available validator or default)
+	selectedValidator := bc.selectValidatorForAutoBlock()
+
+	fmt.Printf("🏗️ Auto-creating block with validator: %s\n", selectedValidator)
+
+	// Create the block (this will include all pending transactions)
+	block := bc.createBlockWithPendingTxs(selectedValidator)
+
+	// Validate and add the block
+	if bc.validateAndAddBlock(block) {
+		fmt.Printf("✅ Auto-created block %d with %d transactions successfully!\n",
+			block.Header.Index, len(block.Transactions))
+
+		// Clear pending transactions since they're now in the block
+		bc.PendingTxs = make([]*Transaction, 0)
+
+		// Broadcast the new block to peers
+		if bc.P2PNode != nil {
+			go bc.BroadcastBlock(block)
+		}
+	} else {
+		fmt.Printf("❌ Failed to add auto-created block\n")
+	}
 }
 
 func (bc *Blockchain) ApplyTransaction(tx *Transaction) bool {
@@ -1226,6 +1279,145 @@ func (bc *Blockchain) applyStakeWithdraw(tx *Transaction) bool {
 		tx.Amount, tx.TokenID, tx.From)
 	fmt.Printf("   📊 New stake for %s: %d\n", tx.From, bc.StakeLedger.GetStake(tx.From))
 	return true
+}
+
+// selectValidatorForAutoBlock selects a validator for auto block creation
+func (bc *Blockchain) selectValidatorForAutoBlock() string {
+	// Try to get an active validator from stake ledger
+	if bc.StakeLedger != nil {
+		stakes := bc.StakeLedger.GetAllStakes()
+		if len(stakes) > 0 {
+			// Return the validator with highest stake
+			return bc.StakeLedger.GetHighestStakeValidator()
+		}
+	}
+
+	// Fallback to a default validator
+	return "auto-validator"
+}
+
+// createBlockWithPendingTxs creates a block with current pending transactions
+func (bc *Blockchain) createBlockWithPendingTxs(selectedValidator string) *Block {
+	// Get current index
+	index := uint64(len(bc.Blocks))
+
+	// Get previous block's hash
+	var prevHash string
+	if len(bc.Blocks) > 0 {
+		prevHash = bc.Blocks[len(bc.Blocks)-1].Hash
+	} else {
+		prevHash = "0000000000000000000000000000000000000000000000000000000000000000"
+	}
+
+	// Get stake snapshot for validator
+	stake := bc.StakeLedger.GetStake(selectedValidator)
+	if stake == 0 {
+		stake = 100 // Default stake for auto-validator
+	}
+
+	// Create reward transaction
+	rewardTx := &Transaction{
+		ID:        "",
+		Type:      TokenTransfer,
+		From:      "system",
+		To:        selectedValidator,
+		Amount:    bc.BlockReward,
+		TokenID:   "BHX",
+		Fee:       0,
+		Nonce:     0,
+		Timestamp: time.Now().Unix(),
+		Signature: nil,
+		PublicKey: nil,
+	}
+	rewardTx.ID = rewardTx.CalculateHash()
+
+	// Combine reward transaction with pending transactions
+	txs := append([]*Transaction{rewardTx}, bc.PendingTxs...)
+
+	// Create new block
+	block := NewBlock(index, txs, prevHash, selectedValidator, stake)
+
+	return block
+}
+
+// validateAndAddBlock validates and adds a block to the blockchain
+func (bc *Blockchain) validateAndAddBlock(block *Block) bool {
+	// Perform security validation if cybersecurity is enabled
+	if bc.SecurityManager != nil {
+		if err := bc.ValidateBlockSecurity(block); err != nil {
+			fmt.Printf("❌ Block failed security validation: %v\n", err)
+			return false
+		}
+	}
+
+	// Basic block validation
+	if !block.IsValid() {
+		fmt.Printf("❌ Block failed basic validation\n")
+		return false
+	}
+
+	// Check if block extends the current chain
+	if len(bc.Blocks) > 0 {
+		currentTip := bc.Blocks[len(bc.Blocks)-1]
+		if block.Header.PreviousHash != currentTip.Hash {
+			fmt.Printf("❌ Block doesn't extend current chain tip\n")
+			return false
+		}
+		if block.Header.Index != currentTip.Header.Index+1 {
+			fmt.Printf("❌ Block index mismatch\n")
+			return false
+		}
+	}
+
+	// Apply all transactions in the block
+	for _, tx := range block.Transactions {
+		if !bc.ApplyTransaction(tx) {
+			fmt.Printf("❌ Failed to apply transaction %s\n", tx.ID)
+			return false
+		}
+	}
+
+	// Add block to chain
+	bc.Blocks = append(bc.Blocks, block)
+
+	// Update validator's last block time (simplified - could be enhanced)
+	// Note: ValidatorManager doesn't have UpdateValidatorActivity method
+	// This could be implemented if needed for more advanced validator tracking
+
+	return true
+}
+
+// SetMempoolThreshold sets the number of transactions required to trigger auto block creation
+func (bc *Blockchain) SetMempoolThreshold(threshold int) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	if threshold < 1 {
+		threshold = 1 // Minimum threshold is 1
+	}
+
+	bc.MempoolThreshold = threshold
+	fmt.Printf("🔧 Mempool threshold updated to %d transactions\n", threshold)
+}
+
+// GetMempoolThreshold returns the current mempool threshold
+func (bc *Blockchain) GetMempoolThreshold() int {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+	return bc.MempoolThreshold
+}
+
+// GetMempoolStatus returns current mempool status
+func (bc *Blockchain) GetMempoolStatus() map[string]interface{} {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
+	return map[string]interface{}{
+		"pending_transactions": len(bc.PendingTxs),
+		"threshold":           bc.MempoolThreshold,
+		"progress":            fmt.Sprintf("%d/%d", len(bc.PendingTxs), bc.MempoolThreshold),
+		"auto_block_ready":    len(bc.PendingTxs) >= bc.MempoolThreshold,
+	}
 }
 
 func (bc *Blockchain) SetBalance(addr string, balance uint64) {
@@ -1859,6 +2051,219 @@ func (bc *Blockchain) getLastBlockTimeForValidator(validator string) int64 {
 		}
 	}
 	// If validator never produced a block, return current time minus a reasonable period
-	// This prevents the massive downtime calculation error
-	return time.Now().Unix() - 300 // 5 minutes ago
+	return time.Now().Unix() - 3600 // 1 hour ago
+}
+
+// ================================
+// CYBERSECURITY INTEGRATION
+// ================================
+
+// InitializeCybersecurity initializes the cybersecurity system
+func (bc *Blockchain) InitializeCybersecurity() error {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	if bc.SecurityManager != nil {
+		return fmt.Errorf("cybersecurity system already initialized")
+	}
+
+	bc.SecurityManager = cybersecurity.NewSecurityManager()
+
+	// Deploy default security contracts
+	if err := bc.deployDefaultSecurityContracts(); err != nil {
+		return fmt.Errorf("failed to deploy default security contracts: %v", err)
+	}
+
+	// Start the security manager
+	if err := bc.SecurityManager.Start(); err != nil {
+		return fmt.Errorf("failed to start security manager: %v", err)
+	}
+
+	log.Printf("🔒 Cybersecurity system initialized successfully")
+	return nil
+}
+
+// deployDefaultSecurityContracts deploys essential security contracts
+func (bc *Blockchain) deployDefaultSecurityContracts() error {
+	contracts := []struct {
+		contractType cybersecurity.SecurityContractType
+		name         string
+		description  string
+	}{
+		{
+			cybersecurity.ThreatDetectionContract,
+			"Blockchain Threat Detection",
+			"Monitors blockchain for suspicious activities and potential threats",
+		},
+		{
+			cybersecurity.AccessControlContract,
+			"Blockchain Access Control",
+			"Manages access permissions for blockchain operations",
+		},
+		{
+			cybersecurity.AuditContract,
+			"Blockchain Audit System",
+			"Logs and tracks all security-relevant events",
+		},
+		{
+			cybersecurity.ComplianceContract,
+			"Regulatory Compliance",
+			"Ensures blockchain operations meet regulatory requirements",
+		},
+		{
+			cybersecurity.IncidentResponseContract,
+			"Security Incident Response",
+			"Handles security incidents and automated responses",
+		},
+		{
+			cybersecurity.SecurityMonitoringContract,
+			"Real-time Security Monitoring",
+			"Continuous monitoring of blockchain security metrics",
+		},
+	}
+
+	for _, contract := range contracts {
+		_, err := bc.SecurityManager.DeploySecurityContract(
+			contract.contractType,
+			contract.name,
+			contract.description,
+			"system",
+		)
+		if err != nil {
+			return fmt.Errorf("failed to deploy %s: %v", contract.name, err)
+		}
+	}
+
+	return nil
+}
+
+// ValidateTransactionSecurity performs comprehensive security validation on transactions
+func (bc *Blockchain) ValidateTransactionSecurity(tx *Transaction) error {
+	if bc.SecurityManager == nil {
+		log.Printf("⚠️ Security manager not initialized, skipping security validation")
+		return nil
+	}
+
+	// Serialize transaction for analysis
+	txData, err := json.Marshal(tx)
+	if err != nil {
+		return fmt.Errorf("failed to serialize transaction for security analysis: %v", err)
+	}
+
+	// Detect threats in transaction data
+	threats := bc.SecurityManager.DetectThreats(txData, fmt.Sprintf("transaction:%s", tx.ID))
+
+	// Process detected threats
+	for _, threat := range threats {
+		bc.SecurityManager.LogSecurityEvent(
+			tx.From,
+			"transaction_threat_detected",
+			tx.ID,
+			cybersecurity.AuditFailure,
+			fmt.Sprintf("Threat detected: %s (confidence: %.2f)", threat.Description, threat.Confidence),
+		)
+
+		// Block high-confidence threats
+		if threat.Confidence >= 0.8 && threat.Severity >= cybersecurity.SeverityHigh {
+			// Report as security incident
+			bc.SecurityManager.ReportIncident(
+				fmt.Sprintf("High-confidence threat in transaction %s", tx.ID),
+				threat.Description,
+				"automated_system",
+				threat.Severity,
+				cybersecurity.CategoryBreach,
+			)
+			return fmt.Errorf("transaction blocked due to security threat: %s", threat.Description)
+		}
+	}
+
+	// Check access permissions
+	allowed, reason := bc.SecurityManager.CheckAccess(tx.From, "blockchain_transaction", "submit")
+	if !allowed {
+		bc.SecurityManager.LogSecurityEvent(
+			tx.From,
+			"transaction_access_denied",
+			tx.ID,
+			cybersecurity.AuditFailure,
+			reason,
+		)
+		return fmt.Errorf("transaction access denied: %s", reason)
+	}
+
+	// Log successful validation
+	bc.SecurityManager.LogSecurityEvent(
+		tx.From,
+		"transaction_security_validated",
+		tx.ID,
+		cybersecurity.AuditSuccess,
+		"Transaction passed security validation",
+	)
+
+	return nil
+}
+
+// ValidateBlockSecurity performs security validation on blocks
+func (bc *Blockchain) ValidateBlockSecurity(block *Block) error {
+	if bc.SecurityManager == nil {
+		return nil
+	}
+
+	// Serialize block for analysis
+	blockData, err := json.Marshal(block)
+	if err != nil {
+		return fmt.Errorf("failed to serialize block for security analysis: %v", err)
+	}
+
+	// Detect threats in block data
+	threats := bc.SecurityManager.DetectThreats(blockData, fmt.Sprintf("block:%s", block.Hash))
+
+	// Process detected threats
+	for _, threat := range threats {
+		if threat.Confidence >= 0.7 && threat.Severity >= cybersecurity.SeverityMedium {
+			bc.SecurityManager.ReportIncident(
+				fmt.Sprintf("Security threat in block %s", block.Hash),
+				threat.Description,
+				"automated_system",
+				threat.Severity,
+				cybersecurity.CategoryBreach,
+			)
+			return fmt.Errorf("block rejected due to security threat: %s", threat.Description)
+		}
+	}
+
+	return nil
+}
+
+// GetSecurityMetrics returns current security metrics
+func (bc *Blockchain) GetSecurityMetrics() map[string]interface{} {
+	if bc.SecurityManager == nil {
+		return map[string]interface{}{
+			"status": "not_initialized",
+		}
+	}
+
+	metrics := bc.SecurityManager.GetSecurityMetrics()
+	metrics["blockchain_integration"] = "active"
+	metrics["last_security_check"] = time.Now()
+
+	return metrics
+}
+
+// AddSecurityRule adds a custom security rule to the blockchain
+func (bc *Blockchain) AddSecurityRule(contractID string, rule cybersecurity.SecurityRule) error {
+	if bc.SecurityManager == nil {
+		return fmt.Errorf("security manager not initialized")
+	}
+
+	return bc.SecurityManager.AddSecurityRule(contractID, rule)
+}
+
+// ReportSecurityIncident reports a security incident
+func (bc *Blockchain) ReportSecurityIncident(title, description, reporter string, severity cybersecurity.SeverityLevel) error {
+	if bc.SecurityManager == nil {
+		return fmt.Errorf("security manager not initialized")
+	}
+
+	_, err := bc.SecurityManager.ReportIncident(title, description, reporter, severity, cybersecurity.CategoryBreach)
+	return err
 }
