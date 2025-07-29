@@ -32,27 +32,27 @@ type AccountState struct {
 }
 
 type Blockchain struct {
-	Blocks           []*Block
-	PendingTxs       []*Transaction
-	StakeLedger      *StakeLedger
-	BlockReward      uint64
-	mu               sync.RWMutex
-	txPool           *TxPool
-	validatorManager *ValidatorManager
-	TokenRegistry    map[string]*token.Token
-	P2PNode          *Node
-	GenesisTime      time.Time
-	TotalSupply      uint64
-	pendingBlocks    map[uint64]*Block
-	GlobalState      map[string]*AccountState
-	DB               *leveldb.DB
-	DEX              interface{}
-	CrossChainDEX    interface{} // Will be *dex.CrossChainDEX
-	EscrowManager    interface{}
-	MultiSigManager  interface{}
-	OTCManager       interface{} // Will be *otc.OTCManager
-	SlashingManager  *SlashingManager
-
+	Blocks             []*Block
+	PendingTxs         []*Transaction
+	StakeLedger        *StakeLedger
+	BlockReward        uint64
+	mu                 sync.RWMutex
+	txPool             *TxPool
+	validatorManager   *ValidatorManager
+	TokenRegistry      map[string]*token.Token
+	P2PNode            *Node
+	GenesisTime        time.Time
+	TotalSupply        uint64
+	pendingBlocks      map[uint64]*Block
+	GlobalState        map[string]*AccountState
+	DB                 *leveldb.DB
+	DEX                interface{}
+	CrossChainDEX      interface{} // Will be *dex.CrossChainDEX
+	EscrowManager      interface{}
+	MultiSigManager    interface{}
+	OTCManager         interface{} // Will be *otc.OTCManager
+	SlashingManager    *SlashingManager
+	RewardInflationMgr *RewardInflationManager
 	// Production-grade caching and registry
 	BalanceCache    *cache.ProductionBalanceCache
 	AccountRegistry *registry.AccountRegistry

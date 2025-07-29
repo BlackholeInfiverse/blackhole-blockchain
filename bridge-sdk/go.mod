@@ -117,6 +117,7 @@ require (
 	google.golang.org/protobuf v1.36.5 // indirect
 	lukechampine.com/blake3 v1.4.0 // indirect
 
+)
 
 require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect

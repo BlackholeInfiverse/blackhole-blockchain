@@ -8,39 +8,39 @@
       "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
       "validator": "genesis-validator",
       "stakeSnapshot": 1000,
-      "merkleRoot": "3ff71f94b260f25dac27df14f55bc94f76b92f6b20cbb132ee30930dc53df70d",
+      "merkleRoot": "4689110114b9d135e9407ff690beb2d30aafef992b53570a7384942acc86bc2b",
       "stateRoot": "0x0",
       "receiptsRoot": "0x0",
       "consensusRound": 0
     },
     "Transactions": [
       {
-        "ID": "3ff71f94b260f25dac27df14f55bc94f76b92f6b20cbb132ee30930dc53df70d",
-        "Type": 1,
-        "From": "system",
-        "To": "genesis-validator",
-        "Amount": 10,
-        "TokenID": "BHX",
-        "Data": null,
-        "Timestamp": 1747295700,
-        "Nonce": 0,
-        "Signature": null,
-        "Fee": 0,
-        "GasLimit": 0,
-        "GasPrice": 0,
-        "PublicKey": null
+        "id": "4689110114b9d135e9407ff690beb2d30aafef992b53570a7384942acc86bc2b",
+        "type": 1,
+        "from": "system",
+        "to": "genesis-validator",
+        "amount": 10,
+        "token_id": "BHX",
+        "data": null,
+        "timestamp": 1747295700,
+        "nonce": 0,
+        "signature": null,
+        "fee": 0,
+        "gas_limit": 0,
+        "gas_price": 0,
+        "public_key": null
       }
     ],
-    "hash": "681c2b97ceb8e47b357c91f98f95cd3ef8725ee04523f5946f296d7310023fb1"
+    "hash": "818da2d9eb7b32a21ecb551fb74940578aff7763ff1ae70100777107f65aa0ba"
   },
   "pending_blocks": 0,
   "total_supply": 1000000000,
-  "timestamp": "2025-07-22T16:23:10.2611818+05:30",
+  "timestamp": "2025-07-28T17:15:56.2930607+05:30",
   "fork_info": {
     "has_fork": false,
     "reason": "No forks detected"
   },
   "block_hashes": [
-    "681c2b97ceb8e47b357c91f98f95cd3ef8725ee04523f5946f296d7310023fb1"
+    "818da2d9eb7b32a21ecb551fb74940578aff7763ff1ae70100777107f65aa0ba"
   ]
 }
