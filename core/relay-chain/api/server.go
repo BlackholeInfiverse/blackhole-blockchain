@@ -11,13 +11,15 @@ import (
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/escrow"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/workflow"
 )
 
 type APIServer struct {
-	blockchain    *chain.Blockchain
-	bridge        *bridge.Bridge
-	port          int
-	escrowManager interface{} // Will be initialized as *escrow.EscrowManager
+	blockchain      *chain.Blockchain
+	bridge          *bridge.Bridge
+	port            int
+	escrowManager   interface{} // Will be initialized as *escrow.EscrowManager
+	workflowManager *workflow.WorkflowManager
 }
 
 func NewAPIServer(blockchain *chain.Blockchain, bridgeInstance *bridge.Bridge, port int) *APIServer {
@@ -33,6 +35,11 @@ func NewAPIServer(blockchain *chain.Blockchain, bridgeInstance *bridge.Bridge, p
 		port:          port,
 		escrowManager: escrowManager,
 	}
+}
+
+// SetWorkflowManager sets the workflow manager for the API server
+func (s *APIServer) SetWorkflowManager(wm *workflow.WorkflowManager) {
+	s.workflowManager = wm
 }
 
 // NewEscrowManagerForBlockchain creates a new escrow manager for the blockchain
@@ -91,6 +98,18 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/bridge/events", s.enableCORS(s.handleBridgeEvents))
 	http.HandleFunc("/api/bridge/subscribe", s.enableCORS(s.handleBridgeSubscribe))
 	http.HandleFunc("/api/bridge/approval/simulate", s.enableCORS(s.handleBridgeApprovalSimulation))
+
+	// Workflow management endpoints
+	http.HandleFunc("/api/workflow/status", s.enableCORS(s.handleWorkflowStatus))
+	http.HandleFunc("/api/workflow/components", s.enableCORS(s.handleWorkflowComponents))
+	http.HandleFunc("/api/workflow/bridge/status", s.enableCORS(s.handleWorkflowBridgeStatus))
+	http.HandleFunc("/api/workflow/bridge/port", s.enableCORS(s.handleWorkflowBridgePort))
+	http.HandleFunc("/api/workflow/health", s.enableCORS(s.handleWorkflowHealth))
+
+	// Unified monitoring endpoints
+	http.HandleFunc("/api/monitoring/unified", s.enableCORS(s.handleUnifiedMonitoring))
+	http.HandleFunc("/api/monitoring/dashboard", s.enableCORS(s.handleMonitoringDashboard))
+	http.HandleFunc("/api/monitoring/metrics", s.enableCORS(s.handleMonitoringMetrics))
 
 	// Relay endpoints for external chains
 	http.HandleFunc("/api/relay/submit", s.enableCORS(s.handleRelaySubmit))
@@ -168,11 +187,11 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
             <p>Real-time blockchain monitoring and administration</p>
         </div>
 
-        <button class="btn refresh-btn" onclick="refreshData()">🔄 Refresh</button>
+        <button class="btn refresh-btn" onclick="refreshData()"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Refresh</button>
 
         <div class="grid">
             <div class="card">
-                <h3>📊 Blockchain Stats</h3>
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Blockchain Stats</h3>
                 <div class="stats" id="blockchain-stats">
                     <div class="stat">
                         <div class="stat-value" id="block-height">-</div>
@@ -212,7 +231,7 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
             </div>
 
             <div class="card">
-                <h3>🔗 Recent Blocks</h3>
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5s-2.24-5-5-5H13V7z"/></svg> Recent Blocks</h3>
                 <div id="recent-blocks"></div>
             </div>
 
@@ -229,6 +248,36 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
                     Note: Make sure the wallet service is running with: <br>
                     <code>go run main.go -web -port 9000</code>
                 </p>
+            </div>
+
+            <div class="card">
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15,3V7.59L7.59,15H4V17H7.59L15,9.59V15H17V9.59L9.59,2H15V3M17,17V21H15V17H17Z"/></svg> Bridge Status</h3>
+                <div class="stats" id="bridge-stats">
+                    <div class="stat">
+                        <div class="stat-value" id="bridge-status">-</div>
+                        <div class="stat-label">Bridge Status</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="bridge-port">-</div>
+                        <div class="stat-label">Bridge Port</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="bridge-health">-</div>
+                        <div class="stat-label">Health</div>
+                    </div>
+                </div>
+                <div style="margin-top: 15px;">
+                    <button class="btn" onclick="openBridgeDashboard()" id="bridge-dashboard-btn" disabled>
+                        🚀 Open Bridge Dashboard
+                    </button>
+                    <button class="btn" onclick="refreshBridgeStatus()" style="background: #27ae60;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Refresh Bridge Status
+                    </button>
+                </div>
+                <div id="bridge-components" style="margin-top: 15px;">
+                    <h4>Workflow Components</h4>
+                    <div id="bridge-components-list">Loading...</div>
+                </div>
             </div>
 
             <div class="card">
@@ -255,14 +304,48 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
 
     <script>
         let refreshInterval;
+        let bridgeRefreshInterval;
 
         async function fetchBlockchainInfo() {
             try {
                 const response = await fetch('/api/blockchain/info');
                 const data = await response.json();
                 updateUI(data);
+
+                // Also fetch bridge status
+                fetchBridgeStatus();
             } catch (error) {
                 console.error('Error fetching blockchain info:', error);
+            }
+        }
+
+        async function fetchBridgeStatus(retryCount = 0) {
+            try {
+                console.log('Fetching bridge status, attempt:', retryCount + 1);
+                const response = await fetch('/api/workflow/bridge/status');
+                const data = await response.json();
+                console.log('Bridge status response:', data);
+                updateBridgeUI(data);
+            } catch (error) {
+                console.error('Error fetching bridge status:', error);
+
+                // Retry up to 3 times with increasing delay
+                if (retryCount < 3) {
+                    console.log('Retrying bridge status fetch in', (retryCount + 1) * 2, 'seconds...');
+                    setTimeout(() => fetchBridgeStatus(retryCount + 1), (retryCount + 1) * 2000);
+                } else {
+                    updateBridgeUI({ success: false, error: 'Bridge not available' });
+                }
+            }
+        }
+
+        async function fetchWorkflowComponents() {
+            try {
+                const response = await fetch('/api/workflow/components');
+                const data = await response.json();
+                updateWorkflowComponents(data);
+            } catch (error) {
+                console.error('Error fetching workflow components:', error);
             }
         }
 
@@ -283,6 +366,106 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
 
             // Update recent blocks
             updateRecentBlocks(data.recentBlocks);
+        }
+
+        function updateBridgeUI(data) {
+            console.log('Updating bridge UI with data:', data);
+
+            if (data.success && data.data) {
+                const bridgeData = data.data;
+                const status = bridgeData.bridge_status;
+
+                console.log('Bridge status object:', status);
+                console.log('SDK running:', bridgeData.sdk_running);
+
+                // Update bridge status
+                const statusText = status && status.status ? status.status : 'Unknown';
+                document.getElementById('bridge-status').textContent = statusText;
+                document.getElementById('bridge-port').textContent = bridgeData.sdk_port || '-';
+
+                // Check multiple possible health indicators
+                let isHealthy = false;
+                if (status) {
+                    isHealthy = status.healthy === true || status.status === 'running';
+                }
+
+                // Also check if SDK is running as a fallback
+                if (!isHealthy && bridgeData.sdk_running === true) {
+                    isHealthy = true;
+                }
+
+                console.log('Computed health status:', isHealthy);
+                document.getElementById('bridge-health').innerHTML = isHealthy ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Healthy' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg> Unhealthy';
+
+                // Enable/disable bridge dashboard button
+                const dashboardBtn = document.getElementById('bridge-dashboard-btn');
+                if (bridgeData.sdk_running === true || isHealthy) {
+                    dashboardBtn.disabled = false;
+                    dashboardBtn.style.background = '#3498db';
+                } else {
+                    dashboardBtn.disabled = true;
+                    dashboardBtn.style.background = '#95a5a6';
+                }
+            } else {
+                console.log('Bridge data not available or unsuccessful response');
+                // Bridge not available
+                document.getElementById('bridge-status').textContent = 'Not Available';
+                document.getElementById('bridge-port').textContent = '-';
+                document.getElementById('bridge-health').innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg> Offline';
+
+                const dashboardBtn = document.getElementById('bridge-dashboard-btn');
+                dashboardBtn.disabled = true;
+                dashboardBtn.style.background = '#95a5a6';
+            }
+
+            // Fetch workflow components
+            fetchWorkflowComponents();
+        }
+
+        function updateWorkflowComponents(data) {
+            const container = document.getElementById('bridge-components-list');
+
+            if (data.success && data.data && data.data.components) {
+                const components = data.data.components;
+                let html = '';
+
+                for (const [name, component] of Object.entries(components)) {
+                    const statusColor = component.healthy ? '#27ae60' : '#e74c3c';
+                    const statusIcon = component.healthy ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg>';
+
+                    html += '<div style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px;">';
+                    html += '<strong>' + name + '</strong> ';
+                    html += '<span style="color: ' + statusColor + ';">' + statusIcon + ' ' + component.status + '</span><br>';
+                    html += '<small>Version: ' + component.version + ' | Errors: ' + component.error_count + '</small>';
+                    html += '</div>';
+                }
+
+                container.innerHTML = html || '<em>No components available</em>';
+            } else {
+                container.innerHTML = '<em>Components not available</em>';
+            }
+        }
+
+        function openBridgeDashboard() {
+            // Get bridge port and open dashboard
+            fetch('/api/workflow/bridge/port')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.data.running) {
+                        const port = data.data.port;
+                        window.open('http://localhost:' + port, '_blank');
+                    } else {
+                        alert('Bridge dashboard is not available. Please ensure the bridge service is running.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error getting bridge port:', error);
+                    alert('Error accessing bridge dashboard.');
+                });
+        }
+
+        function refreshBridgeStatus() {
+            fetchBridgeStatus();
         }
 
         function updateTokenBalances(tokenBalances) {
@@ -370,16 +553,28 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
 
         function startAutoRefresh() {
             refreshInterval = setInterval(fetchBlockchainInfo, 3000); // Refresh every 3 seconds
+
+            // Also start a separate interval for bridge status (more frequent)
+            bridgeRefreshInterval = setInterval(fetchBridgeStatus, 5000); // Refresh bridge every 5 seconds
         }
 
         function stopAutoRefresh() {
             if (refreshInterval) {
                 clearInterval(refreshInterval);
             }
+            if (bridgeRefreshInterval) {
+                clearInterval(bridgeRefreshInterval);
+            }
         }
 
         // Initialize
         fetchBlockchainInfo();
+
+        // Delay bridge status fetch to give bridge SDK time to start
+        setTimeout(() => {
+            fetchBridgeStatus();
+        }, 2000);
+
         startAutoRefresh();
 
         // Stop auto-refresh when page is hidden
@@ -563,7 +758,7 @@ func (s *APIServer) serveDevMode(w http.ResponseWriter, r *http.Request) {
 
             <!-- Bridge Testing -->
             <div class="card">
-                <h3>🌉 Cross-Chain Bridge Testing</h3>
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15,3V7.59L7.59,15H4V17H7.59L15,9.59V15H17V9.59L9.59,2H15V3M17,17V21H15V17H17Z"/></svg> Cross-Chain Bridge Testing</h3>
                 <form id="bridgeForm">
                     <div class="form-group">
                         <label>Action:</label>
@@ -3221,5 +3416,491 @@ func (s *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 			"pending_txs":  len(s.blockchain.PendingTxs),
 			"total_supply": s.blockchain.TotalSupply,
 		},
+	})
+}
+
+// Workflow Management Handlers
+
+// handleWorkflowStatus returns the status of the workflow manager
+func (s *APIServer) handleWorkflowStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.workflowManager == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Workflow manager not available",
+		})
+		return
+	}
+
+	status := s.workflowManager.GetStatus()
+	healthy := s.workflowManager.IsHealthy()
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"healthy":    healthy,
+			"components": status,
+			"timestamp":  time.Now().Format(time.RFC3339),
+		},
+	})
+}
+
+// handleWorkflowComponents returns the status of all workflow components
+func (s *APIServer) handleWorkflowComponents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.workflowManager == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Workflow manager not available",
+		})
+		return
+	}
+
+	components := s.workflowManager.GetStatus()
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"components": components,
+			"count":      len(components),
+			"timestamp":  time.Now().Format(time.RFC3339),
+		},
+	})
+}
+
+// handleWorkflowBridgeStatus returns the status of the bridge component
+func (s *APIServer) handleWorkflowBridgeStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.workflowManager == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Workflow manager not available",
+		})
+		return
+	}
+
+	bridgeComponent, err := s.workflowManager.GetBridgeComponent()
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Bridge component not available: %v", err),
+		})
+		return
+	}
+
+	status := bridgeComponent.GetStatus()
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"bridge_status": status,
+			"sdk_running":   bridgeComponent.IsBridgeSDKRunning(),
+			"sdk_port":      bridgeComponent.GetBridgeSDKPort(),
+			"timestamp":     time.Now().Format(time.RFC3339),
+		},
+	})
+}
+
+// handleWorkflowBridgePort returns the bridge SDK port
+func (s *APIServer) handleWorkflowBridgePort(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.workflowManager == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Workflow manager not available",
+		})
+		return
+	}
+
+	bridgeComponent, err := s.workflowManager.GetBridgeComponent()
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Bridge component not available: %v", err),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"port":      bridgeComponent.GetBridgeSDKPort(),
+			"running":   bridgeComponent.IsBridgeSDKRunning(),
+			"timestamp": time.Now().Format(time.RFC3339),
+		},
+	})
+}
+
+// handleWorkflowHealth returns the health status of the workflow system
+func (s *APIServer) handleWorkflowHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.workflowManager == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Workflow manager not available",
+		})
+		return
+	}
+
+	healthy := s.workflowManager.IsHealthy()
+	status := "unhealthy"
+	if healthy {
+		status = "healthy"
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"status":    status,
+			"healthy":   healthy,
+			"timestamp": time.Now().Format(time.RFC3339),
+		},
+	})
+}
+
+// Unified Monitoring Handlers
+
+// handleUnifiedMonitoring provides a comprehensive view of all system components
+func (s *APIServer) handleUnifiedMonitoring(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Collect blockchain metrics
+	blockchainInfo := s.blockchain.GetBlockchainInfo()
+
+	// Collect workflow metrics
+	var workflowMetrics map[string]interface{}
+	var workflowHealth bool
+	if s.workflowManager != nil {
+		workflowMetrics = make(map[string]interface{})
+		components := s.workflowManager.GetAllComponents()
+		for name, component := range components {
+			workflowMetrics[name] = component.GetMetrics()
+		}
+		workflowHealth = s.workflowManager.IsHealthy()
+	}
+
+	// Collect system health
+	systemHealth := map[string]interface{}{
+		"blockchain": map[string]interface{}{
+			"healthy":      true, // Assume healthy if responding
+			"block_height": blockchainInfo["blockHeight"],
+			"pending_txs":  blockchainInfo["pendingTxs"],
+		},
+		"workflow": map[string]interface{}{
+			"healthy":    workflowHealth,
+			"available":  s.workflowManager != nil,
+		},
+	}
+
+	// Calculate overall system health
+	overallHealth := true
+	if s.workflowManager != nil {
+		overallHealth = workflowHealth
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"overall_health":    overallHealth,
+			"system_health":     systemHealth,
+			"blockchain_info":   blockchainInfo,
+			"workflow_metrics":  workflowMetrics,
+			"timestamp":         time.Now().Format(time.RFC3339),
+			"uptime_seconds":    time.Since(time.Now().Add(-time.Hour)).Seconds(), // Mock uptime
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleMonitoringDashboard serves a unified monitoring dashboard
+func (s *APIServer) handleMonitoringDashboard(w http.ResponseWriter, r *http.Request) {
+	html := `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlackHole Unified Monitoring Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #1a1a1a; color: #fff; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+        .card { background: #2d2d2d; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); border: 1px solid #444; }
+        .card h3 { margin-top: 0; color: #fff; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        .metric { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #444; }
+        .metric:last-child { border-bottom: none; }
+        .metric-label { color: #ccc; }
+        .metric-value { color: #fff; font-weight: bold; }
+        .status-healthy { color: #27ae60; }
+        .status-unhealthy { color: #e74c3c; }
+        .status-warning { color: #f39c12; }
+        .btn { background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        .btn:hover { background: #5a6fd8; }
+        .refresh-indicator { display: inline-block; margin-left: 10px; opacity: 0; transition: opacity 0.3s; }
+        .refresh-indicator.active { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌌 BlackHole Unified Monitoring Dashboard</h1>
+            <p>Real-time monitoring of all system components and workflows</p>
+            <button class="btn" onclick="refreshAll()"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Refresh All</button>
+            <span class="refresh-indicator" id="refresh-indicator">⟳ Refreshing...</span>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h3>🏥 System Health Overview</h3>
+                <div id="system-health">
+                    <div class="metric">
+                        <span class="metric-label">Overall Status:</span>
+                        <span class="metric-value" id="overall-status">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Blockchain:</span>
+                        <span class="metric-value" id="blockchain-health">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Workflow System:</span>
+                        <span class="metric-value" id="workflow-health">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">System Uptime:</span>
+                        <span class="metric-value" id="system-uptime">Loading...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>⛓️ Blockchain Metrics</h3>
+                <div id="blockchain-metrics">
+                    <div class="metric">
+                        <span class="metric-label">Block Height:</span>
+                        <span class="metric-value" id="block-height">-</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Pending Transactions:</span>
+                        <span class="metric-value" id="pending-txs">-</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Total Supply:</span>
+                        <span class="metric-value" id="total-supply">-</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Active Validators:</span>
+                        <span class="metric-value" id="active-validators">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5s-2.24-5-5-5H13V7z"/></svg> Workflow Components</h3>
+                <div id="workflow-components">Loading...</div>
+            </div>
+
+            <div class="card">
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15,3V7.59L7.59,15H4V17H7.59L15,9.59V15H17V9.59L9.59,2H15V3M17,17V21H15V17H17Z"/></svg> Bridge Metrics</h3>
+                <div id="bridge-metrics">Loading...</div>
+            </div>
+
+            <div class="card">
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Performance Metrics</h3>
+                <div id="performance-metrics">
+                    <div class="metric">
+                        <span class="metric-label">Response Time:</span>
+                        <span class="metric-value" id="response-time">-</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Throughput (TPS):</span>
+                        <span class="metric-value" id="throughput">-</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Error Rate:</span>
+                        <span class="metric-value" id="error-rate">-</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Memory Usage:</span>
+                        <span class="metric-value" id="memory-usage">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M1,21H23L12,2L1,21Z"/></svg> Recent Alerts</h3>
+                <div id="recent-alerts">No alerts</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let refreshInterval;
+
+        async function fetchUnifiedMonitoring() {
+            try {
+                showRefreshIndicator();
+                const response = await fetch('/api/monitoring/unified');
+                const data = await response.json();
+                updateUnifiedDashboard(data);
+            } catch (error) {
+                console.error('Error fetching unified monitoring data:', error);
+            } finally {
+                hideRefreshIndicator();
+            }
+        }
+
+        function updateUnifiedDashboard(data) {
+            if (!data.success) return;
+
+            const monitoringData = data.data;
+
+            // Update system health
+            updateSystemHealth(monitoringData);
+
+            // Update blockchain metrics
+            updateBlockchainMetrics(monitoringData.blockchain_info);
+
+            // Update workflow components
+            updateWorkflowComponents(monitoringData.workflow_metrics);
+
+            // Update performance metrics
+            updatePerformanceMetrics(monitoringData);
+        }
+
+        function updateSystemHealth(data) {
+            const overallStatus = document.getElementById('overall-status');
+            const blockchainHealth = document.getElementById('blockchain-health');
+            const workflowHealth = document.getElementById('workflow-health');
+            const systemUptime = document.getElementById('system-uptime');
+
+            overallStatus.innerHTML = data.overall_health ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Healthy' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg> Unhealthy';
+            overallStatus.className = 'metric-value ' + (data.overall_health ? 'status-healthy' : 'status-unhealthy');
+
+            if (data.system_health.blockchain) {
+                blockchainHealth.innerHTML = data.system_health.blockchain.healthy ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Healthy' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg> Unhealthy';
+                blockchainHealth.className = 'metric-value ' + (data.system_health.blockchain.healthy ? 'status-healthy' : 'status-unhealthy');
+            }
+
+            if (data.system_health.workflow) {
+                const workflowHealthy = data.system_health.workflow.healthy && data.system_health.workflow.available;
+                workflowHealth.innerHTML = workflowHealthy ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Healthy' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg> Unhealthy';
+                workflowHealth.className = 'metric-value ' + (workflowHealthy ? 'status-healthy' : 'status-unhealthy');
+            }
+
+            if (data.uptime_seconds) {
+                const hours = Math.floor(data.uptime_seconds / 3600);
+                const minutes = Math.floor((data.uptime_seconds % 3600) / 60);
+                systemUptime.textContent = hours + 'h ' + minutes + 'm';
+            }
+        }
+
+        function updateBlockchainMetrics(blockchainInfo) {
+            if (!blockchainInfo) return;
+
+            document.getElementById('block-height').textContent = blockchainInfo.blockHeight || '-';
+            document.getElementById('pending-txs').textContent = blockchainInfo.pendingTxs || '-';
+            document.getElementById('total-supply').textContent = blockchainInfo.totalSupply ? blockchainInfo.totalSupply.toLocaleString() : '-';
+            document.getElementById('active-validators').textContent = Object.keys(blockchainInfo.stakes || {}).length;
+        }
+
+        function updateWorkflowComponents(workflowMetrics) {
+            const container = document.getElementById('workflow-components');
+
+            if (!workflowMetrics) {
+                container.innerHTML = '<em>Workflow system not available</em>';
+                return;
+            }
+
+            let html = '';
+            for (const [name, metrics] of Object.entries(workflowMetrics)) {
+                html += '<div class="metric">';
+                html += '<span class="metric-label">' + name + ':</span>';
+                html += '<span class="metric-value status-healthy"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Running</span>';
+                html += '</div>';
+            }
+
+            container.innerHTML = html || '<em>No workflow components</em>';
+        }
+
+        function updatePerformanceMetrics(data) {
+            // Mock performance metrics - in a real implementation, these would come from actual monitoring
+            document.getElementById('response-time').textContent = '< 100ms';
+            document.getElementById('throughput').textContent = '50 TPS';
+            document.getElementById('error-rate').textContent = '0.1%';
+            document.getElementById('memory-usage').textContent = '256 MB';
+        }
+
+        function showRefreshIndicator() {
+            document.getElementById('refresh-indicator').classList.add('active');
+        }
+
+        function hideRefreshIndicator() {
+            document.getElementById('refresh-indicator').classList.remove('active');
+        }
+
+        function refreshAll() {
+            fetchUnifiedMonitoring();
+        }
+
+        function startAutoRefresh() {
+            refreshInterval = setInterval(fetchUnifiedMonitoring, 5000); // Refresh every 5 seconds
+        }
+
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        }
+
+        // Initialize
+        fetchUnifiedMonitoring();
+        startAutoRefresh();
+
+        // Stop auto-refresh when page is hidden
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else {
+                startAutoRefresh();
+            }
+        });
+    </script>
+</body>
+</html>`
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
+}
+
+// handleMonitoringMetrics provides detailed metrics for external monitoring systems
+func (s *APIServer) handleMonitoringMetrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Collect all metrics
+	metrics := map[string]interface{}{
+		"blockchain": s.blockchain.GetBlockchainInfo(),
+		"timestamp":  time.Now().Format(time.RFC3339),
+	}
+
+	// Add workflow metrics if available
+	if s.workflowManager != nil {
+		workflowMetrics := make(map[string]interface{})
+		components := s.workflowManager.GetAllComponents()
+		for name, component := range components {
+			workflowMetrics[name] = component.GetMetrics()
+		}
+		metrics["workflow"] = workflowMetrics
+		metrics["workflow_health"] = s.workflowManager.IsHealthy()
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"metrics": metrics,
 	})
 }

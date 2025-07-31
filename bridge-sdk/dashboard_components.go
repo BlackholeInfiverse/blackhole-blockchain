@@ -17,7 +17,7 @@ func (dc *DashboardComponents) TokenTransferWidget() string {
 	return `
 <div class="token-transfer-widget">
     <div class="widget-header">
-        <h3>🔄 Cross-Chain Token Transfer</h3>
+        <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l1.41 1.41L16.17 8.83 14.83 10.17 12 7.34 9.17 10.17 7.83 8.83 10.59 5.41 12 4zm0 16l-1.41-1.41L7.83 15.17 9.17 13.83 12 16.66l2.83-2.83 1.34 1.34L13.41 18.59 12 20z"/></svg> Cross-Chain Token Transfer</h3>
         <div class="widget-status" id="transferStatus">Ready</div>
     </div>
 
@@ -26,17 +26,17 @@ func (dc *DashboardComponents) TokenTransferWidget() string {
             <div class="form-group">
                 <label>From Chain</label>
                 <select id="fromChain" class="form-control" onchange="updateTokenOptions()">
-                    <option value="ethereum">🔗 Ethereum</option>
-                    <option value="solana">🪙 Solana</option>
-                    <option value="blackhole">⚫ BlackHole</option>
+                    <option value="ethereum"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5s-2.24-5-5-5H13V7z"/></svg> Ethereum</option>
+                    <option value="solana"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/></svg> Solana</option>
+                    <option value="blackhole"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/></svg> BlackHole</option>
                 </select>
             </div>
             <div class="form-group">
                 <label>To Chain</label>
                 <select id="toChain" class="form-control" onchange="updateTokenOptions()">
-                    <option value="blackhole">⚫ BlackHole</option>
-                    <option value="ethereum">🔗 Ethereum</option>
-                    <option value="solana">🪙 Solana</option>
+                    <option value="blackhole"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/></svg> BlackHole</option>
+                    <option value="ethereum"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5s-2.24-5-5-5H13V7z"/></svg> Ethereum</option>
+                    <option value="solana"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/></svg> Solana</option>
                 </select>
             </div>
         </div>
@@ -94,7 +94,7 @@ func (dc *DashboardComponents) TokenTransferWidget() string {
                 <span class="estimate-value" id="estimatedTime">-</span>
             </div>
             <div class="estimate-row">
-                <span class="estimate-label">🔄 Exchange Rate:</span>
+                <span class="estimate-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l1.41 1.41L16.17 8.83 14.83 10.17 12 7.34 9.17 10.17 7.83 8.83 10.59 5.41 12 4zm0 16l-1.41-1.41L7.83 15.17 9.17 13.83 12 16.66l2.83-2.83 1.34 1.34L13.41 18.59 12 20z"/></svg> Exchange Rate:</span>
                 <span class="estimate-value" id="exchangeRate">-</span>
             </div>
         </div>
@@ -106,7 +106,7 @@ func (dc *DashboardComponents) TokenTransferWidget() string {
                 <span class="btn-loader" style="display: none;">⏳</span>
             </button>
             <button id="tryAgain" class="btn btn-warning btn-large" style="display: none;">
-                <span class="btn-icon">🔄</span>
+                <span class="btn-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg></span>
                 <span class="btn-text">Try Again</span>
             </button>
             <button id="clearForm" class="btn btn-secondary">Clear Form</button>
@@ -114,7 +114,7 @@ func (dc *DashboardComponents) TokenTransferWidget() string {
 
         <div id="transferProgress" class="transfer-progress" style="display: none;">
             <div class="progress-header">
-                <h4>🔄 Transfer in Progress</h4>
+                <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Transfer in Progress</h4>
                 <div class="progress-id" id="progressId">-</div>
             </div>
             <div class="progress-steps">
@@ -665,7 +665,7 @@ document.addEventListener('DOMContentLoaded', function() {
         transferResult.style.display = 'block';
         transferResult.className = 'transfer-result success';
         transferResult.innerHTML =
-            '✅ <strong>Transfer Successful!</strong><br>' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> <strong>Transfer Successful!</strong><br>' +
             'Request ID: ' + result.request_id + '<br>' +
             'Status: ' + result.state + '<br>' +
             (result.source_tx_hash ? 'Transaction Hash: ' + result.source_tx_hash + '<br>' : '') +
@@ -688,7 +688,7 @@ document.addEventListener('DOMContentLoaded', function() {
         transferResult.innerHTML =
             '⚡ <strong>Instant Transfer Complete!</strong><br>' +
             '🚀 Request ID: ' + result.request_id + '<br>' +
-            '✅ Status: Completed Instantly<br>' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Status: Completed Instantly<br>' +
             '⏱️ Processing Time: < 1 second<br>' +
             '🎉 Your tokens have been transferred successfully!';
 
@@ -721,7 +721,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         transferResult.style.display = 'block';
         transferResult.className = 'transfer-result error';
-        transferResult.innerHTML = '❌ <strong>Transfer Failed:</strong><br>' + errorMessage +
+        transferResult.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg> <strong>Transfer Failed:</strong><br>' + errorMessage +
             '<br><br><small>You can try again or clear the form to start over.</small>';
 
         // Show try again button and hide execute button
@@ -798,13 +798,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         switch (status) {
             case 'active':
-                statusElement.textContent = '🔄';
+                statusElement.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg>';
                 break;
             case 'completed':
-                statusElement.textContent = '✅';
+                statusElement.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
                 break;
             case 'error':
-                statusElement.textContent = '❌';
+                statusElement.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg>';
                 break;
             default:
                 statusElement.textContent = '⏳';
@@ -1091,8 +1091,8 @@ func (dc *DashboardComponents) SupportedPairsWidget() string {
 	return `
 <div class="supported-pairs-widget">
     <div class="widget-header">
-        <h3>🔗 Supported Token Pairs</h3>
-        <button id="refreshPairs" class="btn btn-sm">🔄 Refresh</button>
+        <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5s-2.24-5-5-5H13V7z"/></svg> Supported Token Pairs</h3>
+        <button id="refreshPairs" class="btn btn-sm"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Refresh</button>
     </div>
     
     <div id="pairsList" class="pairs-list">
@@ -1226,10 +1226,10 @@ func (dc *DashboardComponents) QuickActionsMenuWidget() string {
 <aside class="quick-actions-menu dark-theme">
   <nav>
     <ul>
-      <li><a href="/docs" target="_blank">📄 API Docs</a></li>
-      <li><a href="/replay-protection" target="_blank">🛡️ Replay Protection</a></li>
-      <li><a href="/error-handling" target="_blank">🚨 Error Handling</a></li>
-      <li><a href="/circuit-breakers" target="_blank">🔌 Circuit Breakers</a></li>
+      <li><a href="/docs" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/></svg> API Docs</a></li>
+      <li><a href="/replay-protection" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9L10,17Z"/></svg> Replay Protection</a></li>
+      <li><a href="/error-handling" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M1,21H23L12,2L1,21Z"/></svg> Error Handling</a></li>
+      <li><a href="/circuit-breakers" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> Circuit Breakers</a></li>
     </ul>
   </nav>
 </aside>
@@ -1283,8 +1283,8 @@ func (dc *DashboardComponents) AdvancedInfraDashboardWidget() string {
 	return `
 <div class="infra-dashboard dark-theme">
   <div class="infra-header">
-    <h3>🛠️ Infrastructure Dashboard</h3>
-    <button id="refreshInfra" class="btn btn-sm">🔄 Refresh</button>
+    <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg> Infrastructure Dashboard</h3>
+    <button id="refreshInfra" class="btn btn-sm"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Refresh</button>
   </div>
   <div class="infra-status-cards">
     <div class="infra-card" id="nodeStatusCard">
@@ -1315,7 +1315,7 @@ func (dc *DashboardComponents) AdvancedInfraDashboardWidget() string {
     </div>
   </div>
   <div class="infra-logs">
-    <h4>📋 Recent Logs</h4>
+    <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg> Recent Logs</h4>
     <div id="infraLogs" class="logs-list">Loading logs...</div>
   </div>
 </div>

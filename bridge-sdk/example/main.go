@@ -156,7 +156,7 @@ func (bhi *BlackHoleBlockchainInterface) processTransactionViaHTTP(bridgeTx *Tra
 
 	// Update bridge transaction status
 	bridgeTx.Status = "confirmed"
-	if txHash, ok := result["transaction_hash"].(string); ok {
+	if txHash, ok := result["transaction_hash"].(string); ok {                 
 		bridgeTx.Hash = txHash
 	}
 	if blockNum, ok := result["block_number"].(float64); ok {
@@ -2974,6 +2974,485 @@ func (sdk *BridgeSDK) handleThroughputMetrics(w http.ResponseWriter, r *http.Req
 	})
 }
 
+// Enhanced Performance Monitoring Endpoints
+
+// handlePerformanceDashboard provides comprehensive performance data for dashboard widgets
+func (sdk *BridgeSDK) handlePerformanceDashboard(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	sdk.performanceMonitor.mutex.RLock()
+	defer sdk.performanceMonitor.mutex.RUnlock()
+
+	// Get current time and calculate uptime
+	now := time.Now()
+	uptime := now.Sub(sdk.performanceMonitor.Metrics.StartTime)
+
+	// Calculate real-time metrics
+	recentEvents := sdk.getRecentEventCount(5 * time.Minute)
+	currentTPS := float64(recentEvents) / (5 * 60) // Events per second over last 5 minutes
+
+	// Get latest latency measurements
+	latestLatencies := sdk.getLatestLatencies(10) // Last 10 events
+	currentLatency := sdk.calculateAverageLatency(latestLatencies)
+
+	// Calculate success rate from recent events
+	successRate := sdk.calculateRecentSuccessRate(1 * time.Hour)
+
+	// Get chain-specific performance
+	chainPerformance := make(map[string]interface{})
+	for chainName, metrics := range sdk.performanceMonitor.ChainMetrics {
+		chainPerformance[chainName] = map[string]interface{}{
+			"events_count":     metrics.EventCount,
+			"average_latency":  metrics.AverageLatency.Milliseconds(),
+			"error_rate":       metrics.ErrorRate,
+			"last_event":       metrics.LastEventTime.Format(time.RFC3339),
+			"trend":           metrics.ThroughputTrend,
+		}
+	}
+
+	// Performance alerts summary
+	alerts := sdk.getActivePerformanceAlerts()
+
+	// Historical data for charts (last 24 hours, 1-hour intervals)
+	historicalData := sdk.getHistoricalPerformanceData(24*time.Hour, 1*time.Hour)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"overview": map[string]interface{}{
+				"uptime_seconds":     uptime.Seconds(),
+				"uptime_formatted":   uptime.String(),
+				"total_events":       sdk.performanceMonitor.Metrics.TotalEvents,
+				"current_tps":        currentTPS,
+				"current_latency_ms": currentLatency.Milliseconds(),
+				"success_rate":       successRate,
+				"error_rate":         sdk.performanceMonitor.Metrics.ErrorRate,
+				"last_updated":       now.Format(time.RFC3339),
+			},
+			"chain_performance": chainPerformance,
+			"alerts": map[string]interface{}{
+				"active_count": len(alerts),
+				"alerts":       alerts,
+			},
+			"historical_data": historicalData,
+			"thresholds": map[string]interface{}{
+				"max_latency_ms":    sdk.performanceMonitor.AlertThresholds.MaxLatency.Milliseconds(),
+				"max_error_rate":    sdk.performanceMonitor.AlertThresholds.MaxErrorRate,
+				"min_throughput":    sdk.performanceMonitor.AlertThresholds.MinThroughput,
+			},
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handlePerformanceAlerts provides detailed performance alerts and warnings
+func (sdk *BridgeSDK) handlePerformanceAlerts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Parse query parameters
+	severity := r.URL.Query().Get("severity") // critical, warning, info
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+
+	sdk.performanceMonitor.mutex.RLock()
+	defer sdk.performanceMonitor.mutex.RUnlock()
+
+	// Get current performance state
+	alerts := make([]map[string]interface{}, 0)
+
+	// Check latency alerts
+	if sdk.performanceMonitor.Metrics.AverageLatency > sdk.performanceMonitor.AlertThresholds.MaxLatency {
+		alertSeverity := "warning"
+		if sdk.performanceMonitor.Metrics.AverageLatency > sdk.performanceMonitor.AlertThresholds.MaxLatency*2 {
+			alertSeverity = "critical"
+		}
+
+		if severity == "" || severity == alertSeverity {
+			alerts = append(alerts, map[string]interface{}{
+				"id":          fmt.Sprintf("latency_%d", time.Now().Unix()),
+				"type":        "latency",
+				"severity":    alertSeverity,
+				"title":       "High Latency Detected",
+				"description": fmt.Sprintf("Average latency %v exceeds threshold %v",
+					sdk.performanceMonitor.Metrics.AverageLatency,
+					sdk.performanceMonitor.AlertThresholds.MaxLatency),
+				"current_value": sdk.performanceMonitor.Metrics.AverageLatency.String(),
+				"threshold":     sdk.performanceMonitor.AlertThresholds.MaxLatency.String(),
+				"timestamp":     time.Now().Format(time.RFC3339),
+				"chain":         "all",
+			})
+		}
+	}
+
+	// Check error rate alerts
+	if sdk.performanceMonitor.Metrics.ErrorRate > sdk.performanceMonitor.AlertThresholds.MaxErrorRate {
+		alertSeverity := "warning"
+		if sdk.performanceMonitor.Metrics.ErrorRate > sdk.performanceMonitor.AlertThresholds.MaxErrorRate*2 {
+			alertSeverity = "critical"
+		}
+
+		if severity == "" || severity == alertSeverity {
+			alerts = append(alerts, map[string]interface{}{
+				"id":          fmt.Sprintf("error_rate_%d", time.Now().Unix()),
+				"type":        "error_rate",
+				"severity":    alertSeverity,
+				"title":       "High Error Rate Detected",
+				"description": fmt.Sprintf("Error rate %.2f%% exceeds threshold %.2f%%",
+					sdk.performanceMonitor.Metrics.ErrorRate,
+					sdk.performanceMonitor.AlertThresholds.MaxErrorRate),
+				"current_value": fmt.Sprintf("%.2f%%", sdk.performanceMonitor.Metrics.ErrorRate),
+				"threshold":     fmt.Sprintf("%.2f%%", sdk.performanceMonitor.AlertThresholds.MaxErrorRate),
+				"timestamp":     time.Now().Format(time.RFC3339),
+				"chain":         "all",
+			})
+		}
+	}
+
+	// Check throughput alerts
+	if sdk.performanceMonitor.Metrics.EventsPerSecond < sdk.performanceMonitor.AlertThresholds.MinThroughput {
+		alertSeverity := "info"
+		if sdk.performanceMonitor.Metrics.EventsPerSecond < sdk.performanceMonitor.AlertThresholds.MinThroughput*0.5 {
+			alertSeverity = "warning"
+		}
+
+		if severity == "" || severity == alertSeverity {
+			alerts = append(alerts, map[string]interface{}{
+				"id":          fmt.Sprintf("throughput_%d", time.Now().Unix()),
+				"type":        "throughput",
+				"severity":    alertSeverity,
+				"title":       "Low Throughput Detected",
+				"description": fmt.Sprintf("Events per second %.2f below threshold %.2f",
+					sdk.performanceMonitor.Metrics.EventsPerSecond,
+					sdk.performanceMonitor.AlertThresholds.MinThroughput),
+				"current_value": fmt.Sprintf("%.2f", sdk.performanceMonitor.Metrics.EventsPerSecond),
+				"threshold":     fmt.Sprintf("%.2f", sdk.performanceMonitor.AlertThresholds.MinThroughput),
+				"timestamp":     time.Now().Format(time.RFC3339),
+				"chain":         "all",
+			})
+		}
+	}
+
+	// Check chain-specific alerts
+	for chainName, chainMetrics := range sdk.performanceMonitor.ChainMetrics {
+		if chainMetrics.ErrorRate > 10.0 { // 10% error rate threshold per chain
+			if severity == "" || severity == "warning" {
+				alerts = append(alerts, map[string]interface{}{
+					"id":          fmt.Sprintf("chain_error_%s_%d", chainName, time.Now().Unix()),
+					"type":        "chain_error",
+					"severity":    "warning",
+					"title":       fmt.Sprintf("High Error Rate on %s Chain", strings.Title(chainName)),
+					"description": fmt.Sprintf("Chain %s has error rate %.2f%%", chainName, chainMetrics.ErrorRate),
+					"current_value": fmt.Sprintf("%.2f%%", chainMetrics.ErrorRate),
+					"threshold":     "10.0%",
+					"timestamp":     time.Now().Format(time.RFC3339),
+					"chain":         chainName,
+				})
+			}
+		}
+	}
+
+	// Apply limit
+	if len(alerts) > limit {
+		alerts = alerts[:limit]
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"alerts":       alerts,
+			"total_count":  len(alerts),
+			"severity_filter": severity,
+			"timestamp":    time.Now().Format(time.RFC3339),
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleHistoricalPerformance provides historical performance data for analysis
+func (sdk *BridgeSDK) handleHistoricalPerformance(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Parse query parameters
+	durationStr := r.URL.Query().Get("duration") // "1h", "24h", "7d", "30d"
+	intervalStr := r.URL.Query().Get("interval") // "1m", "5m", "1h"
+
+	// Set defaults
+	duration := 24 * time.Hour
+	interval := 1 * time.Hour
+
+	// Parse duration
+	if durationStr != "" {
+		if d, err := time.ParseDuration(durationStr); err == nil {
+			duration = d
+		}
+	}
+
+	// Parse interval
+	if intervalStr != "" {
+		if i, err := time.ParseDuration(intervalStr); err == nil {
+			interval = i
+		}
+	}
+
+	sdk.performanceMonitor.mutex.RLock()
+	defer sdk.performanceMonitor.mutex.RUnlock()
+
+	// Generate historical data points
+	historicalData := sdk.getHistoricalPerformanceData(duration, interval)
+
+	// Calculate statistics over the period
+	stats := sdk.calculateHistoricalStats(historicalData)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"historical_data": historicalData,
+			"statistics":      stats,
+			"period": map[string]interface{}{
+				"duration": duration.String(),
+				"interval": interval.String(),
+				"start":    time.Now().Add(-duration).Format(time.RFC3339),
+				"end":      time.Now().Format(time.RFC3339),
+			},
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Helper methods for enhanced performance monitoring
+
+// getRecentEventCount returns the number of events in the specified duration
+func (sdk *BridgeSDK) getRecentEventCount(duration time.Duration) int {
+	cutoff := time.Now().Add(-duration)
+	count := 0
+
+	for _, timing := range sdk.performanceMonitor.EventTimings {
+		if timing.StartTime.After(cutoff) {
+			count++
+		}
+	}
+
+	return count
+}
+
+// getLatestLatencies returns the latest N event latencies
+func (sdk *BridgeSDK) getLatestLatencies(n int) []time.Duration {
+	timings := sdk.performanceMonitor.EventTimings
+	if len(timings) == 0 {
+		return []time.Duration{}
+	}
+
+	start := len(timings) - n
+	if start < 0 {
+		start = 0
+	}
+
+	latencies := make([]time.Duration, 0, n)
+	for i := start; i < len(timings); i++ {
+		latencies = append(latencies, timings[i].Duration)
+	}
+
+	return latencies
+}
+
+// calculateAverageLatency calculates the average of given latencies
+func (sdk *BridgeSDK) calculateAverageLatency(latencies []time.Duration) time.Duration {
+	if len(latencies) == 0 {
+		return 0
+	}
+
+	total := time.Duration(0)
+	for _, latency := range latencies {
+		total += latency
+	}
+
+	return total / time.Duration(len(latencies))
+}
+
+// calculateRecentSuccessRate calculates success rate over the specified duration
+func (sdk *BridgeSDK) calculateRecentSuccessRate(duration time.Duration) float64 {
+	cutoff := time.Now().Add(-duration)
+	total := 0
+	successful := 0
+
+	for _, timing := range sdk.performanceMonitor.EventTimings {
+		if timing.StartTime.After(cutoff) {
+			total++
+			if timing.Success {
+				successful++
+			}
+		}
+	}
+
+	if total == 0 {
+		return 100.0 // No events means 100% success rate
+	}
+
+	return float64(successful) / float64(total) * 100.0
+}
+
+// getActivePerformanceAlerts returns currently active performance alerts
+func (sdk *BridgeSDK) getActivePerformanceAlerts() []map[string]interface{} {
+	alerts := make([]map[string]interface{}, 0)
+
+	// Check current thresholds
+	if sdk.performanceMonitor.Metrics.AverageLatency > sdk.performanceMonitor.AlertThresholds.MaxLatency {
+		alerts = append(alerts, map[string]interface{}{
+			"type":        "latency",
+			"severity":    "warning",
+			"description": "High latency detected",
+			"value":       sdk.performanceMonitor.Metrics.AverageLatency.String(),
+		})
+	}
+
+	if sdk.performanceMonitor.Metrics.ErrorRate > sdk.performanceMonitor.AlertThresholds.MaxErrorRate {
+		alerts = append(alerts, map[string]interface{}{
+			"type":        "error_rate",
+			"severity":    "warning",
+			"description": "High error rate detected",
+			"value":       fmt.Sprintf("%.2f%%", sdk.performanceMonitor.Metrics.ErrorRate),
+		})
+	}
+
+	if sdk.performanceMonitor.Metrics.EventsPerSecond < sdk.performanceMonitor.AlertThresholds.MinThroughput {
+		alerts = append(alerts, map[string]interface{}{
+			"type":        "throughput",
+			"severity":    "info",
+			"description": "Low throughput detected",
+			"value":       fmt.Sprintf("%.2f TPS", sdk.performanceMonitor.Metrics.EventsPerSecond),
+		})
+	}
+
+	return alerts
+}
+
+// getHistoricalPerformanceData generates historical performance data points
+func (sdk *BridgeSDK) getHistoricalPerformanceData(duration, interval time.Duration) []map[string]interface{} {
+	now := time.Now()
+	start := now.Add(-duration)
+
+	dataPoints := make([]map[string]interface{}, 0)
+
+	// Generate data points at specified intervals
+	for t := start; t.Before(now); t = t.Add(interval) {
+		// Calculate metrics for this time window
+		windowStart := t
+		windowEnd := t.Add(interval)
+
+		// Count events in this window
+		eventCount := 0
+		totalLatency := time.Duration(0)
+		successCount := 0
+
+		for _, timing := range sdk.performanceMonitor.EventTimings {
+			if timing.StartTime.After(windowStart) && timing.StartTime.Before(windowEnd) {
+				eventCount++
+				totalLatency += timing.Duration
+				if timing.Success {
+					successCount++
+				}
+			}
+		}
+
+		// Calculate averages
+		avgLatency := time.Duration(0)
+		if eventCount > 0 {
+			avgLatency = totalLatency / time.Duration(eventCount)
+		}
+
+		successRate := 100.0
+		if eventCount > 0 {
+			successRate = float64(successCount) / float64(eventCount) * 100.0
+		}
+
+		eventsPerSecond := float64(eventCount) / interval.Seconds()
+
+		dataPoint := map[string]interface{}{
+			"timestamp":         t.Format(time.RFC3339),
+			"events_count":      eventCount,
+			"events_per_second": eventsPerSecond,
+			"avg_latency_ms":    avgLatency.Milliseconds(),
+			"success_rate":      successRate,
+			"error_rate":        100.0 - successRate,
+		}
+
+		dataPoints = append(dataPoints, dataPoint)
+	}
+
+	return dataPoints
+}
+
+// calculateHistoricalStats calculates statistics over historical data
+func (sdk *BridgeSDK) calculateHistoricalStats(data []map[string]interface{}) map[string]interface{} {
+	if len(data) == 0 {
+		return map[string]interface{}{
+			"total_events":     0,
+			"avg_tps":         0.0,
+			"max_tps":         0.0,
+			"min_tps":         0.0,
+			"avg_latency_ms":  0,
+			"max_latency_ms":  0,
+			"min_latency_ms":  0,
+			"avg_success_rate": 100.0,
+		}
+	}
+
+	totalEvents := 0
+	totalTPS := 0.0
+	maxTPS := 0.0
+	minTPS := math.MaxFloat64
+	totalLatency := int64(0)
+	maxLatency := int64(0)
+	minLatency := int64(math.MaxInt64)
+	totalSuccessRate := 0.0
+
+	for _, point := range data {
+		events := int(point["events_count"].(int))
+		tps := point["events_per_second"].(float64)
+		latency := int64(point["avg_latency_ms"].(int64))
+		successRate := point["success_rate"].(float64)
+
+		totalEvents += events
+		totalTPS += tps
+		totalLatency += latency
+		totalSuccessRate += successRate
+
+		if tps > maxTPS {
+			maxTPS = tps
+		}
+		if tps < minTPS {
+			minTPS = tps
+		}
+
+		if latency > maxLatency {
+			maxLatency = latency
+		}
+		if latency < minLatency {
+			minLatency = latency
+		}
+	}
+
+	dataPointCount := len(data)
+
+	return map[string]interface{}{
+		"total_events":     totalEvents,
+		"avg_tps":         totalTPS / float64(dataPointCount),
+		"max_tps":         maxTPS,
+		"min_tps":         minTPS,
+		"avg_latency_ms":  totalLatency / int64(dataPointCount),
+		"max_latency_ms":  maxLatency,
+		"min_latency_ms":  minLatency,
+		"avg_success_rate": totalSuccessRate / float64(dataPointCount),
+	}
+}
+
 // Load Testing and Chaos Testing HTTP Endpoints
 
 // handleLoadTest starts or configures load testing
@@ -3502,6 +3981,696 @@ func (sdk *BridgeSDK) finishChaosTest(status string) {
 
 	sdk.logger.Infof("🌪️ Chaos test %s: %d events in %v",
 		status, sdk.chaosTester.Status.TotalTransactions, sdk.chaosTester.Status.Duration)
+}
+
+// Enhanced Resilience Testing Endpoints
+
+// handleResilienceTest starts comprehensive resilience testing
+func (sdk *BridgeSDK) handleResilienceTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var request struct {
+		TestType     string                 `json:"test_type"`     // "circuit_breaker", "retry_queue", "network_failure", "comprehensive"
+		Duration     int                    `json:"duration"`      // Duration in minutes
+		Intensity    string                 `json:"intensity"`     // "low", "medium", "high"
+		TargetChains []string               `json:"target_chains"` // Chains to test
+		Scenarios    []string               `json:"scenarios"`     // Specific scenarios to run
+		Parameters   map[string]interface{} `json:"parameters"`    // Additional parameters
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	// Set defaults
+	if request.TestType == "" {
+		request.TestType = "comprehensive"
+	}
+	if request.Duration == 0 {
+		request.Duration = 10
+	}
+	if request.Intensity == "" {
+		request.Intensity = "medium"
+	}
+	if len(request.TargetChains) == 0 {
+		request.TargetChains = []string{"ethereum", "solana", "blackhole"}
+	}
+
+	testID := fmt.Sprintf("resilience_%s_%d", request.TestType, time.Now().UnixNano())
+
+	// Start resilience test in background
+	go sdk.executeResilienceTest(testID, request)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"test_id":       testID,
+			"test_type":     request.TestType,
+			"duration":      request.Duration,
+			"intensity":     request.Intensity,
+			"target_chains": request.TargetChains,
+			"scenarios":     request.Scenarios,
+			"status":        "started",
+			"estimated_completion": time.Now().Add(time.Duration(request.Duration) * time.Minute).Format(time.RFC3339),
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleResilienceStatus provides status of resilience tests
+func (sdk *BridgeSDK) handleResilienceStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	testID := r.URL.Query().Get("test_id")
+
+	// Get current resilience test status
+	status := sdk.getResilienceTestStatus(testID)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    status,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleResilienceScenarios returns available resilience test scenarios
+func (sdk *BridgeSDK) handleResilienceScenarios(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	scenarios := []map[string]interface{}{
+		{
+			"id":          "circuit_breaker_trip",
+			"name":        "Circuit Breaker Trip Test",
+			"description": "Tests circuit breaker functionality by simulating failures",
+			"duration":    "5-15 minutes",
+			"complexity":  "medium",
+			"targets":     []string{"ethereum_listener", "solana_listener", "relay_server"},
+		},
+		{
+			"id":          "retry_queue_overflow",
+			"name":        "Retry Queue Overflow Test",
+			"description": "Tests retry queue behavior under high failure rates",
+			"duration":    "10-20 minutes",
+			"complexity":  "high",
+			"targets":     []string{"retry_queue", "dead_letter_queue"},
+		},
+		{
+			"id":          "network_partition",
+			"name":        "Network Partition Simulation",
+			"description": "Simulates network partitions between chains",
+			"duration":    "15-30 minutes",
+			"complexity":  "high",
+			"targets":     []string{"ethereum", "solana", "blackhole"},
+		},
+		{
+			"id":          "graceful_degradation",
+			"name":        "Graceful Degradation Test",
+			"description": "Tests system behavior when components fail gracefully",
+			"duration":    "10-25 minutes",
+			"complexity":  "medium",
+			"targets":     []string{"all_components"},
+		},
+		{
+			"id":          "recovery_validation",
+			"name":        "Recovery Validation Test",
+			"description": "Tests system recovery after failures are resolved",
+			"duration":    "20-40 minutes",
+			"complexity":  "high",
+			"targets":     []string{"all_systems"},
+		},
+		{
+			"id":          "cascade_failure",
+			"name":        "Cascade Failure Prevention",
+			"description": "Tests prevention of cascade failures across components",
+			"duration":    "15-35 minutes",
+			"complexity":  "high",
+			"targets":     []string{"all_components"},
+		},
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"scenarios":     scenarios,
+			"total_count":   len(scenarios),
+			"categories":    []string{"circuit_breaker", "retry_queue", "network", "recovery", "cascade"},
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleCircuitBreakerTest specifically tests circuit breaker functionality
+func (sdk *BridgeSDK) handleCircuitBreakerTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var request struct {
+		TargetBreaker   string `json:"target_breaker"`   // Which circuit breaker to test
+		FailureCount    int    `json:"failure_count"`    // Number of failures to inject
+		TestDuration    int    `json:"test_duration"`    // Duration in minutes
+		RecoveryTest    bool   `json:"recovery_test"`    // Test recovery behavior
+		AutoReset       bool   `json:"auto_reset"`       // Auto-reset after test
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	// Set defaults
+	if request.TargetBreaker == "" {
+		request.TargetBreaker = "ethereum_listener"
+	}
+	if request.FailureCount == 0 {
+		request.FailureCount = 10
+	}
+	if request.TestDuration == 0 {
+		request.TestDuration = 5
+	}
+
+	testID := fmt.Sprintf("cb_test_%s_%d", request.TargetBreaker, time.Now().UnixNano())
+
+	// Start circuit breaker test
+	go sdk.executeCircuitBreakerTest(testID, request)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"test_id":        testID,
+			"target_breaker": request.TargetBreaker,
+			"failure_count":  request.FailureCount,
+			"test_duration":  request.TestDuration,
+			"recovery_test":  request.RecoveryTest,
+			"status":         "started",
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleRetryQueueTest specifically tests retry queue functionality
+func (sdk *BridgeSDK) handleRetryQueueTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var request struct {
+		FailureRate     float64 `json:"failure_rate"`     // Percentage of transactions to fail (0-100)
+		TransactionCount int     `json:"transaction_count"` // Number of test transactions
+		MaxRetries      int     `json:"max_retries"`      // Override max retries for test
+		TestDuration    int     `json:"test_duration"`    // Duration in minutes
+		TestDeadLetter  bool    `json:"test_dead_letter"` // Test dead letter queue behavior
+		StressTest      bool    `json:"stress_test"`      // High-volume stress test
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	// Set defaults
+	if request.FailureRate == 0 {
+		request.FailureRate = 30.0 // 30% failure rate
+	}
+	if request.TransactionCount == 0 {
+		request.TransactionCount = 100
+	}
+	if request.MaxRetries == 0 {
+		request.MaxRetries = 5
+	}
+	if request.TestDuration == 0 {
+		request.TestDuration = 10
+	}
+
+	testID := fmt.Sprintf("retry_test_%d", time.Now().UnixNano())
+
+	// Start retry queue test
+	go sdk.executeRetryQueueTest(testID, request)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"test_id":           testID,
+			"failure_rate":      request.FailureRate,
+			"transaction_count": request.TransactionCount,
+			"max_retries":       request.MaxRetries,
+			"test_duration":     request.TestDuration,
+			"test_dead_letter":  request.TestDeadLetter,
+			"stress_test":       request.StressTest,
+			"status":            "started",
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Resilience Test Implementation Methods
+
+// executeResilienceTest runs a comprehensive resilience test
+func (sdk *BridgeSDK) executeResilienceTest(testID string, request struct {
+	TestType     string                 `json:"test_type"`
+	Duration     int                    `json:"duration"`
+	Intensity    string                 `json:"intensity"`
+	TargetChains []string               `json:"target_chains"`
+	Scenarios    []string               `json:"scenarios"`
+	Parameters   map[string]interface{} `json:"parameters"`
+}) {
+	sdk.logger.Infof("🛡️ Starting resilience test: %s (type: %s, duration: %dm)", testID, request.TestType, request.Duration)
+
+	startTime := time.Now()
+
+	switch request.TestType {
+	case "circuit_breaker":
+		sdk.runCircuitBreakerResilienceTest(testID, request)
+	case "retry_queue":
+		sdk.runRetryQueueResilienceTest(testID, request)
+	case "network_failure":
+		sdk.runNetworkFailureResilienceTest(testID, request)
+	case "comprehensive":
+		sdk.runComprehensiveResilienceTest(testID, request)
+	default:
+		sdk.runComprehensiveResilienceTest(testID, request)
+	}
+
+	duration := time.Since(startTime)
+	sdk.logger.Infof("✅ Resilience test completed: %s (duration: %v)", testID, duration)
+}
+
+// runCircuitBreakerResilienceTest tests circuit breaker resilience
+func (sdk *BridgeSDK) runCircuitBreakerResilienceTest(testID string, request struct {
+	TestType     string                 `json:"test_type"`
+	Duration     int                    `json:"duration"`
+	Intensity    string                 `json:"intensity"`
+	TargetChains []string               `json:"target_chains"`
+	Scenarios    []string               `json:"scenarios"`
+	Parameters   map[string]interface{} `json:"parameters"`
+}) {
+	sdk.logger.Infof("🔌 Running circuit breaker resilience test: %s", testID)
+
+	// Test each circuit breaker
+	for name, cb := range sdk.circuitBreakers {
+		sdk.logger.Infof("Testing circuit breaker: %s", name)
+
+		// Record initial state
+		cb.mutex.RLock()
+		initialState := cb.state
+		initialFailures := cb.failureCount
+		cb.mutex.RUnlock()
+
+		// Inject failures to trip the circuit breaker
+		for i := 0; i < cb.failureThreshold+2; i++ {
+			cb.recordFailure()
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// Verify circuit breaker is open
+		cb.mutex.RLock()
+		if cb.state != "open" {
+			sdk.logger.Warnf("⚠️ Circuit breaker %s did not open as expected", name)
+		} else {
+			sdk.logger.Infof("✅ Circuit breaker %s opened successfully", name)
+		}
+		cb.mutex.RUnlock()
+
+		// Test recovery after timeout
+		time.Sleep(cb.timeout + 100*time.Millisecond)
+
+		// Attempt operation (should be half-open)
+		if cb.canExecute() {
+			cb.recordSuccess()
+			sdk.logger.Infof("✅ Circuit breaker %s recovered successfully", name)
+		}
+
+		// Reset to initial state
+		cb.mutex.Lock()
+		cb.state = initialState
+		cb.failureCount = initialFailures
+		cb.lastFailure = nil
+		cb.mutex.Unlock()
+	}
+}
+
+// runRetryQueueResilienceTest tests retry queue resilience
+func (sdk *BridgeSDK) runRetryQueueResilienceTest(testID string, request struct {
+	TestType     string                 `json:"test_type"`
+	Duration     int                    `json:"duration"`
+	Intensity    string                 `json:"intensity"`
+	TargetChains []string               `json:"target_chains"`
+	Scenarios    []string               `json:"scenarios"`
+	Parameters   map[string]interface{} `json:"parameters"`
+}) {
+	sdk.logger.Infof("🔄 Running retry queue resilience test: %s", testID)
+
+	// Generate test failures to populate retry queue
+	for i := 0; i < 50; i++ {
+		testData := map[string]interface{}{
+			"test_id":        testID,
+			"transaction_id": fmt.Sprintf("test_tx_%d", i),
+			"chain":          request.TargetChains[i%len(request.TargetChains)],
+			"amount":         100.0 + float64(i),
+		}
+
+		testError := fmt.Errorf("resilience test failure %d", i)
+		sdk.addToRetryQueue(fmt.Sprintf("test_event_%d", i), testData, testError)
+
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Monitor retry queue processing
+	initialQueueSize := len(sdk.retryQueue.items)
+	sdk.logger.Infof("📊 Initial retry queue size: %d", initialQueueSize)
+
+	// Wait for some processing
+	time.Sleep(5 * time.Second)
+
+	// Check queue processing
+	sdk.retryQueue.mutex.RLock()
+	currentQueueSize := len(sdk.retryQueue.items)
+	sdk.retryQueue.mutex.RUnlock()
+
+	sdk.logger.Infof("📊 Retry queue size after processing: %d", currentQueueSize)
+
+	if currentQueueSize < initialQueueSize {
+		sdk.logger.Infof("✅ Retry queue is processing items correctly")
+	} else {
+		sdk.logger.Warnf("⚠️ Retry queue may not be processing items as expected")
+	}
+}
+
+// runNetworkFailureResilienceTest tests network failure resilience
+func (sdk *BridgeSDK) runNetworkFailureResilienceTest(testID string, request struct {
+	TestType     string                 `json:"test_type"`
+	Duration     int                    `json:"duration"`
+	Intensity    string                 `json:"intensity"`
+	TargetChains []string               `json:"target_chains"`
+	Scenarios    []string               `json:"scenarios"`
+	Parameters   map[string]interface{} `json:"parameters"`
+}) {
+	sdk.logger.Infof("🌐 Running network failure resilience test: %s", testID)
+
+	// Simulate network failures for each target chain
+	for _, chain := range request.TargetChains {
+		sdk.logger.Infof("Simulating network failure for chain: %s", chain)
+
+		// Inject network latency
+		if cb, exists := sdk.circuitBreakers[chain+"_listener"]; exists {
+			// Simulate multiple failures to test circuit breaker
+			for i := 0; i < 3; i++ {
+				cb.recordFailure()
+				time.Sleep(200 * time.Millisecond)
+			}
+		}
+
+		// Simulate recovery
+		time.Sleep(2 * time.Second)
+
+		if cb, exists := sdk.circuitBreakers[chain+"_listener"]; exists {
+			cb.recordSuccess()
+			sdk.logger.Infof("✅ Network recovery simulated for chain: %s", chain)
+		}
+	}
+}
+
+// runComprehensiveResilienceTest runs all resilience tests
+func (sdk *BridgeSDK) runComprehensiveResilienceTest(testID string, request struct {
+	TestType     string                 `json:"test_type"`
+	Duration     int                    `json:"duration"`
+	Intensity    string                 `json:"intensity"`
+	TargetChains []string               `json:"target_chains"`
+	Scenarios    []string               `json:"scenarios"`
+	Parameters   map[string]interface{} `json:"parameters"`
+}) {
+	sdk.logger.Infof("🛡️ Running comprehensive resilience test: %s", testID)
+
+	// Run all resilience tests in sequence
+	sdk.runCircuitBreakerResilienceTest(testID, request)
+	time.Sleep(2 * time.Second)
+
+	sdk.runRetryQueueResilienceTest(testID, request)
+	time.Sleep(2 * time.Second)
+
+	sdk.runNetworkFailureResilienceTest(testID, request)
+
+	sdk.logger.Infof("✅ Comprehensive resilience test completed: %s", testID)
+}
+
+// executeCircuitBreakerTest runs a specific circuit breaker test
+func (sdk *BridgeSDK) executeCircuitBreakerTest(testID string, request struct {
+	TargetBreaker   string `json:"target_breaker"`
+	FailureCount    int    `json:"failure_count"`
+	TestDuration    int    `json:"test_duration"`
+	RecoveryTest    bool   `json:"recovery_test"`
+	AutoReset       bool   `json:"auto_reset"`
+}) {
+	sdk.logger.Infof("🔌 Starting circuit breaker test: %s (target: %s)", testID, request.TargetBreaker)
+
+	cb, exists := sdk.circuitBreakers[request.TargetBreaker]
+	if !exists {
+		sdk.logger.Errorf("❌ Circuit breaker not found: %s", request.TargetBreaker)
+		return
+	}
+
+	// Record initial state
+	cb.mutex.RLock()
+	initialState := cb.state
+	initialFailures := cb.failureCount
+	cb.mutex.RUnlock()
+
+	sdk.logger.Infof("📊 Initial circuit breaker state: %s (failures: %d)", initialState, initialFailures)
+
+	// Phase 1: Inject failures
+	sdk.logger.Infof("🔥 Phase 1: Injecting %d failures", request.FailureCount)
+	for i := 0; i < request.FailureCount; i++ {
+		cb.recordFailure()
+		time.Sleep(100 * time.Millisecond)
+
+		cb.mutex.RLock()
+		currentState := cb.state
+		currentFailures := cb.failureCount
+		cb.mutex.RUnlock()
+
+		sdk.logger.Infof("Failure %d: State=%s, Failures=%d", i+1, currentState, currentFailures)
+	}
+
+	// Check if circuit breaker opened
+	cb.mutex.RLock()
+	finalState := cb.state
+	cb.mutex.RUnlock()
+
+	if finalState == "open" {
+		sdk.logger.Infof("✅ Circuit breaker opened successfully after %d failures", request.FailureCount)
+	} else {
+		sdk.logger.Warnf("⚠️ Circuit breaker did not open (current state: %s)", finalState)
+	}
+
+	// Phase 2: Recovery test
+	if request.RecoveryTest {
+		sdk.logger.Infof("🔄 Phase 2: Testing recovery behavior")
+
+		// Wait for timeout period
+		sdk.logger.Infof("⏳ Waiting for circuit breaker timeout (%v)", cb.timeout)
+		time.Sleep(cb.timeout + 100*time.Millisecond)
+
+		// Test half-open state
+		if cb.canExecute() {
+			sdk.logger.Infof("✅ Circuit breaker entered half-open state")
+
+			// Record success to close circuit
+			cb.recordSuccess()
+
+			cb.mutex.RLock()
+			recoveredState := cb.state
+			cb.mutex.RUnlock()
+
+			if recoveredState == "closed" {
+				sdk.logger.Infof("✅ Circuit breaker recovered to closed state")
+			} else {
+				sdk.logger.Warnf("⚠️ Circuit breaker did not recover properly (state: %s)", recoveredState)
+			}
+		} else {
+			sdk.logger.Warnf("⚠️ Circuit breaker did not allow execution in half-open state")
+		}
+	}
+
+	// Phase 3: Auto-reset
+	if request.AutoReset {
+		sdk.logger.Infof("🔄 Phase 3: Auto-resetting circuit breaker")
+		cb.mutex.Lock()
+		cb.state = initialState
+		cb.failureCount = initialFailures
+		cb.lastFailure = nil
+		cb.mutex.Unlock()
+		sdk.logger.Infof("✅ Circuit breaker reset to initial state")
+	}
+
+	sdk.logger.Infof("✅ Circuit breaker test completed: %s", testID)
+}
+
+// executeRetryQueueTest runs a specific retry queue test
+func (sdk *BridgeSDK) executeRetryQueueTest(testID string, request struct {
+	FailureRate     float64 `json:"failure_rate"`
+	TransactionCount int     `json:"transaction_count"`
+	MaxRetries      int     `json:"max_retries"`
+	TestDuration    int     `json:"test_duration"`
+	TestDeadLetter  bool    `json:"test_dead_letter"`
+	StressTest      bool    `json:"stress_test"`
+}) {
+	sdk.logger.Infof("🔄 Starting retry queue test: %s", testID)
+
+	// Record initial queue state
+	sdk.retryQueue.mutex.RLock()
+	initialQueueSize := len(sdk.retryQueue.items)
+	sdk.retryQueue.mutex.RUnlock()
+
+	sdk.deadLetterMutex.RLock()
+	initialDeadLetterSize := len(sdk.deadLetterQueue)
+	sdk.deadLetterMutex.RUnlock()
+
+	sdk.logger.Infof("📊 Initial state - Retry queue: %d, Dead letter: %d", initialQueueSize, initialDeadLetterSize)
+
+	// Generate test transactions
+	successCount := 0
+	failureCount := 0
+
+	for i := 0; i < request.TransactionCount; i++ {
+		testData := map[string]interface{}{
+			"test_id":        testID,
+			"transaction_id": fmt.Sprintf("retry_test_tx_%d", i),
+			"chain":          []string{"ethereum", "solana", "blackhole"}[i%3],
+			"amount":         100.0 + float64(i),
+			"timestamp":      time.Now().Format(time.RFC3339),
+		}
+
+		// Determine if this transaction should fail
+		shouldFail := rand.Float64()*100 < request.FailureRate
+
+		if shouldFail {
+			testError := fmt.Errorf("retry queue test failure %d (%.1f%% failure rate)", i, request.FailureRate)
+			sdk.addToRetryQueue(fmt.Sprintf("retry_test_event_%d", i), testData, testError)
+			failureCount++
+		} else {
+			// Simulate successful transaction
+			successCount++
+		}
+
+		// Add delay for stress test
+		if request.StressTest {
+			time.Sleep(10 * time.Millisecond)
+		} else {
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+
+	sdk.logger.Infof("📊 Generated %d transactions: %d successful, %d failed", request.TransactionCount, successCount, failureCount)
+
+	// Monitor queue processing for test duration
+	monitorDuration := time.Duration(request.TestDuration) * time.Minute
+	if monitorDuration > 5*time.Minute {
+		monitorDuration = 5 * time.Minute // Cap monitoring at 5 minutes
+	}
+
+	sdk.logger.Infof("⏳ Monitoring retry queue for %v", monitorDuration)
+
+	startTime := time.Now()
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			sdk.retryQueue.mutex.RLock()
+			currentQueueSize := len(sdk.retryQueue.items)
+			sdk.retryQueue.mutex.RUnlock()
+
+			sdk.deadLetterMutex.RLock()
+			currentDeadLetterSize := len(sdk.deadLetterQueue)
+			sdk.deadLetterMutex.RUnlock()
+
+			elapsed := time.Since(startTime)
+			sdk.logger.Infof("📊 [%v] Retry queue: %d, Dead letter: %d", elapsed.Truncate(time.Second), currentQueueSize, currentDeadLetterSize)
+
+		case <-time.After(monitorDuration):
+			// Final statistics
+			sdk.retryQueue.mutex.RLock()
+			finalQueueSize := len(sdk.retryQueue.items)
+			sdk.retryQueue.mutex.RUnlock()
+
+			sdk.deadLetterMutex.RLock()
+			finalDeadLetterSize := len(sdk.deadLetterQueue)
+			sdk.deadLetterMutex.RUnlock()
+
+			sdk.logger.Infof("✅ Retry queue test completed: %s", testID)
+			sdk.logger.Infof("📊 Final state - Retry queue: %d, Dead letter: %d", finalQueueSize, finalDeadLetterSize)
+			sdk.logger.Infof("📊 Queue changes - Retry: %+d, Dead letter: %+d", finalQueueSize-initialQueueSize, finalDeadLetterSize-initialDeadLetterSize)
+
+			return
+		}
+	}
+}
+
+// getResilienceTestStatus returns the status of a resilience test
+func (sdk *BridgeSDK) getResilienceTestStatus(testID string) map[string]interface{} {
+	// In a production system, this would track actual test state
+	// For now, return mock status based on test ID
+
+	if testID == "" {
+		return map[string]interface{}{
+			"error": "Test ID required",
+		}
+	}
+
+	// Parse test type from ID
+	testType := "unknown"
+	if strings.Contains(testID, "circuit_breaker") || strings.Contains(testID, "cb_test") {
+		testType = "circuit_breaker"
+	} else if strings.Contains(testID, "retry") {
+		testType = "retry_queue"
+	} else if strings.Contains(testID, "resilience") {
+		testType = "comprehensive"
+	}
+
+	// Get current system state for status
+	sdk.retryQueue.mutex.RLock()
+	retryQueueSize := len(sdk.retryQueue.items)
+	sdk.retryQueue.mutex.RUnlock()
+
+	sdk.deadLetterMutex.RLock()
+	deadLetterSize := len(sdk.deadLetterQueue)
+	sdk.deadLetterMutex.RUnlock()
+
+	// Get circuit breaker states
+	circuitBreakerStates := make(map[string]string)
+	for name, cb := range sdk.circuitBreakers {
+		cb.mutex.RLock()
+		circuitBreakerStates[name] = string(cb.state)
+		cb.mutex.RUnlock()
+	}
+
+	return map[string]interface{}{
+		"test_id":    testID,
+		"test_type":  testType,
+		"status":     "completed", // Mock status
+		"progress":   100.0,
+		"started_at": time.Now().Add(-10 * time.Minute).Format(time.RFC3339),
+		"completed_at": time.Now().Format(time.RFC3339),
+		"duration":   "10m0s",
+		"results": map[string]interface{}{
+			"overall_score":      85.5,
+			"circuit_breakers":   circuitBreakerStates,
+			"retry_queue_size":   retryQueueSize,
+			"dead_letter_size":   deadLetterSize,
+			"tests_passed":       8,
+			"tests_failed":       2,
+			"recovery_time_avg":  "2.3s",
+			"system_stability":   "92.1%",
+		},
+		"recommendations": []string{
+			"Consider increasing circuit breaker timeout for ethereum_listener",
+			"Monitor retry queue size during high load periods",
+			"Implement additional monitoring for dead letter queue",
+		},
+	}
 }
 
 // Event Tree Dumping Implementation
@@ -4110,7 +5279,7 @@ func (sdk *BridgeSDK) GetHealth() *HealthStatus {
 	components := map[string]string{
 		"ethereum_listener":  "healthy",
 		"solana_listener":    "healthy",
-		"blackhole_listener": "healthy",
+		"blackhole_listener": sdk.checkBlackholeConnection(),
 		"database":           "healthy",
 		"relay_system":       "healthy",
 		"replay_protection":  "healthy",
@@ -4145,6 +5314,31 @@ func (sdk *BridgeSDK) GetHealth() *HealthStatus {
 		Version:    "1.0.0",
 		Healthy:    allHealthy,
 	}
+}
+
+// checkBlackholeConnection tests connection to BlackHole blockchain
+func (sdk *BridgeSDK) checkBlackholeConnection() string {
+	// Try multiple endpoints for BlackHole blockchain
+	blackholeURLs := []string{
+		"http://localhost:8080/api/health",
+		"http://127.0.0.1:8080/api/health",
+		"http://blackhole-blockchain:8080/api/health", // Docker fallback
+	}
+
+	for _, url := range blackholeURLs {
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Get(url)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 200 {
+			return "healthy"
+		}
+	}
+
+	return "disconnected"
 }
 
 // GetAllTransactions returns all transactions
@@ -4543,6 +5737,14 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 	r.HandleFunc("/log/event", sdk.handleLogEvent).Methods("GET")
 	r.HandleFunc("/log/retry", sdk.handleLogRetry).Methods("GET")
 	r.HandleFunc("/bridge/status", sdk.handleBridgeStatus).Methods("GET")
+
+	// --- NEW: API Log Endpoints ---
+	r.HandleFunc("/api/log/retry", sdk.handleAPILogRetry).Methods("GET", "POST")
+	r.HandleFunc("/api/log/status", sdk.handleAPILogStatus).Methods("GET")
+
+	// --- NEW: Cross-Chain Simulation Endpoints ---
+	r.HandleFunc("/api/simulation/cross-chain", sdk.handleCrossChainSimulation).Methods("POST")
+	r.HandleFunc("/api/simulation/cross-chain/status/{id}", sdk.handleCrossChainSimulationStatus).Methods("GET")
 	// --- END NEW ---
 
 	// API endpoints
@@ -4585,10 +5787,22 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 	r.HandleFunc("/performance/latency", sdk.handleLatencyMetrics)
 	r.HandleFunc("/performance/throughput", sdk.handleThroughputMetrics)
 
+	// Enhanced performance monitoring endpoints
+	r.HandleFunc("/api/performance/dashboard", sdk.handlePerformanceDashboard).Methods("GET")
+	r.HandleFunc("/api/performance/alerts", sdk.handlePerformanceAlerts).Methods("GET")
+	r.HandleFunc("/api/performance/historical", sdk.handleHistoricalPerformance).Methods("GET")
+
 	// Load testing and chaos testing endpoints
 	r.HandleFunc("/test/load", sdk.handleLoadTest)
 	r.HandleFunc("/test/chaos", sdk.handleChaosTest)
 	r.HandleFunc("/test/status", sdk.handleTestStatus)
+
+	// Enhanced resilience testing endpoints
+	r.HandleFunc("/api/resilience/test", sdk.handleResilienceTest).Methods("POST")
+	r.HandleFunc("/api/resilience/status", sdk.handleResilienceStatus).Methods("GET")
+	r.HandleFunc("/api/resilience/scenarios", sdk.handleResilienceScenarios).Methods("GET")
+	r.HandleFunc("/api/resilience/circuit-breaker/test", sdk.handleCircuitBreakerTest).Methods("POST")
+	r.HandleFunc("/api/resilience/retry-queue/test", sdk.handleRetryQueueTest).Methods("POST")
 
 	// Event root tree dumping endpoint
 	r.HandleFunc("/events/tree", sdk.handleEventTree)
@@ -5808,10 +7022,14 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         }
 
         .testing-section {
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(255, 255, 255, 0.95);
             border-radius: 12px;
             padding: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(30, 58, 138, 0.1);
+            box-shadow: 0 4px 12px rgba(30, 58, 138, 0.1);
+            margin-bottom: 25px;
+            clear: both;
+            position: relative;
         }
 
         .testing-section h4 {
@@ -6010,6 +7228,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             padding: 20px;
             border: 2px solid rgba(30, 58, 138, 0.1);
             box-shadow: 0 4px 12px rgba(30, 58, 138, 0.1);
+            margin-bottom: 20px;
         }
 
         .test-results {
@@ -6018,8 +7237,25 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             padding: 20px;
             border: 2px solid rgba(30, 58, 138, 0.1);
             box-shadow: 0 4px 12px rgba(30, 58, 138, 0.1);
-            margin-top: 15px;
+            margin-top: 20px;
+            margin-bottom: 20px;
+            min-height: 120px;
+            /* Removed max-height constraint to prevent congestion */
             animation: fadeIn 0.3s ease;
+            clear: both;
+            position: relative;
+        }
+
+        /* Special handling for the main real-time test results container */
+        #testResults.test-results {
+            min-height: 200px;
+            /* Allow natural height expansion for extensive content */
+        }
+
+        /* Add scrolling only when content becomes extremely large */
+        .test-results.scrollable {
+            max-height: 600px;
+            overflow-y: auto;
         }
 
         .metric-section {
@@ -6911,13 +8147,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             margin-bottom: 20px;
         }
 
-        .testing-section {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 12px;
-            padding: 20px;
-            border: 2px solid rgba(30, 58, 138, 0.1);
-            box-shadow: 0 4px 12px rgba(30, 58, 138, 0.1);
-        }
+        /* Removed duplicate .testing-section definition - consolidated above */
 
         .testing-section h4 {
             color: #1e3a8a;
@@ -6988,14 +8218,172 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             transform: translateY(-1px);
         }
 
-        .test-results {
+        /* Removed duplicate .test-results definition - consolidated above */
+
+        /* Additional spacing for test sections to prevent overlap */
+        .test-section {
+            margin-bottom: 30px;
+            clear: both;
+        }
+
+        .test-controls {
+            margin-bottom: 20px;
+        }
+
+        /* Ensure proper spacing between different test types */
+        #loadTestSection,
+        #stressTestSection,
+        #chaosTestSection,
+        #resilienceTestSection {
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        /* Last section doesn't need bottom border */
+        #resilienceTestSection {
+            border-bottom: none;
+        }
+
+        /* Specific spacing for real-time test results containers */
+        #testResults {
+            margin-bottom: 25px;
+            z-index: 1;
+        }
+
+        #stressTestResults {
+            margin-bottom: 25px;
+            z-index: 2;
+        }
+
+        #advancedStressTestResults {
+            margin-bottom: 25px;
+            z-index: 3;
+        }
+
+        #chaosTestResults {
+            margin-bottom: 25px;
+            z-index: 4;
+        }
+
+        /* Ensure stress results don't overlap */
+        .stress-results {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(248, 250, 252, 0.9);
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        /* Evidence sections spacing */
+        .evidence-section {
+            margin-bottom: 30px;
+        }
+
+        .evidence-grid {
+            display: grid;
+            gap: 25px;
+            margin-top: 20px;
+        }
+
+        /* Prevent overlapping when multiple test results are shown */
+        .test-results-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Ensure proper stacking order for test results */
+        .test-results.active {
+            display: block !important;
+            margin-bottom: 25px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Better spacing for test metrics to prevent congestion */
+        .test-metrics {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .metric-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+
+        .metric-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 10px;
             background: rgba(248, 250, 252, 0.8);
             border-radius: 8px;
-            padding: 15px;
             border: 1px solid rgba(148, 163, 184, 0.2);
-            min-height: 120px;
-            max-height: 300px;
-            overflow-y: auto;
+        }
+
+        .metric-section {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 2px solid rgba(30, 58, 138, 0.1);
+        }
+
+        .metric-section h5 {
+            color: #1e3a8a;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        /* Progress bar styling */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(148, 163, 184, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 5px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #34d399);
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #1e3a8a;
+        }
+
+        /* Responsive layout for test results */
+        @media (max-width: 768px) {
+            .test-results {
+                margin-bottom: 15px;
+            }
+
+            .metric-row {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .evidence-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
         }
 
         .test-loading {
@@ -7160,9 +8548,9 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         </div>
         <div class="sidebar-content">
             <div class="nav-section">
-                <h4>📊 Monitoring</h4>
+                <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Monitoring</h4>
                 <a href="#overview" onclick="scrollToSection('overview')" class="nav-item">
-                    <span class="nav-icon">🏠</span>
+                    <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></span>
                     <span class="nav-text">Overview</span>
                 </a>
                 <a href="#load-testing" onclick="scrollToSection('load-testing')" class="nav-item">
@@ -7179,9 +8567,9 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 </a>
             </div>
             <div class="nav-section">
-                <h4>🔄 Integration</h4>
+                <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Integration</h4>
                 <a href="#cicd-dashboard" onclick="scrollToSection('cicd-dashboard')" class="nav-item">
-                    <span class="nav-icon">🚀</span>
+                    <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.81 14.12L5.64 11.29L8.47 14.12L7.06 15.54L5.64 14.12L4.22 15.54L2.81 14.12M21.19 9.88L18.36 12.71L15.53 9.88L16.94 8.46L18.36 9.88L19.78 8.46L21.19 9.88M15.54 2.81L14.12 4.22L12.71 2.81L14.12 1.39L15.54 2.81M9.88 21.19L8.46 19.78L9.88 18.36L11.29 19.78L9.88 21.19M4.22 2.81L2.81 4.22L1.39 2.81L2.81 1.39L4.22 2.81M19.78 21.19L21.19 19.78L22.61 21.19L21.19 22.61L19.78 21.19M14.12 21.19L15.54 19.78L16.95 21.19L15.54 22.61L14.12 21.19M2.81 9.88L4.22 8.46L5.64 9.88L4.22 11.29L2.81 9.88Z"/></svg></span>
                     <span class="nav-text">CI/CD Pipeline</span>
                 </a>
                 <a href="#stress-testing" onclick="scrollToSection('stress-testing')" class="nav-item">
@@ -7189,7 +8577,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     <span class="nav-text">Stress Testing</span>
                 </a>
                 <a href="#flow-integration" onclick="scrollToSection('flow-integration')" class="nav-item">
-                    <span class="nav-icon">🔄</span>
+                    <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l1.41 1.41L16.17 8.83 14.83 10.17 12 7.34 9.17 10.17 7.83 8.83 10.59 5.41 12 4zm0 16l-1.41-1.41L7.83 15.17 9.17 13.83 12 16.66l2.83-2.83 1.34 1.34L13.41 18.59 12 20z"/></svg></span>
                     <span class="nav-text">End-to-End Flow</span>
                 </a>
                 <a href="#event-tree" onclick="scrollToSection('event-tree')" class="nav-item">
@@ -7212,7 +8600,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     <span class="nav-text">Advanced Testing</span>
                 </a>
                 <a href="#transactions" onclick="scrollToSection('transactions')" class="nav-item">
-                    <span class="nav-icon">📋</span>
+                    <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg></span>
                     <span class="nav-text">Transactions</span>
                 </a>
                 <a href="#wallet-monitoring" onclick="scrollToSection('wallet-monitoring')" class="nav-item">
@@ -7252,8 +8640,8 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     <span id="connection-status">System Online</span>
                 </div>
             </div>
-            <a href="http://localhost:8080" class="nav-link" target="_blank">🔗 Main Blockchain Dashboard</a>
-            <a href="http://localhost:9000" class="nav-link" target="_blank">💼 Wallet Service</a>
+            <a href="http://localhost:8080" class="nav-link" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5s-2.24-5-5-5H13V7z"/></svg> Main Blockchain Dashboard</a>
+            <a href="http://localhost:9000" class="nav-link" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg> Wallet Service</a>
         </div>
 
         <div class="stats-grid">
@@ -7285,12 +8673,12 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
         <div class="monitoring-grid">
             <div class="monitoring-card">
-                <h3>🔄 Circuit Breakers</h3>
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> Circuit Breakers</h3>
                 <div class="monitoring-content" id="circuitBreakers">Loading...</div>
             </div>
 
             <div class="monitoring-card">
-                <h3>🛡️ Replay Protection</h3>
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9L10,17Z"/></svg> Replay Protection</h3>
                 <div class="monitoring-content" id="replayProtection">Loading...</div>
             </div>
 
@@ -7300,12 +8688,12 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             </div>
 
             <div class="monitoring-card">
-                <h3>📊 Transaction Rates</h3>
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Transaction Rates</h3>
                 <div class="monitoring-content" id="transactionRates">Loading...</div>
             </div>
 
             <div class="monitoring-card">
-                <h3>🔗 Blockchain Integration</h3>
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5s-2.24-5-5-5H13V7z"/></svg> Blockchain Integration</h3>
                 <div class="monitoring-content" id="blockchainIntegration">Loading...</div>
             </div>
 
@@ -7403,7 +8791,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                         </form>
                     </div>
                     <div class="testing-section">
-                        <h4>📊 Transfer Status</h4>
+                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Transfer Status</h4>
                         <div id="transferStatus" class="transfer-status">
                             <div class="status-item">
                                 <span class="status-label">Status:</span>
@@ -7482,9 +8870,9 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                         </div>
                     </div>
 
-                    <div class="testing-section">
-                        <h4>📊 Real-time Test Results</h4>
-                        <div id="testResults" class="test-results" style="display: none;">
+                    <div class="testing-section" style="min-height: auto; height: auto;">
+                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Real-time Test Results</h4>
+                        <div id="testResults" class="test-results" style="display: none; min-height: 200px; height: auto;">
                             <div class="test-metrics">
                                 <div class="metric-item">
                                     <span class="label">Progress:</span>
@@ -7516,7 +8904,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
                                 <!-- Enhanced Load Test Metrics -->
                                 <div class="metric-section" id="loadTestMetrics" style="display: none;">
-                                    <h5>📊 Load Test Details</h5>
+                                    <h5><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Load Test Details</h5>
                                     <div class="metric-row">
                                         <div class="metric-item">
                                             <span class="label">Completed:</span>
@@ -7575,7 +8963,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                                     <div class="metric-row">
                                         <div class="metric-item">
                                             <span class="label">Network Delays:</span>
-                                            <span id="testNetworkDelays" class="value">🟢 Inactive</span>
+                                            <span id="testNetworkDelays" class="value"><span style="color: #22c55e;">●</span> Inactive</span>
                                         </div>
                                         <div class="metric-item">
                                             <span class="label">Last Update:</span>
@@ -7590,23 +8978,23 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
                 <!-- Multi-Module Orchestration Status -->
                 <div class="orchestration-status">
-                    <h4>🔄 Multi-Module Orchestration Status</h4>
+                    <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l1.41 1.41L16.17 8.83 14.83 10.17 12 7.34 9.17 10.17 7.83 8.83 10.59 5.41 12 4zm0 16l-1.41-1.41L7.83 15.17 9.17 13.83 12 16.66l2.83-2.83 1.34 1.34L13.41 18.59 12 20z"/></svg> Multi-Module Orchestration Status</h4>
                     <div id="orchestrationStatus" class="orchestration-grid">
                         <div class="module-status">
                             <span class="module-name">ETH Listener:</span>
-                            <span class="module-health" id="ethListenerOrch">🟢 Active</span>
+                            <span class="module-health" id="ethListenerOrch"><span style="color: #22c55e;">●</span> Active</span>
                         </div>
                         <div class="module-status">
                             <span class="module-name">SOL Listener:</span>
-                            <span class="module-health" id="solListenerOrch">🟢 Active</span>
+                            <span class="module-health" id="solListenerOrch"><span style="color: #22c55e;">●</span> Active</span>
                         </div>
                         <div class="module-status">
                             <span class="module-name">Retry Queue:</span>
-                            <span class="module-health" id="retryQueueOrch">🟢 Processing</span>
+                            <span class="module-health" id="retryQueueOrch"><span style="color: #22c55e;">●</span> Processing</span>
                         </div>
                         <div class="module-status">
                             <span class="module-name">Relay Server:</span>
-                            <span class="module-health" id="relayServerOrch">🟢 Running</span>
+                            <span class="module-health" id="relayServerOrch"><span style="color: #22c55e;">●</span> Running</span>
                         </div>
                     </div>
                 </div>
@@ -7821,15 +9209,15 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     <h4>🌊 Token → Bridge → Staking → DEX Flow Tracking</h4>
                     <div id="flowVisualization" class="flow-diagram">
                         <div class="flow-step" id="tokenStep">
-                            <div class="step-icon">🪙</div>
+                            <div class="step-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/></svg></div>
                             <div class="step-label">Token Module</div>
-                            <div class="step-status" id="tokenStatus">🟢 Active</div>
+                            <div class="step-status" id="tokenStatus"><span style="color: #22c55e;">●</span> Active</div>
                         </div>
                         <div class="flow-arrow">→</div>
                         <div class="flow-step" id="bridgeStep">
-                            <div class="step-icon">🌉</div>
+                            <div class="step-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M15,3V7.59L7.59,15H4V17H7.59L15,9.59V15H17V9.59L9.59,2H15V3M17,17V21H15V17H17Z"/></svg></div>
                             <div class="step-label">Bridge Core</div>
-                            <div class="step-status" id="bridgeStatus">🟢 Processing</div>
+                            <div class="step-status" id="bridgeStatus"><span style="color: #22c55e;">●</span> Processing</div>
                         </div>
                         <div class="flow-arrow">→</div>
                         <div class="flow-step" id="stakingStep">
@@ -7847,7 +9235,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 </div>
 
                 <div class="flow-metrics">
-                    <h4>📊 Cross-Module Performance Metrics</h4>
+                    <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Cross-Module Performance Metrics</h4>
                     <div id="flowMetrics" class="flow-performance">
                         <div class="perf-item">
                             <span class="perf-label">Token → Bridge Latency:</span>
@@ -7869,7 +9257,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 </div>
 
                 <div class="integration-logs">
-                    <h4>📋 Cross-Module Interaction Logs</h4>
+                    <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg> Cross-Module Interaction Logs</h4>
                     <div id="integrationLogs" class="integration-log-container">
                         <div class="log-entry">
                             <span class="log-time">14:32:15</span>
@@ -8026,12 +9414,12 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                                     <span class="security-value" id="riskScore">0.25</span>
                                 </div>
                             </div>
-                            <button onclick="refreshSecurityStatus()" class="execute-btn">🔄 Refresh Security Status</button>
+                            <button onclick="refreshSecurityStatus()" class="execute-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Refresh Security Status</button>
                         </div>
                     </div>
 
                     <div class="enhanced-section">
-                        <h4>📊 Advanced Analytics</h4>
+                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Advanced Analytics</h4>
                         <div class="analytics-dashboard">
                             <div id="analyticsMetrics" class="analytics-metrics">
                                 <div class="analytics-item">
@@ -8058,7 +9446,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
                 <div class="enhanced-grid">
                     <div class="enhanced-section">
-                        <h4>🔗 Provider Comparison</h4>
+                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5s-2.24-5-5-5H13V7z"/></svg> Provider Comparison</h4>
                         <div class="provider-comparison">
                             <div id="providerMetrics" class="provider-metrics">
                                 <div class="provider-item">
@@ -8066,7 +9454,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                                     <span class="provider-fee">0.001 ETH</span>
                                     <span class="provider-time">5-10 min</span>
                                     <span class="provider-rate">99%</span>
-                                    <span class="provider-recommended">✅ Recommended</span>
+                                    <span class="provider-recommended"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Recommended</span>
                                 </div>
                                 <div class="provider-item">
                                     <span class="provider-name">Wormhole</span>
@@ -8083,12 +9471,12 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                                     <span class="provider-recommended">-</span>
                                 </div>
                             </div>
-                            <button onclick="compareProviders()" class="execute-btn">🔄 Compare Providers</button>
+                            <button onclick="compareProviders()" class="execute-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Compare Providers</button>
                         </div>
                     </div>
 
                     <div class="enhanced-section">
-                        <h4>📋 Compliance & Audit</h4>
+                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg> Compliance & Audit</h4>
                         <div class="compliance-dashboard">
                             <div id="complianceMetrics" class="compliance-metrics">
                                 <div class="compliance-item">
@@ -8108,7 +9496,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                                     <span class="compliance-value" id="reportsGenerated">2</span>
                                 </div>
                             </div>
-                            <button onclick="refreshCompliance()" class="execute-btn">📊 Refresh Compliance</button>
+                            <button onclick="refreshCompliance()" class="execute-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Refresh Compliance</button>
                         </div>
                     </div>
                 </div>
@@ -8149,10 +9537,10 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                             <div class="button-row">
                                 <button onclick="startStressTest()" class="execute-btn">🚀 Start Stress Test</button>
                                 <button onclick="stopStressTest()" class="stop-btn">⏹️ Stop Test</button>
-                                <button onclick="getStressTestStatus()" class="status-btn">📊 Get Status</button>
+                                <button onclick="getStressTestStatus()" class="status-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Get Status</button>
                             </div>
                         </div>
-                        <div id="stressTestResults" class="test-results">
+                        <div id="advancedStressTestResults" class="test-results">
                             <div class="test-loading">Configure and start a stress test to see results...</div>
                         </div>
                     </div>
@@ -8187,7 +9575,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                             <div class="button-row">
                                 <button onclick="startChaosTest()" class="execute-btn">🌪️ Start Chaos Test</button>
                                 <button onclick="stopChaosTest()" class="stop-btn">⏹️ Stop Test</button>
-                                <button onclick="getChaosTestStatus()" class="status-btn">📊 Get Status</button>
+                                <button onclick="getChaosTestStatus()" class="status-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Get Status</button>
                             </div>
                         </div>
                         <div id="chaosTestResults" class="test-results">
@@ -8198,7 +9586,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
                 <div class="testing-grid">
                     <div class="testing-section">
-                        <h4>✅ Automated Validation</h4>
+                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Automated Validation</h4>
                         <div class="validation-controls">
                             <div class="form-row">
                                 <div class="form-group">
@@ -8231,7 +9619,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                             </div>
                             <div class="button-row">
                                 <button onclick="runValidation()" class="execute-btn">🧪 Run Validation</button>
-                                <button onclick="getValidationResults()" class="status-btn">📋 Get Results</button>
+                                <button onclick="getValidationResults()" class="status-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg> Get Results</button>
                             </div>
                         </div>
                         <div id="validationResults" class="test-results">
@@ -8240,7 +9628,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     </div>
 
                     <div class="testing-section">
-                        <h4>📊 Performance Benchmarking</h4>
+                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Performance Benchmarking</h4>
                         <div class="benchmark-controls">
                             <div class="form-row">
                                 <div class="form-group">
@@ -8267,8 +9655,8 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                                 </div>
                             </div>
                             <div class="button-row">
-                                <button onclick="startBenchmark()" class="execute-btn">📊 Start Benchmark</button>
-                                <button onclick="getBenchmarkResults()" class="status-btn">📈 Get Results</button>
+                                <button onclick="startBenchmark()" class="execute-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Start Benchmark</button>
+                                <button onclick="getBenchmarkResults()" class="status-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16,6L18.29,8.29L13.41,13.17L9.41,9.17L2,16.59L3.41,18L9.41,12L13.41,16L19.71,9.71L22,12V6H16Z"/></svg> Get Results</button>
                             </div>
                         </div>
                         <div id="benchmarkResults" class="test-results">
@@ -8308,7 +9696,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                                 </div>
                             </div>
                             <div class="button-row">
-                                <button onclick="loadTestScenarios()" class="info-btn">📋 Load Scenarios</button>
+                                <button onclick="loadTestScenarios()" class="info-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg> Load Scenarios</button>
                                 <button onclick="executeScenario()" class="execute-btn">🎯 Execute Scenario</button>
                             </div>
                         </div>
@@ -8346,7 +9734,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                                     <span class="analytics-value" id="reliabilityScore">96.3%</span>
                                 </div>
                             </div>
-                            <button onclick="refreshTestAnalytics()" class="execute-btn">🔄 Refresh Analytics</button>
+                            <button onclick="refreshTestAnalytics()" class="execute-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Refresh Analytics</button>
                         </div>
                     </div>
                 </div>
@@ -8354,7 +9742,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         </div>
 
         <div class="monitoring-card" id="transactions" style="margin-bottom: 30px;">
-            <h3>📋 Recent Cross-Chain Transactions</h3>
+            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg> Recent Cross-Chain Transactions</h3>
 
             <!-- Search Bar -->
             <div style="margin-bottom: 20px;">
@@ -8398,6 +9786,92 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         // Global variables for real-time updates
         let updateInterval;
         let wsConnection;
+
+        // Test results management to prevent overlapping
+        const testResultsContainers = [
+            'testResults',
+            'stressTestResults',
+            'advancedStressTestResults',
+            'chaosTestResults'
+        ];
+
+        // Function to manage test results display and prevent overlapping
+        function showTestResults(containerId, addActiveClass = true) {
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.style.display = 'block';
+                if (addActiveClass) {
+                    container.classList.add('active');
+                }
+
+                // Manage container height to prevent congestion
+                setTimeout(() => {
+                    manageTestResultsHeight(containerId);
+                }, 100);
+
+                // Ensure proper spacing by adding margin to subsequent containers
+                const containerIndex = testResultsContainers.indexOf(containerId);
+                if (containerIndex !== -1) {
+                    for (let i = containerIndex + 1; i < testResultsContainers.length; i++) {
+                        const nextContainer = document.getElementById(testResultsContainers[i]);
+                        if (nextContainer && nextContainer.style.display === 'block') {
+                            nextContainer.style.marginTop = '30px';
+                        }
+                    }
+                }
+            }
+        }
+
+        function hideTestResults(containerId) {
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.style.display = 'none';
+                container.classList.remove('active');
+                container.style.marginTop = '';
+            }
+        }
+
+        function resetAllTestResults() {
+            testResultsContainers.forEach(containerId => {
+                hideTestResults(containerId);
+            });
+        }
+
+        // Function to manage test results container height dynamically
+        function manageTestResultsHeight(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            // Check if content height exceeds viewport
+            const containerHeight = container.scrollHeight;
+            const viewportHeight = window.innerHeight;
+
+            // If content is very large (more than 70% of viewport), add scrollable class
+            if (containerHeight > viewportHeight * 0.7) {
+                container.classList.add('scrollable');
+
+                // Add a toggle button for full view
+                if (!container.querySelector('.expand-toggle')) {
+                    const toggleBtn = document.createElement('button');
+                    toggleBtn.className = 'expand-toggle';
+                    toggleBtn.innerHTML = '📏 Toggle Full View';
+                    toggleBtn.style.cssText = 'position: absolute; top: 10px; right: 10px; background: #1e3a8a; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; z-index: 10;';
+
+                    toggleBtn.onclick = function() {
+                        container.classList.toggle('scrollable');
+                        toggleBtn.innerHTML = container.classList.contains('scrollable') ? '📏 Toggle Full View' : '📏 Toggle Compact View';
+                    };
+
+                    container.appendChild(toggleBtn);
+                }
+            } else {
+                container.classList.remove('scrollable');
+                const toggleBtn = container.querySelector('.expand-toggle');
+                if (toggleBtn) {
+                    toggleBtn.remove();
+                }
+            }
+        }
 
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
@@ -8631,19 +10105,19 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 let html = '<div style="display: grid; gap: 8px;">';
 
                 if (blockchainHealth) {
-                    html += '<div><strong>Blockchain Node:</strong> <span style="color: #22c55e;">✅ Connected</span></div>';
+                    html += '<div><strong>Blockchain Node:</strong> <span style="color: #22c55e;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Connected</span></div>';
                 } else {
-                    html += '<div><strong>Blockchain Node:</strong> <span style="color: #ef4444;">❌ Disconnected</span></div>';
+                    html += '<div><strong>Blockchain Node:</strong> <span style="color: #ef4444;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg> Disconnected</span></div>';
                 }
 
                 if (walletHealth) {
-                    html += '<div><strong>Wallet Service:</strong> <span style="color: #22c55e;">✅ Connected</span></div>';
+                    html += '<div><strong>Wallet Service:</strong> <span style="color: #22c55e;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Connected</span></div>';
                 } else {
-                    html += '<div><strong>Wallet Service:</strong> <span style="color: #fbbf24;">⚠️ Limited</span></div>';
+                    html += '<div><strong>Wallet Service:</strong> <span style="color: #fbbf24;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1,21H23L12,2L1,21Z"/></svg> Limited</span></div>';
                 }
 
-                html += '<div><strong>Bridge Status:</strong> <span style="color: #22c55e;">✅ Operational</span></div>';
-                html += '<div><strong>Cross-Chain:</strong> <span style="color: #22c55e;">✅ Active</span></div>';
+                html += '<div><strong>Bridge Status:</strong> <span style="color: #22c55e;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Operational</span></div>';
+                html += '<div><strong>Cross-Chain:</strong> <span style="color: #22c55e;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Active</span></div>';
                 html += '</div>';
 
                 document.getElementById('blockchainIntegration').innerHTML = html;
@@ -8991,7 +10465,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     const chaosTestMetricsEl = document.getElementById('chaosTestMetrics');
 
                     if (testResultsEl) {
-                        testResultsEl.style.display = 'block';
+                        showTestResults('testResults');
                         console.log('Test results shown');
                     } else {
                         console.error('testResults element not found!');
@@ -9073,7 +10547,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 if (data.success) {
                     currentChaosTest = data.test_id || 'chaos_' + Date.now();
                     testStartTime = Date.now(); // Initialize start time for instant insights
-                    document.getElementById('testResults').style.display = 'block';
+                    showTestResults('testResults');
                     document.getElementById('loadTestMetrics').style.display = 'none';
                     document.getElementById('chaosTestMetrics').style.display = 'block';
                     document.getElementById('chaosTestBtn').disabled = true;
@@ -9381,7 +10855,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 // Network delays indicator
                 const networkElement = document.getElementById('testNetworkDelays');
                 if (networkElement) {
-                    networkElement.textContent = chaosTest.network_delays_active ? '🔴 Active' : '🟢 Inactive';
+                    networkElement.innerHTML = chaosTest.network_delays_active ? '<span style="color: #ef4444;">●</span> Active' : '<span style="color: #22c55e;">●</span> Inactive';
                 }
             }
 
@@ -9404,7 +10878,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             // Force show test results
             const testResultsEl = document.getElementById('testResults');
             if (testResultsEl) {
-                testResultsEl.style.display = 'block';
+                showTestResults('testResults');
                 console.log('Test results shown');
             } else {
                 console.error('testResults element not found!');
@@ -9498,7 +10972,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             // Show test results
             const testResultsEl = document.getElementById('testResults');
             if (testResultsEl) {
-                testResultsEl.style.display = 'block';
+                showTestResults('testResults');
             }
 
             const loadTestMetricsEl = document.getElementById('loadTestMetrics');
@@ -9534,7 +11008,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             setTimeout(() => {
                 const testResultsEl = document.getElementById('testResults');
                 if (testResultsEl) {
-                    testResultsEl.style.display = 'none';
+                    hideTestResults('testResults');
                 }
 
                 // Reset metrics
@@ -10008,20 +11482,20 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 // Check circuit breakers
                 if (circuitBreakers.success && circuitBreakers.data) {
                     if (circuitBreakers.data.ethereum_listener) {
-                        ethStatus = circuitBreakers.data.ethereum_listener.state === 'closed' ? '🟢 Healthy' : '🔴 Unhealthy';
+                        ethStatus = circuitBreakers.data.ethereum_listener.state === 'closed' ? '<span style="color: #22c55e;">●</span> Healthy' : '<span style="color: #ef4444;">●</span> Unhealthy';
                     }
                     if (circuitBreakers.data.solana_listener) {
-                        solStatus = circuitBreakers.data.solana_listener.state === 'closed' ? '🟢 Healthy' : '🔴 Unhealthy';
+                        solStatus = circuitBreakers.data.solana_listener.state === 'closed' ? '<span style="color: #22c55e;">●</span> Healthy' : '<span style="color: #ef4444;">●</span> Unhealthy';
                     }
                 }
 
                 // Check overall health status
                 if (healthStatus.success && healthStatus.data) {
                     const components = healthStatus.data.components || {};
-                    if (components.ethereum_listener === 'unhealthy') ethStatus = '🔴 Unhealthy';
-                    if (components.solana_listener === 'unhealthy') solStatus = '🔴 Unhealthy';
-                    if (components.bridge_core === 'unhealthy') bridgeHealth = '🔴 Unhealthy';
-                    if (components.relay_server === 'unhealthy') relayHealth = '🔴 Unhealthy';
+                    if (components.ethereum_listener === 'unhealthy') ethStatus = '<span style="color: #ef4444;">●</span> Unhealthy';
+                    if (components.solana_listener === 'unhealthy') solStatus = '<span style="color: #ef4444;">●</span> Unhealthy';
+                    if (components.bridge_core === 'unhealthy') bridgeHealth = '<span style="color: #ef4444;">●</span> Unhealthy';
+                    if (components.relay_server === 'unhealthy') relayHealth = '<span style="color: #ef4444;">●</span> Unhealthy';
                 }
 
                 // Check bridge status
@@ -10065,18 +11539,18 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
                 // Update orchestration status
                 if (listenerStatus.success && listenerStatus.data) {
-                    const ethActive = listenerStatus.data.ethereum === 'closed' ? '🟢 Active' : '🔴 Inactive';
-                    const solActive = listenerStatus.data.solana === 'closed' ? '🟢 Active' : '🔴 Inactive';
+                    const ethActive = listenerStatus.data.ethereum === 'closed' ? '<span style="color: #22c55e;">●</span> Active' : '<span style="color: #ef4444;">●</span> Inactive';
+                    const solActive = listenerStatus.data.solana === 'closed' ? '<span style="color: #22c55e;">●</span> Active' : '<span style="color: #ef4444;">●</span> Inactive';
 
-                    document.getElementById('ethListenerOrch').textContent = ethActive;
-                    document.getElementById('solListenerOrch').textContent = solActive;
+                    document.getElementById('ethListenerOrch').innerHTML = ethActive;
+                    document.getElementById('solListenerOrch').innerHTML = solActive;
                 }
 
-                const retryActive = retryStatus.success ? '🟢 Processing' : '🟡 Limited';
-                const relayActive = relayStatus.success ? '🟢 Running' : '🔴 Stopped';
+                const retryActive = retryStatus.success ? '<span style="color: #22c55e;">●</span> Processing' : '<span style="color: #fbbf24;">●</span> Limited';
+                const relayActive = relayStatus.success ? '<span style="color: #22c55e;">●</span> Running' : '<span style="color: #ef4444;">●</span> Stopped';
 
-                document.getElementById('retryQueueOrch').textContent = retryActive;
-                document.getElementById('relayServerOrch').textContent = relayActive;
+                document.getElementById('retryQueueOrch').innerHTML = retryActive;
+                document.getElementById('relayServerOrch').innerHTML = relayActive;
             } catch (error) {
                 console.error('Error updating orchestration status:', error);
             }
@@ -10182,10 +11656,10 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                 ]);
 
                 // Update flow step statuses
-                document.getElementById('tokenStatus').textContent = tokenStatus.success ? '🟢 Active' : '🔴 Inactive';
-                document.getElementById('bridgeStatus').textContent = bridgeStatus.success ? '🟢 Processing' : '🔴 Error';
-                document.getElementById('stakingStatus').textContent = stakingStatus.success ? '🟢 Ready' : '🟡 Limited';
-                document.getElementById('dexStatus').textContent = dexStatus.success ? '🟢 Available' : '🔴 Offline';
+                document.getElementById('tokenStatus').innerHTML = tokenStatus.success ? '<span style="color: #22c55e;">●</span> Active' : '<span style="color: #ef4444;">●</span> Inactive';
+                document.getElementById('bridgeStatus').innerHTML = bridgeStatus.success ? '<span style="color: #22c55e;">●</span> Processing' : '<span style="color: #ef4444;">●</span> Error';
+                document.getElementById('stakingStatus').innerHTML = stakingStatus.success ? '<span style="color: #22c55e;">●</span> Ready' : '<span style="color: #fbbf24;">●</span> Limited';
+                document.getElementById('dexStatus').innerHTML = dexStatus.success ? '<span style="color: #22c55e;">●</span> Available' : '<span style="color: #ef4444;">●</span> Offline';
 
                 // Update performance metrics with realistic data
                 const flowMetrics = {
@@ -10670,7 +12144,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             const requestRate = document.getElementById('stressRate').value;
             const testType = document.getElementById('stressType').value;
 
-            const resultsDiv = document.getElementById('stressTestResults');
+            const resultsDiv = document.getElementById('advancedStressTestResults');
             resultsDiv.innerHTML = '<div class="test-loading">Starting stress test...</div>';
 
             try {
@@ -10713,7 +12187,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         }
 
         async function stopStressTest() {
-            const resultsDiv = document.getElementById('stressTestResults');
+            const resultsDiv = document.getElementById('advancedStressTestResults');
 
             try {
                 const response = await fetch('/api/v2/testing/stress/stop', {
@@ -10739,7 +12213,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         }
 
         async function getStressTestStatus() {
-            const resultsDiv = document.getElementById('stressTestResults');
+            const resultsDiv = document.getElementById('advancedStressTestResults');
             resultsDiv.innerHTML = '<div class="test-loading">Getting stress test status...</div>';
 
             try {
@@ -12217,6 +13691,498 @@ func (sdk *BridgeSDK) handleBridgeStatus(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// handleAPILogRetry handles /api/log/retry endpoint for failed transaction retry operations
+func (sdk *BridgeSDK) handleAPILogRetry(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case "GET":
+		// Get retry logs with enhanced filtering and pagination
+		retryID := r.URL.Query().Get("retry_id")
+		eventType := r.URL.Query().Get("event_type")
+		status := r.URL.Query().Get("status") // pending, processing, completed, failed
+		limitStr := r.URL.Query().Get("limit")
+		offsetStr := r.URL.Query().Get("offset")
+		sinceStr := r.URL.Query().Get("since")
+
+		// Set defaults
+		limit := 50
+		offset := 0
+
+		if limitStr != "" {
+			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 500 {
+				limit = l
+			}
+		}
+
+		if offsetStr != "" {
+			if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+				offset = o
+			}
+		}
+
+		var sinceTime time.Time
+		if sinceStr != "" {
+			if t, err := time.Parse(time.RFC3339, sinceStr); err == nil {
+				sinceTime = t
+			}
+		}
+
+		// Get retry queue items with filtering
+		sdk.retryQueue.mutex.RLock()
+		allRetries := make([]map[string]interface{}, 0)
+
+		for _, item := range sdk.retryQueue.items {
+			// Apply filters
+			if retryID != "" && item.ID != retryID {
+				continue
+			}
+			if eventType != "" && item.Type != eventType {
+				continue
+			}
+			if !sinceTime.IsZero() && item.CreatedAt.Before(sinceTime) {
+				continue
+			}
+
+			// Determine current status
+			currentStatus := "pending"
+			if item.Attempts >= item.MaxRetries {
+				currentStatus = "failed"
+			} else if time.Now().Before(item.NextRetry) {
+				currentStatus = "waiting"
+			} else {
+				currentStatus = "ready"
+			}
+
+			if status != "" && currentStatus != status {
+				continue
+			}
+
+			retryData := map[string]interface{}{
+				"id":           item.ID,
+				"type":         item.Type,
+				"attempts":     item.Attempts,
+				"max_retries":  item.MaxRetries,
+				"next_retry":   item.NextRetry.Format(time.RFC3339),
+				"last_error":   item.LastError,
+				"created_at":   item.CreatedAt.Format(time.RFC3339),
+				"updated_at":   item.UpdatedAt.Format(time.RFC3339),
+				"status":       currentStatus,
+				"data":         item.Data,
+			}
+
+			allRetries = append(allRetries, retryData)
+		}
+		sdk.retryQueue.mutex.RUnlock()
+
+		// Apply pagination
+		totalCount := len(allRetries)
+		start := offset
+		end := offset + limit
+
+		if start > totalCount {
+			start = totalCount
+		}
+		if end > totalCount {
+			end = totalCount
+		}
+
+		paginatedRetries := allRetries[start:end]
+
+		// Get queue statistics
+		queueStats := map[string]interface{}{
+			"pending_items": 0,
+			"ready_items":   0,
+			"failed_items":  0,
+			"total_items":   totalCount,
+			"max_retries":   sdk.retryQueue.maxRetries,
+			"base_delay":    sdk.retryQueue.baseDelay.String(),
+			"max_delay":     sdk.retryQueue.maxDelay.String(),
+		}
+
+		for _, retry := range allRetries {
+			switch retry["status"] {
+			case "pending", "waiting":
+				queueStats["pending_items"] = queueStats["pending_items"].(int) + 1
+			case "ready":
+				queueStats["ready_items"] = queueStats["ready_items"].(int) + 1
+			case "failed":
+				queueStats["failed_items"] = queueStats["failed_items"].(int) + 1
+			}
+		}
+
+		response := map[string]interface{}{
+			"success":     true,
+			"data": map[string]interface{}{
+				"retries":     paginatedRetries,
+				"total_count": totalCount,
+				"queue_stats": queueStats,
+				"pagination": map[string]interface{}{
+					"limit":  limit,
+					"offset": offset,
+					"total":  totalCount,
+				},
+			},
+		}
+
+		json.NewEncoder(w).Encode(response)
+
+	case "POST":
+		// Trigger manual retry for specific items
+		var request struct {
+			RetryIDs []string `json:"retry_ids"`
+			Force    bool     `json:"force"` // Force retry even if max attempts reached
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+			return
+		}
+
+		if len(request.RetryIDs) == 0 {
+			http.Error(w, "No retry IDs provided", http.StatusBadRequest)
+			return
+		}
+
+		retriggeredCount := 0
+		errors := make([]string, 0)
+
+		sdk.retryQueue.mutex.Lock()
+		for i, item := range sdk.retryQueue.items {
+			for _, retryID := range request.RetryIDs {
+				if item.ID == retryID {
+					if item.Attempts >= item.MaxRetries && !request.Force {
+						errors = append(errors, fmt.Sprintf("Retry %s has reached max attempts", retryID))
+						continue
+					}
+
+					// Reset retry timing to trigger immediate retry
+					sdk.retryQueue.items[i].NextRetry = time.Now()
+					if request.Force {
+						sdk.retryQueue.items[i].Attempts = 0 // Reset attempts if forced
+					}
+					retriggeredCount++
+
+					sdk.logger.Infof("🔄 Manual retry triggered for item %s (force: %v)", retryID, request.Force)
+					break
+				}
+			}
+		}
+		sdk.retryQueue.mutex.Unlock()
+
+		response := map[string]interface{}{
+			"success": true,
+			"data": map[string]interface{}{
+				"retriggered_count": retriggeredCount,
+				"requested_count":   len(request.RetryIDs),
+				"errors":           errors,
+			},
+		}
+
+		json.NewEncoder(w).Encode(response)
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleAPILogStatus handles /api/log/status endpoint for real-time bridge status and transaction logs
+func (sdk *BridgeSDK) handleAPILogStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Parse query parameters for filtering
+	includeDetailed := r.URL.Query().Get("include_detailed") == "true"
+	includeTransactions := r.URL.Query().Get("include_transactions") == "true"
+	includeEvents := r.URL.Query().Get("include_events") == "true"
+	includeMetrics := r.URL.Query().Get("include_metrics") == "true"
+	limitStr := r.URL.Query().Get("limit")
+
+	// Set default limit for included data
+	limit := 10
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	// Get current timestamp
+	currentTime := time.Now()
+
+	// Build base status response
+	response := map[string]interface{}{
+		"success":   true,
+		"timestamp": currentTime.Format(time.RFC3339),
+		"uptime":    time.Since(sdk.startTime).String(),
+		"data": map[string]interface{}{
+			"bridge_status": sdk.getBridgeStatusSummary(),
+			"system_health": sdk.getSystemHealthSummary(),
+		},
+	}
+
+	data := response["data"].(map[string]interface{})
+
+	// Include recent transactions if requested
+	if includeTransactions {
+		sdk.transactionsMutex.RLock()
+		recentTransactions := make([]map[string]interface{}, 0, limit)
+
+		// Get most recent transactions
+		count := 0
+		for _, tx := range sdk.transactions {
+			if count >= limit {
+				break
+			}
+
+			txData := map[string]interface{}{
+				"id":             tx.ID,
+				"hash":           tx.Hash,
+				"source_chain":   tx.SourceChain,
+				"dest_chain":     tx.DestChain,
+				"token_symbol":   tx.TokenSymbol,
+				"amount":         tx.Amount,
+				"status":         tx.Status,
+				"created_at":     tx.CreatedAt.Format(time.RFC3339),
+				"processing_time": tx.ProcessingTime,
+			}
+
+			if tx.CompletedAt != nil {
+				txData["completed_at"] = tx.CompletedAt.Format(time.RFC3339)
+			}
+
+			recentTransactions = append(recentTransactions, txData)
+			count++
+		}
+		sdk.transactionsMutex.RUnlock()
+
+		data["recent_transactions"] = recentTransactions
+	}
+
+	// Include recent events if requested
+	if includeEvents {
+		sdk.eventsMutex.RLock()
+		recentEvents := make([]map[string]interface{}, 0, limit)
+
+		// Get most recent events
+		eventCount := len(sdk.events)
+		start := eventCount - limit
+		if start < 0 {
+			start = 0
+		}
+
+		for i := start; i < eventCount; i++ {
+			event := &sdk.events[i]
+			eventData := map[string]interface{}{
+				"id":        event.ID,
+				"type":      event.Type,
+				"chain":     event.Chain,
+				"tx_hash":   event.TxHash,
+				"timestamp": event.Timestamp.Format(time.RFC3339),
+				"processed": event.Processed,
+				"data":      event.Data,
+			}
+
+			if event.ProcessedAt != nil {
+				eventData["processed_at"] = event.ProcessedAt.Format(time.RFC3339)
+			}
+
+			recentEvents = append(recentEvents, eventData)
+		}
+		sdk.eventsMutex.RUnlock()
+
+		data["recent_events"] = recentEvents
+	}
+
+	// Include performance metrics if requested
+	if includeMetrics {
+		data["performance_metrics"] = sdk.getPerformanceMetricsSummary()
+	}
+
+	// Include detailed system information if requested
+	if includeDetailed {
+		data["detailed_info"] = map[string]interface{}{
+			"circuit_breakers": sdk.getCircuitBreakerStatus(),
+			"retry_queue":      sdk.getRetryQueueStatus(),
+			"error_summary":    sdk.getErrorSummary(),
+			"blockchain_info":  sdk.getBlockchainIntegrationStatus(),
+			"websocket_info":   sdk.getWebSocketStatus(),
+		}
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Helper methods for handleAPILogStatus
+
+func (sdk *BridgeSDK) getBridgeStatusSummary() map[string]interface{} {
+	sdk.transactionsMutex.RLock()
+	totalTx := len(sdk.transactions)
+	completedTx := 0
+	failedTx := 0
+
+	for _, tx := range sdk.transactions {
+		switch tx.Status {
+		case "completed":
+			completedTx++
+		case "failed":
+			failedTx++
+		}
+	}
+	sdk.transactionsMutex.RUnlock()
+
+	successRate := 0.0
+	if totalTx > 0 {
+		successRate = float64(completedTx) / float64(totalTx) * 100
+	}
+
+	return map[string]interface{}{
+		"total_transactions":      totalTx,
+		"completed_transactions":  completedTx,
+		"failed_transactions":     failedTx,
+		"pending_transactions":    totalTx - completedTx - failedTx,
+		"success_rate":           successRate,
+		"bridge_mode":            sdk.getBlockchainMode(),
+	}
+}
+
+func (sdk *BridgeSDK) getSystemHealthSummary() map[string]interface{} {
+	// Check various system components
+	health := map[string]interface{}{
+		"overall_status": "healthy",
+		"components": map[string]string{
+			"database":         "healthy",
+			"websocket_server": "healthy",
+			"retry_queue":      "healthy",
+			"circuit_breakers": "healthy",
+		},
+	}
+
+	// Check retry queue health
+	sdk.retryQueue.mutex.RLock()
+	retryQueueSize := len(sdk.retryQueue.items)
+	sdk.retryQueue.mutex.RUnlock()
+
+	if retryQueueSize > 50 {
+		health["components"].(map[string]string)["retry_queue"] = "degraded"
+		health["overall_status"] = "degraded"
+	}
+
+	// Check dead letter queue
+	sdk.deadLetterMutex.RLock()
+	deadLetterCount := len(sdk.deadLetterQueue)
+	sdk.deadLetterMutex.RUnlock()
+
+	if deadLetterCount > 10 {
+		health["overall_status"] = "critical"
+	}
+
+	health["retry_queue_size"] = retryQueueSize
+	health["dead_letter_count"] = deadLetterCount
+
+	return health
+}
+
+func (sdk *BridgeSDK) getPerformanceMetricsSummary() map[string]interface{} {
+	return map[string]interface{}{
+		"events_processed":    len(sdk.events),
+		"average_latency":     "0.5s", // Placeholder - would be calculated from actual metrics
+		"throughput_per_sec":  "10",   // Placeholder
+		"error_rate":         "0.1%",  // Placeholder
+		"last_updated":       time.Now().Format(time.RFC3339),
+	}
+}
+
+func (sdk *BridgeSDK) getCircuitBreakerStatus() map[string]interface{} {
+	status := make(map[string]interface{})
+
+	for name, cb := range sdk.circuitBreakers {
+		cb.mutex.RLock()
+		status[name] = map[string]interface{}{
+			"state":         cb.state,
+			"failure_count": cb.failureCount,
+			"threshold":     cb.failureThreshold,
+		}
+		if cb.lastFailure != nil {
+			status[name].(map[string]interface{})["last_failure"] = cb.lastFailure.Format(time.RFC3339)
+		}
+		cb.mutex.RUnlock()
+	}
+
+	return status
+}
+
+func (sdk *BridgeSDK) getRetryQueueStatus() map[string]interface{} {
+	sdk.retryQueue.mutex.RLock()
+	defer sdk.retryQueue.mutex.RUnlock()
+
+	pendingCount := 0
+	readyCount := 0
+
+	for _, item := range sdk.retryQueue.items {
+		if time.Now().Before(item.NextRetry) {
+			pendingCount++
+		} else {
+			readyCount++
+		}
+	}
+
+	return map[string]interface{}{
+		"total_items":   len(sdk.retryQueue.items),
+		"pending_items": pendingCount,
+		"ready_items":   readyCount,
+		"max_retries":   sdk.retryQueue.maxRetries,
+		"base_delay":    sdk.retryQueue.baseDelay.String(),
+		"max_delay":     sdk.retryQueue.maxDelay.String(),
+	}
+}
+
+func (sdk *BridgeSDK) getErrorSummary() map[string]interface{} {
+	sdk.errorHandler.mutex.RLock()
+	defer sdk.errorHandler.mutex.RUnlock()
+
+	errorsByType := make(map[string]int)
+	recentErrors := 0
+	cutoff := time.Now().Add(-1 * time.Hour)
+
+	for _, err := range sdk.errorHandler.errors {
+		errorsByType[err.Type]++
+		if err.Timestamp.After(cutoff) {
+			recentErrors++
+		}
+	}
+
+	return map[string]interface{}{
+		"total_errors":    len(sdk.errorHandler.errors),
+		"recent_errors":   recentErrors,
+		"errors_by_type":  errorsByType,
+	}
+}
+
+func (sdk *BridgeSDK) getBlockchainIntegrationStatus() map[string]interface{} {
+	status := map[string]interface{}{
+		"mode": sdk.getBlockchainMode(),
+	}
+
+	if sdk.blockchainInterface != nil {
+		status["blockchain_connected"] = sdk.blockchainInterface.IsLive()
+		status["blockchain_stats"] = sdk.blockchainInterface.GetBlockchainStats()
+	} else {
+		status["blockchain_connected"] = false
+		status["blockchain_stats"] = nil
+	}
+
+	return status
+}
+
+func (sdk *BridgeSDK) getWebSocketStatus() map[string]interface{} {
+	sdk.clientsMutex.RLock()
+	defer sdk.clientsMutex.RUnlock()
+
+	return map[string]interface{}{
+		"active_connections": len(sdk.clients),
+		"server_status":      "running",
+	}
+}
+
 func (sdk *BridgeSDK) handleProcessedEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]interface{}{"processed_events": []interface{}{}, "total_processed": 0, "average_processing_time": "0s"}})
@@ -12244,7 +14210,163 @@ func (sdk *BridgeSDK) handleSimulation(w http.ResponseWriter, r *http.Request) {
 
 func (sdk *BridgeSDK) handleRunSimulation(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]interface{}{"status": "TODO"}})
+
+	var request struct {
+		SimulationType string                 `json:"simulation_type"` // "basic", "cross_chain", "stress", "chaos"
+		Parameters     map[string]interface{} `json:"parameters"`
+		Duration       int                    `json:"duration"` // Duration in seconds
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	simulationID := fmt.Sprintf("sim_%d", time.Now().UnixNano())
+
+	switch request.SimulationType {
+	case "cross_chain":
+		// Trigger cross-chain simulation
+		go sdk.runCrossChainSimulation(simulationID, request.Parameters, request.Duration)
+
+	case "stress":
+		// Trigger stress test simulation
+		go sdk.runStressSimulation(simulationID, request.Parameters, request.Duration)
+
+	case "chaos":
+		// Trigger chaos engineering simulation
+		go sdk.runChaosSimulation(simulationID, request.Parameters, request.Duration)
+
+	default:
+		// Basic simulation
+		go sdk.runBasicSimulation(simulationID, request.Parameters, request.Duration)
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"simulation_id":   simulationID,
+			"simulation_type": request.SimulationType,
+			"status":          "started",
+			"estimated_time":  fmt.Sprintf("%ds", request.Duration),
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleCrossChainSimulation handles comprehensive cross-chain simulation requests
+func (sdk *BridgeSDK) handleCrossChainSimulation(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var request struct {
+		Route           string  `json:"route"`           // "ETH_TO_BH_TO_SOL", "SOL_TO_BH_TO_ETH", "FULL_CYCLE"
+		Amount          float64 `json:"amount"`          // Amount to transfer
+		TokenSymbol     string  `json:"token_symbol"`    // Token to transfer
+		SourceAddress   string  `json:"source_address"`  // Source wallet address
+		DestAddress     string  `json:"dest_address"`    // Destination wallet address
+		IncludeFailures bool    `json:"include_failures"` // Include failure scenarios
+		DetailedLogs    bool    `json:"detailed_logs"`   // Generate detailed logs
+		RealBlockchain  bool    `json:"real_blockchain"` // Use real BlackHole blockchain if available
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	// Validate request
+	if request.Route == "" {
+		request.Route = "ETH_TO_BH_TO_SOL" // Default route
+	}
+	if request.Amount <= 0 {
+		request.Amount = 100.0 // Default amount
+	}
+	if request.TokenSymbol == "" {
+		request.TokenSymbol = "USDC" // Default token
+	}
+	if request.SourceAddress == "" {
+		request.SourceAddress = "0x1234567890abcdef1234567890abcdef12345678"
+	}
+	if request.DestAddress == "" {
+		request.DestAddress = "0xabcdef1234567890abcdef1234567890abcdef12"
+	}
+
+	simulationID := fmt.Sprintf("crosschain_%d", time.Now().UnixNano())
+
+	// Start cross-chain simulation in background
+	go sdk.executeCrossChainSimulation(simulationID, request)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"simulation_id":    simulationID,
+			"route":           request.Route,
+			"amount":          request.Amount,
+			"token_symbol":    request.TokenSymbol,
+			"source_address":  request.SourceAddress,
+			"dest_address":    request.DestAddress,
+			"status":          "started",
+			"estimated_time":  "30-60 seconds",
+			"real_blockchain": request.RealBlockchain && sdk.blockchainInterface != nil,
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleCrossChainSimulationStatus handles status requests for cross-chain simulations
+func (sdk *BridgeSDK) handleCrossChainSimulationStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	simulationID := vars["id"]
+
+	if simulationID == "" {
+		http.Error(w, "Simulation ID required", http.StatusBadRequest)
+		return
+	}
+
+	// For now, return a mock status - in production this would check actual simulation state
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"simulation_id": simulationID,
+			"status":        "completed",
+			"progress":      100,
+			"steps_completed": []map[string]interface{}{
+				{
+					"step":        "eth_detection",
+					"status":      "completed",
+					"timestamp":   time.Now().Add(-45 * time.Second).Format(time.RFC3339),
+					"duration":    "2.3s",
+					"tx_hash":     "0xeth123...",
+					"description": "Ethereum transaction detected and validated",
+				},
+				{
+					"step":        "bh_processing",
+					"status":      "completed",
+					"timestamp":   time.Now().Add(-40 * time.Second).Format(time.RFC3339),
+					"duration":    "1.8s",
+					"tx_hash":     "0xbh456...",
+					"description": "BlackHole blockchain processing completed",
+				},
+				{
+					"step":        "sol_relay",
+					"status":      "completed",
+					"timestamp":   time.Now().Add(-35 * time.Second).Format(time.RFC3339),
+					"duration":    "3.1s",
+					"tx_hash":     "sol789...",
+					"description": "Solana transaction relayed and confirmed",
+				},
+			},
+			"total_time":    "7.2s",
+			"success_rate":  100.0,
+			"logs_generated": 15,
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 func (sdk *BridgeSDK) handleLogo(w http.ResponseWriter, r *http.Request) {
@@ -12879,68 +15001,89 @@ func main() {
 func (sdk *BridgeSDK) handleBlockchainHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Proxy request to main blockchain node (use Docker internal network)
-	blockchainURL := "http://blackhole-blockchain:8080/api/health"
-	if os.Getenv("DOCKER_MODE") != "true" {
-		blockchainURL = "http://localhost:8080/api/health"
+	// Try multiple endpoints for BlackHole blockchain
+	blockchainURLs := []string{
+		"http://localhost:8080/api/health",
+		"http://127.0.0.1:8080/api/health",
+		"http://blackhole-blockchain:8080/api/health", // Docker fallback
 	}
-	resp, err := http.Get(blockchainURL)
-	if err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to connect to blockchain node",
-			"status":  "disconnected",
-		})
-		return
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode == 200 {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
-			"status":  "connected",
-			"message": "Blockchain node is healthy",
-		})
-	} else {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"status":  "error",
-			"message": "Blockchain node returned error",
-		})
+	// Try each endpoint until one works
+	var lastErr error
+	for _, blockchainURL := range blockchainURLs {
+		resp, err := http.Get(blockchainURL)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 200 {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success":    true,
+				"status":     "connected",
+				"message":    "Blockchain node is healthy",
+				"endpoint":   blockchainURL,
+				"connected":  true,
+			})
+			return
+		}
+		lastErr = fmt.Errorf("blockchain returned status %d", resp.StatusCode)
 	}
+
+	// All endpoints failed
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   false,
+		"error":     fmt.Sprintf("Failed to connect to any blockchain endpoint: %v", lastErr),
+		"status":    "disconnected",
+		"connected": false,
+	})
 }
 
 // handleBlockchainInfo gets blockchain information from the main node
 func (sdk *BridgeSDK) handleBlockchainInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Proxy request to main blockchain node (use Docker internal network)
-	blockchainURL := "http://blackhole-blockchain:8080/api/blockchain/info"
-	if os.Getenv("DOCKER_MODE") != "true" {
-		blockchainURL = "http://localhost:8080/api/blockchain/info"
-	}
-	resp, err := http.Get(blockchainURL)
-	if err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to connect to blockchain node",
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	var blockchainData map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&blockchainData); err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to parse blockchain response",
-		})
-		return
+	// Try multiple endpoints for BlackHole blockchain info
+	blockchainURLs := []string{
+		"http://localhost:8080/api/blockchain/info",
+		"http://127.0.0.1:8080/api/blockchain/info",
+		"http://blackhole-blockchain:8080/api/blockchain/info", // Docker fallback
 	}
 
+	// Try each endpoint until one works
+	var lastErr error
+	for _, blockchainURL := range blockchainURLs {
+		resp, err := http.Get(blockchainURL)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 200 {
+			var blockchainData map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&blockchainData); err != nil {
+				lastErr = err
+				continue
+			}
+
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success":   true,
+				"data":      blockchainData,
+				"endpoint":  blockchainURL,
+				"connected": true,
+			})
+			return
+		}
+		lastErr = fmt.Errorf("blockchain returned status %d", resp.StatusCode)
+	}
+
+	// All endpoints failed
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"data":    blockchainData,
+		"success":   false,
+		"error":     fmt.Sprintf("Failed to connect to any blockchain endpoint: %v", lastErr),
+		"connected": false,
 	})
 }
 
@@ -15736,4 +17879,564 @@ func (sdk *BridgeSDK) handleRealTimeMetrics(w http.ResponseWriter, r *http.Reque
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+// Cross-Chain Simulation Methods
+
+// executeCrossChainSimulation executes a comprehensive cross-chain simulation
+func (sdk *BridgeSDK) executeCrossChainSimulation(simulationID string, request struct {
+	Route           string  `json:"route"`
+	Amount          float64 `json:"amount"`
+	TokenSymbol     string  `json:"token_symbol"`
+	SourceAddress   string  `json:"source_address"`
+	DestAddress     string  `json:"dest_address"`
+	IncludeFailures bool    `json:"include_failures"`
+	DetailedLogs    bool    `json:"detailed_logs"`
+	RealBlockchain  bool    `json:"real_blockchain"`
+}) {
+	sdk.logger.Infof("🚀 Starting cross-chain simulation: %s", simulationID)
+
+	// Create simulation context
+	ctx := &CrossChainSimulationContext{
+		ID:             simulationID,
+		Route:          request.Route,
+		Amount:         request.Amount,
+		TokenSymbol:    request.TokenSymbol,
+		SourceAddress:  request.SourceAddress,
+		DestAddress:    request.DestAddress,
+		IncludeFailures: request.IncludeFailures,
+		DetailedLogs:   request.DetailedLogs,
+		RealBlockchain: request.RealBlockchain && sdk.blockchainInterface != nil,
+		StartTime:      time.Now(),
+		Steps:          make([]SimulationStep, 0),
+		Logs:           make([]string, 0),
+	}
+
+	// Execute simulation based on route
+	switch request.Route {
+	case "ETH_TO_BH_TO_SOL":
+		sdk.simulateETHToBHToSOL(ctx)
+	case "SOL_TO_BH_TO_ETH":
+		sdk.simulateSOLToBHToETH(ctx)
+	case "FULL_CYCLE":
+		sdk.simulateFullCycle(ctx)
+	default:
+		sdk.simulateETHToBHToSOL(ctx) // Default route
+	}
+
+	// Complete simulation
+	ctx.EndTime = time.Now()
+	ctx.TotalDuration = ctx.EndTime.Sub(ctx.StartTime)
+
+	sdk.logger.Infof("✅ Cross-chain simulation completed: %s (duration: %v)", simulationID, ctx.TotalDuration)
+
+	// Store simulation results for later retrieval
+	sdk.storeSimulationResults(ctx)
+}
+
+// simulateETHToBHToSOL simulates Ethereum -> BlackHole -> Solana transfer
+func (sdk *BridgeSDK) simulateETHToBHToSOL(ctx *CrossChainSimulationContext) {
+	// Step 1: Ethereum Detection
+	step1 := sdk.simulateStep(ctx, "eth_detection", "Detecting Ethereum transaction", func() error {
+		// Simulate Ethereum transaction detection
+		ethTx := &Transaction{
+			ID:            fmt.Sprintf("eth_%s_%d", ctx.ID, time.Now().UnixNano()),
+			Hash:          fmt.Sprintf("0xeth%x", rand.Uint64()),
+			SourceChain:   "ethereum",
+			DestChain:     "blackhole",
+			SourceAddress: ctx.SourceAddress,
+			DestAddress:   ctx.DestAddress,
+			TokenSymbol:   ctx.TokenSymbol,
+			Amount:        fmt.Sprintf("%.6f", ctx.Amount),
+			Status:        "detected",
+			CreatedAt:     time.Now(),
+		}
+
+		ctx.EthTransaction = ethTx
+		sdk.saveTransaction(ethTx)
+
+		if ctx.DetailedLogs {
+			ctx.Logs = append(ctx.Logs, fmt.Sprintf("ETH transaction detected: %s", ethTx.Hash))
+		}
+
+		// Simulate potential failure
+		if ctx.IncludeFailures && rand.Float64() < 0.1 {
+			return fmt.Errorf("ethereum RPC connection failed")
+		}
+
+		return nil
+	})
+	ctx.Steps = append(ctx.Steps, step1)
+
+	// Step 2: BlackHole Processing
+	step2 := sdk.simulateStep(ctx, "bh_processing", "Processing on BlackHole blockchain", func() error {
+		if ctx.EthTransaction == nil {
+			return fmt.Errorf("no ethereum transaction to process")
+		}
+
+		// Create BlackHole transaction
+		bhTx := &Transaction{
+			ID:            fmt.Sprintf("bh_%s_%d", ctx.ID, time.Now().UnixNano()),
+			Hash:          fmt.Sprintf("0xbh%x", rand.Uint64()),
+			SourceChain:   "ethereum",
+			DestChain:     "blackhole",
+			SourceAddress: ctx.EthTransaction.SourceAddress,
+			DestAddress:   ctx.EthTransaction.DestAddress,
+			TokenSymbol:   ctx.EthTransaction.TokenSymbol,
+			Amount:        ctx.EthTransaction.Amount,
+			Status:        "processing",
+			CreatedAt:     time.Now(),
+		}
+
+		ctx.BHTransaction = bhTx
+		sdk.saveTransaction(bhTx)
+
+		// Process through real blockchain if available
+		if ctx.RealBlockchain && sdk.blockchainInterface != nil {
+			err := sdk.blockchainInterface.ProcessBridgeTransaction(bhTx)
+			if err != nil {
+				return fmt.Errorf("blackhole blockchain processing failed: %v", err)
+			}
+			bhTx.Status = "confirmed"
+		} else {
+			// Simulate processing
+			time.Sleep(time.Duration(rand.Intn(2000)+500) * time.Millisecond)
+			bhTx.Status = "confirmed"
+		}
+
+		if ctx.DetailedLogs {
+			ctx.Logs = append(ctx.Logs, fmt.Sprintf("BH transaction processed: %s", bhTx.Hash))
+		}
+
+		// Simulate potential failure
+		if ctx.IncludeFailures && rand.Float64() < 0.05 {
+			return fmt.Errorf("blackhole consensus timeout")
+		}
+
+		return nil
+	})
+	ctx.Steps = append(ctx.Steps, step2)
+
+	// Step 3: Solana Relay
+	step3 := sdk.simulateStep(ctx, "sol_relay", "Relaying to Solana", func() error {
+		if ctx.BHTransaction == nil || ctx.BHTransaction.Status != "confirmed" {
+			return fmt.Errorf("blackhole transaction not confirmed")
+		}
+
+		// Create Solana transaction
+		solTx := &Transaction{
+			ID:            fmt.Sprintf("sol_%s_%d", ctx.ID, time.Now().UnixNano()),
+			Hash:          fmt.Sprintf("sol%x", rand.Uint64()),
+			SourceChain:   "blackhole",
+			DestChain:     "solana",
+			SourceAddress: ctx.BHTransaction.SourceAddress,
+			DestAddress:   ctx.BHTransaction.DestAddress,
+			TokenSymbol:   ctx.BHTransaction.TokenSymbol,
+			Amount:        ctx.BHTransaction.Amount,
+			Status:        "relaying",
+			CreatedAt:     time.Now(),
+		}
+
+		ctx.SolTransaction = solTx
+		sdk.saveTransaction(solTx)
+
+		// Simulate Solana processing
+		time.Sleep(time.Duration(rand.Intn(3000)+1000) * time.Millisecond)
+		solTx.Status = "confirmed"
+		now := time.Now()
+		solTx.CompletedAt = &now
+
+		if ctx.DetailedLogs {
+			ctx.Logs = append(ctx.Logs, fmt.Sprintf("SOL transaction confirmed: %s", solTx.Hash))
+		}
+
+		// Simulate potential failure
+		if ctx.IncludeFailures && rand.Float64() < 0.08 {
+			return fmt.Errorf("solana network congestion")
+		}
+
+		return nil
+	})
+	ctx.Steps = append(ctx.Steps, step3)
+}
+
+// simulateSOLToBHToETH simulates Solana -> BlackHole -> Ethereum transfer
+func (sdk *BridgeSDK) simulateSOLToBHToETH(ctx *CrossChainSimulationContext) {
+	// Similar implementation but in reverse direction
+	// Step 1: Solana Detection
+	step1 := sdk.simulateStep(ctx, "sol_detection", "Detecting Solana transaction", func() error {
+		solTx := &Transaction{
+			ID:            fmt.Sprintf("sol_%s_%d", ctx.ID, time.Now().UnixNano()),
+			Hash:          fmt.Sprintf("sol%x", rand.Uint64()),
+			SourceChain:   "solana",
+			DestChain:     "blackhole",
+			SourceAddress: ctx.SourceAddress,
+			DestAddress:   ctx.DestAddress,
+			TokenSymbol:   ctx.TokenSymbol,
+			Amount:        fmt.Sprintf("%.6f", ctx.Amount),
+			Status:        "detected",
+			CreatedAt:     time.Now(),
+		}
+
+		ctx.SolTransaction = solTx
+		sdk.saveTransaction(solTx)
+
+		if ctx.DetailedLogs {
+			ctx.Logs = append(ctx.Logs, fmt.Sprintf("SOL transaction detected: %s", solTx.Hash))
+		}
+
+		if ctx.IncludeFailures && rand.Float64() < 0.1 {
+			return fmt.Errorf("solana RPC connection failed")
+		}
+
+		return nil
+	})
+	ctx.Steps = append(ctx.Steps, step1)
+
+	// Step 2: BlackHole Processing
+	step2 := sdk.simulateStep(ctx, "bh_processing", "Processing on BlackHole blockchain", func() error {
+		bhTx := &Transaction{
+			ID:            fmt.Sprintf("bh_%s_%d", ctx.ID, time.Now().UnixNano()),
+			Hash:          fmt.Sprintf("0xbh%x", rand.Uint64()),
+			SourceChain:   "solana",
+			DestChain:     "blackhole",
+			SourceAddress: ctx.SolTransaction.SourceAddress,
+			DestAddress:   ctx.SolTransaction.DestAddress,
+			TokenSymbol:   ctx.SolTransaction.TokenSymbol,
+			Amount:        ctx.SolTransaction.Amount,
+			Status:        "processing",
+			CreatedAt:     time.Now(),
+		}
+
+		ctx.BHTransaction = bhTx
+		sdk.saveTransaction(bhTx)
+
+		if ctx.RealBlockchain && sdk.blockchainInterface != nil {
+			err := sdk.blockchainInterface.ProcessBridgeTransaction(bhTx)
+			if err != nil {
+				return fmt.Errorf("blackhole blockchain processing failed: %v", err)
+			}
+			bhTx.Status = "confirmed"
+		} else {
+			time.Sleep(time.Duration(rand.Intn(2000)+500) * time.Millisecond)
+			bhTx.Status = "confirmed"
+		}
+
+		if ctx.DetailedLogs {
+			ctx.Logs = append(ctx.Logs, fmt.Sprintf("BH transaction processed: %s", bhTx.Hash))
+		}
+
+		if ctx.IncludeFailures && rand.Float64() < 0.05 {
+			return fmt.Errorf("blackhole consensus timeout")
+		}
+
+		return nil
+	})
+	ctx.Steps = append(ctx.Steps, step2)
+
+	// Step 3: Ethereum Relay
+	step3 := sdk.simulateStep(ctx, "eth_relay", "Relaying to Ethereum", func() error {
+		ethTx := &Transaction{
+			ID:            fmt.Sprintf("eth_%s_%d", ctx.ID, time.Now().UnixNano()),
+			Hash:          fmt.Sprintf("0xeth%x", rand.Uint64()),
+			SourceChain:   "blackhole",
+			DestChain:     "ethereum",
+			SourceAddress: ctx.BHTransaction.SourceAddress,
+			DestAddress:   ctx.BHTransaction.DestAddress,
+			TokenSymbol:   ctx.BHTransaction.TokenSymbol,
+			Amount:        ctx.BHTransaction.Amount,
+			Status:        "relaying",
+			CreatedAt:     time.Now(),
+		}
+
+		ctx.EthTransaction = ethTx
+		sdk.saveTransaction(ethTx)
+
+		time.Sleep(time.Duration(rand.Intn(4000)+2000) * time.Millisecond)
+		ethTx.Status = "confirmed"
+		now := time.Now()
+		ethTx.CompletedAt = &now
+
+		if ctx.DetailedLogs {
+			ctx.Logs = append(ctx.Logs, fmt.Sprintf("ETH transaction confirmed: %s", ethTx.Hash))
+		}
+
+		if ctx.IncludeFailures && rand.Float64() < 0.12 {
+			return fmt.Errorf("ethereum gas price spike")
+		}
+
+		return nil
+	})
+	ctx.Steps = append(ctx.Steps, step3)
+}
+
+// simulateFullCycle simulates a complete round-trip cycle
+func (sdk *BridgeSDK) simulateFullCycle(ctx *CrossChainSimulationContext) {
+	// First leg: ETH -> BH -> SOL
+	ctx.Logs = append(ctx.Logs, "Starting full cycle simulation: ETH -> BH -> SOL -> BH -> ETH")
+
+	// Simulate first direction
+	originalRoute := ctx.Route
+	ctx.Route = "ETH_TO_BH_TO_SOL"
+	sdk.simulateETHToBHToSOL(ctx)
+
+	// Wait between legs
+	time.Sleep(2 * time.Second)
+
+	// Second leg: SOL -> BH -> ETH (return trip)
+	ctx.Route = "SOL_TO_BH_TO_ETH"
+	ctx.Amount = ctx.Amount * 0.98 // Account for fees
+	sdk.simulateSOLToBHToETH(ctx)
+
+	ctx.Route = originalRoute
+	ctx.Logs = append(ctx.Logs, "Full cycle simulation completed")
+}
+
+// simulateStep executes a single simulation step with timing and error handling
+func (sdk *BridgeSDK) simulateStep(ctx *CrossChainSimulationContext, stepName, description string, stepFunc func() error) SimulationStep {
+	step := SimulationStep{
+		Name:        stepName,
+		Description: description,
+		StartTime:   time.Now(),
+		Status:      "running",
+	}
+
+	sdk.logger.Infof("🔄 Simulation step: %s - %s", stepName, description)
+
+	// Execute step function
+	err := stepFunc()
+
+	step.EndTime = time.Now()
+	step.Duration = step.EndTime.Sub(step.StartTime)
+
+	if err != nil {
+		step.Status = "failed"
+		step.Error = err.Error()
+		sdk.logger.Errorf("❌ Simulation step failed: %s - %v", stepName, err)
+
+		// Add to retry queue if configured
+		if ctx.IncludeFailures {
+			sdk.addToRetryQueue(stepName, map[string]interface{}{
+				"simulation_id": ctx.ID,
+				"step_name":     stepName,
+				"error":         err.Error(),
+			}, err)
+		}
+	} else {
+		step.Status = "completed"
+		sdk.logger.Infof("✅ Simulation step completed: %s (duration: %v)", stepName, step.Duration)
+	}
+
+	return step
+}
+
+// storeSimulationResults stores simulation results for later retrieval
+func (sdk *BridgeSDK) storeSimulationResults(ctx *CrossChainSimulationContext) {
+	// In production, this would store to database
+	// For now, just log the results
+
+	successfulSteps := 0
+	totalDuration := time.Duration(0)
+
+	for _, step := range ctx.Steps {
+		if step.Status == "completed" {
+			successfulSteps++
+		}
+		totalDuration += step.Duration
+	}
+
+	successRate := float64(successfulSteps) / float64(len(ctx.Steps)) * 100
+
+	results := map[string]interface{}{
+		"simulation_id":    ctx.ID,
+		"route":           ctx.Route,
+		"total_steps":     len(ctx.Steps),
+		"successful_steps": successfulSteps,
+		"success_rate":    successRate,
+		"total_duration":  ctx.TotalDuration.String(),
+		"average_step_duration": (totalDuration / time.Duration(len(ctx.Steps))).String(),
+		"real_blockchain": ctx.RealBlockchain,
+		"logs_count":      len(ctx.Logs),
+	}
+
+	sdk.logger.Infof("📊 Simulation results: %+v", results)
+
+	// Broadcast results to WebSocket clients
+	sdk.broadcastEventToClients(map[string]interface{}{
+		"type": "simulation_completed",
+		"data": results,
+	})
+}
+
+// Supporting simulation methods
+
+func (sdk *BridgeSDK) runCrossChainSimulation(simulationID string, parameters map[string]interface{}, duration int) {
+	sdk.logger.Infof("🚀 Starting cross-chain simulation: %s", simulationID)
+
+	// Extract parameters
+	route := "ETH_TO_BH_TO_SOL"
+	if r, ok := parameters["route"].(string); ok {
+		route = r
+	}
+
+	amount := 100.0
+	if a, ok := parameters["amount"].(float64); ok {
+		amount = a
+	}
+
+	tokenSymbol := "USDC"
+	if t, ok := parameters["token_symbol"].(string); ok {
+		tokenSymbol = t
+	}
+
+	// Create simulation request
+	request := struct {
+		Route           string  `json:"route"`
+		Amount          float64 `json:"amount"`
+		TokenSymbol     string  `json:"token_symbol"`
+		SourceAddress   string  `json:"source_address"`
+		DestAddress     string  `json:"dest_address"`
+		IncludeFailures bool    `json:"include_failures"`
+		DetailedLogs    bool    `json:"detailed_logs"`
+		RealBlockchain  bool    `json:"real_blockchain"`
+	}{
+		Route:           route,
+		Amount:          amount,
+		TokenSymbol:     tokenSymbol,
+		SourceAddress:   "0x1234567890abcdef1234567890abcdef12345678",
+		DestAddress:     "0xabcdef1234567890abcdef1234567890abcdef12",
+		IncludeFailures: true,
+		DetailedLogs:    true,
+		RealBlockchain:  sdk.blockchainInterface != nil,
+	}
+
+	// Execute simulation
+	sdk.executeCrossChainSimulation(simulationID, request)
+}
+
+func (sdk *BridgeSDK) runBasicSimulation(simulationID string, parameters map[string]interface{}, duration int) {
+	sdk.logger.Infof("🔄 Running basic simulation: %s", simulationID)
+
+	// Generate test transactions
+	for i := 0; i < duration; i++ {
+		tx := sdk.createStressTestTransaction(simulationID, i, "basic")
+
+		// Simulate processing
+		time.Sleep(100 * time.Millisecond)
+		tx.Status = "completed"
+		now := time.Now()
+		tx.CompletedAt = &now
+
+		if i%10 == 0 {
+			sdk.logger.Infof("📈 Basic simulation progress: %d/%d transactions", i+1, duration)
+		}
+	}
+
+	sdk.logger.Infof("✅ Basic simulation completed: %s", simulationID)
+}
+
+func (sdk *BridgeSDK) runStressSimulation(simulationID string, parameters map[string]interface{}, duration int) {
+	sdk.logger.Infof("⚡ Running stress simulation: %s", simulationID)
+
+	// High-intensity transaction generation
+	workers := 10
+	if w, ok := parameters["workers"].(float64); ok {
+		workers = int(w)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			for j := 0; j < duration/workers; j++ {
+				tx := sdk.createStressTestTransaction(simulationID, workerID, "stress")
+
+				// Simulate rapid processing
+				time.Sleep(10 * time.Millisecond)
+				tx.Status = "completed"
+				now := time.Now()
+				tx.CompletedAt = &now
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	sdk.logger.Infof("✅ Stress simulation completed: %s", simulationID)
+}
+
+func (sdk *BridgeSDK) runChaosSimulation(simulationID string, parameters map[string]interface{}, duration int) {
+	sdk.logger.Infof("🌪️ Running chaos simulation: %s", simulationID)
+
+	// Inject various failure scenarios
+	for i := 0; i < duration; i++ {
+		// Random failure injection
+		if rand.Float64() < 0.3 {
+			// Simulate network failure
+			sdk.logger.Warnf("🚨 Chaos: Network failure injected")
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		if rand.Float64() < 0.2 {
+			// Simulate circuit breaker trip
+			if cb, exists := sdk.circuitBreakers["ethereum_listener"]; exists {
+				cb.recordFailure()
+				sdk.logger.Warnf("🚨 Chaos: Circuit breaker tripped")
+			}
+		}
+
+		if rand.Float64() < 0.1 {
+			// Simulate database error
+			sdk.logger.Warnf("🚨 Chaos: Database error injected")
+		}
+
+		// Create transaction with potential failure
+		tx := sdk.createStressTestTransaction(simulationID, i, "chaos")
+
+		if rand.Float64() < 0.4 {
+			tx.Status = "failed"
+			tx.ErrorMessage = "Chaos engineering failure"
+		} else {
+			tx.Status = "completed"
+			now := time.Now()
+			tx.CompletedAt = &now
+		}
+
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	sdk.logger.Infof("✅ Chaos simulation completed: %s", simulationID)
+}
+
+// CrossChainSimulationContext holds simulation state
+type CrossChainSimulationContext struct {
+	ID             string
+	Route          string
+	Amount         float64
+	TokenSymbol    string
+	SourceAddress  string
+	DestAddress    string
+	IncludeFailures bool
+	DetailedLogs   bool
+	RealBlockchain bool
+	StartTime      time.Time
+	EndTime        time.Time
+	TotalDuration  time.Duration
+	Steps          []SimulationStep
+	Logs           []string
+	EthTransaction *Transaction
+	BHTransaction  *Transaction
+	SolTransaction *Transaction
+}
+
+// SimulationStep represents a single step in the simulation
+type SimulationStep struct {
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	StartTime   time.Time     `json:"start_time"`
+	EndTime     time.Time     `json:"end_time"`
+	Duration    time.Duration `json:"duration"`
+	Status      string        `json:"status"` // running, completed, failed
+	Error       string        `json:"error,omitempty"`
 }

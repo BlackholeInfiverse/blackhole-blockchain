@@ -19,6 +19,7 @@ import (
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/governance"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/monitoring"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/validation"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/workflow"
 )
 
 func main() {
@@ -118,6 +119,47 @@ func main() {
 		}()
 	}
 
+	// Initialize workflow manager with auto-starting bridge
+	fmt.Println("🔗 Initializing workflow manager with bridge auto-start...")
+	workflowConfig := &workflow.WorkflowConfig{
+		EnabledWorkflows: []string{"bridge"},
+		WorkflowConfigs: map[string]interface{}{
+			"bridge": map[string]interface{}{
+				"bridge_port": 8084,
+				"auto_start":  true,
+			},
+		},
+		MonitoringPort:      8085,
+		AutoStart:           true,
+		HealthCheckInterval: 30 * time.Second,
+	}
+
+	var workflowManager *workflow.WorkflowManager
+	workflowManager = workflow.NewWorkflowManager(bc, workflowConfig)
+	if err := workflowManager.Initialize(); err != nil {
+		log.Printf("⚠️ Warning: Failed to initialize workflow manager: %v", err)
+	} else {
+		fmt.Println("✅ Workflow manager initialized")
+
+		// Start workflow manager in background
+		go func() {
+			if err := workflowManager.Start(ctx); err != nil {
+				log.Printf("⚠️ Warning: Failed to start workflow manager: %v", err)
+			} else {
+				fmt.Println("🚀 Workflow manager started with bridge auto-start")
+			}
+		}()
+
+		// Ensure graceful shutdown of workflow manager
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := workflowManager.Stop(shutdownCtx); err != nil {
+				log.Printf("⚠️ Warning: Failed to stop workflow manager: %v", err)
+			}
+		}()
+	}
+
 	// Log initial blockchain state
 	if err := bc.LogBlockchainState(nodeID); err != nil {
 		log.Printf("❌ Failed to log blockchain state: %v", err)
@@ -177,6 +219,11 @@ func main() {
 
 	// Start API server for UI on available port
 	apiServer := api.NewAPIServer(bc, bridgeInstance, availablePort)
+
+	// Set workflow manager in API server if available
+	if workflowManager != nil {
+		apiServer.SetWorkflowManager(workflowManager)
+	}
 
 	go apiServer.Start()
 
