@@ -1,4 +1,4 @@
-# BlackHole Bridge SDK Docker Image
+# BlackHole Main Blockchain Docker Image
 FROM golang:1.23-alpine AS builder
 
 # Set GOTOOLCHAIN to allow downloading newer Go versions
@@ -10,7 +10,7 @@ RUN apk add --no-cache git gcc musl-dev sqlite-dev
 # Set working directory
 WORKDIR /app
 
-# Copy go workspace files first for better caching
+# Copy go mod files first for better caching
 COPY go.work go.work.sum ./
 COPY bridge-sdk/go.mod bridge-sdk/go.sum ./bridge-sdk/
 COPY core/go.mod ./core/
@@ -18,22 +18,20 @@ COPY libs/go.mod ./libs/
 COPY services/go.mod ./services/
 COPY parachains/go.mod ./parachains/
 
-# Copy the core directory (required by bridge-sdk workspace)
+# Download dependencies
+WORKDIR /app/core/relay-chain
+RUN go mod download
+
+# Copy the entire source code
+WORKDIR /app
 COPY core/ ./core/
 COPY libs/ ./libs/
 COPY services/ ./services/
 COPY parachains/ ./parachains/
 
-# Copy the entire bridge-sdk source code (needed for go.work)
-COPY bridge-sdk/ ./bridge-sdk/
-
-# Download dependencies
-WORKDIR /app/bridge-sdk
-RUN go mod download
-
-# Build the bridge-sdk application
-WORKDIR /app/bridge-sdk/example
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o bridge-sdk main.go
+# Build the main blockchain application
+WORKDIR /app/core/relay-chain
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o blockchain ./cmd/relay/main.go
 
 # Final stage - minimal runtime image
 FROM alpine:latest
@@ -48,35 +46,31 @@ RUN addgroup -g 1001 -S appgroup && \
 WORKDIR /app
 
 # Copy the binary from builder stage
-COPY --from=builder /app/bridge-sdk/example/bridge-sdk .
+COPY --from=builder /app/core/relay-chain/blockchain .
 
 # Create necessary directories
-RUN mkdir -p data logs media && \
+RUN mkdir -p data logs config && \
     chown -R appuser:appgroup /app
-
-# Copy media files from the new location
-COPY --from=builder /app/bridge-sdk/media ./media
 
 # Switch to non-root user
 USER appuser
 
-# Expose the bridge-sdk port
-EXPOSE 8084
+# Expose the blockchain ports
+EXPOSE 8080 8545 30303
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8084/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 # Set environment variables
-ENV BRIDGE_PORT=8084
-ENV DATABASE_PATH=./data/bridge_fixed.db
+ENV BLOCKCHAIN_PORT=8080
+ENV RPC_PORT=8545
+ENV P2P_PORT=30303
+ENV DATABASE_PATH=./data/blockchain.db
 ENV LOG_LEVEL=info
-ENV LOG_FILE=./logs/bridge.log
-ENV REPLAY_PROTECTION_ENABLED=true
-ENV CIRCUIT_BREAKER_ENABLED=true
-ENV MAX_RETRIES=3
-ENV ENABLE_COLORED_LOGS=true
-ENV ENABLE_DOCUMENTATION=true
+ENV LOG_FILE=./logs/blockchain.log
+ENV PEER_DISCOVERY=true
+ENV MAX_PEERS=50
 
-# Run the bridge-sdk
-CMD ["./bridge-sdk"]
+# Run the blockchain
+CMD ["./blockchain"]
