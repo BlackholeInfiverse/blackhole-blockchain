@@ -1,9 +1,9 @@
+version: '3.8'
+
 services:
-  # Main BlackHole Blockchain Node
+  # Main BlackHole Blockchain Node (using existing binary)
   blockchain:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.blockchain
+    image: alpine:latest
     container_name: blackhole-blockchain
     ports:
       - "8080:8080"   # Main blockchain dashboard
@@ -21,9 +21,12 @@ services:
       - BOOTSTRAP_PEERS=${BOOTSTRAP_PEERS:-}
       - NODE_ID=${NODE_ID:-blackhole-node-1}
     volumes:
+      - ../core/relay-chain/relay-chain.exe:/app/blockchain:ro
       - blockchain_data:/app/data
       - blockchain_logs:/app/logs
       - blockchain_config:/app/config
+    working_dir: /app
+    command: ["./blockchain"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
@@ -34,11 +37,9 @@ services:
     networks:
       - blackhole_network
 
-  # Bridge SDK Service
+  # Bridge SDK Service (using Go runtime)
   bridge-sdk:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    image: golang:1.23-alpine
     container_name: blackhole-bridge-sdk
     ports:
       - "8084:8084"   # Bridge SDK dashboard
@@ -56,9 +57,13 @@ services:
       - ETHEREUM_RPC=${ETHEREUM_RPC:-wss://eth-mainnet.ws.alchemyapi.io/v2/demo}
       - SOLANA_RPC=${SOLANA_RPC:-https://api.mainnet-beta.solana.com}
       - BLACKHOLE_RPC=${BLACKHOLE_RPC:-http://blockchain:8545}
+      - GOTOOLCHAIN=go1.24.3
     volumes:
+      - ../bridge-sdk/example:/app:ro
       - bridge_data:/app/data
       - bridge_logs:/app/logs
+    working_dir: /app
+    command: ["go", "run", "main.go"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/health"]
