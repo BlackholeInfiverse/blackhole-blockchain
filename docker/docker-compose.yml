@@ -1,0 +1,44 @@
+services:
+  bridge-sdk:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: blackhole-bridge-sdk
+    ports:
+      - "8084:8084"
+    environment:
+      - BRIDGE_PORT=8084
+      - DATABASE_PATH=./data/bridge_fixed.db
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FILE=./logs/bridge.log
+      - REPLAY_PROTECTION_ENABLED=${REPLAY_PROTECTION_ENABLED:-true}
+      - CIRCUIT_BREAKER_ENABLED=${CIRCUIT_BREAKER_ENABLED:-true}
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - ENABLE_COLORED_LOGS=${ENABLE_COLORED_LOGS:-true}
+      - ENABLE_DOCUMENTATION=${ENABLE_DOCUMENTATION:-true}
+      - ETHEREUM_RPC=${ETHEREUM_RPC:-wss://eth-mainnet.ws.alchemyapi.io/v2/demo}
+      - SOLANA_RPC=${SOLANA_RPC:-https://api.mainnet-beta.solana.com}
+      - BLACKHOLE_RPC=${BLACKHOLE_RPC:-ws://localhost:8545}
+    volumes:
+      - bridge_data:/app/data
+      - bridge_logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - blackhole_network
+
+volumes:
+  bridge_data:
+    driver: local
+  bridge_logs:
+    driver: local
+
+networks:
+  blackhole_network:
+    driver: bridge
+    name: blackhole_network

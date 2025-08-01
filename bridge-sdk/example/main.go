@@ -5491,7 +5491,7 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 
 	// Serve logo image
 	r.HandleFunc("/blackhole-logo.png", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "blackhole-logo.png")
+		http.ServeFile(w, r, "../media/blackhole-logo.png")
 	}).Methods("GET")
 
 	// --- NEW: Infra Dashboard and API endpoints ---
@@ -8518,7 +8518,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
     <!-- Sidebar Navigation -->
     <div class="sidebar">
         <div class="sidebar-header">
-            <img src="blackhole-logo.png" alt="BlackHole Logo" class="sidebar-logo">
+            <img src="../media/blackhole-logo.png" alt="BlackHole Logo" class="sidebar-logo">
             <div class="sidebar-title">BlackHole Bridge</div>
         </div>
         <nav class="sidebar-nav">
@@ -8631,7 +8631,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         <div class="dashboard-container" id="overview">
             <div class="dashboard-header">
                 <h1>
-                    <img src="blackhole-logo.png" alt="BlackHole Logo" class="logo">
+                    <img src="../media/blackhole-logo.png" alt="BlackHole Logo" class="logo">
                     BlackHole Bridge Dashboard
                 </h1>
                 <p>Enterprise Cross-Chain Bridge Monitoring & Management</p>
@@ -12860,7 +12860,7 @@ func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Reques
     <!-- Sidebar Navigation -->
     <div class="sidebar">
         <div class="sidebar-header">
-            <img src="blackhole-logo.png" alt="BlackHole Logo" class="sidebar-logo">
+            <img src="../media/blackhole-logo.png" alt="BlackHole Logo" class="sidebar-logo">
             <div class="sidebar-title">BlackHole Bridge</div>
         </div>
         <nav class="sidebar-nav">
@@ -12887,7 +12887,7 @@ func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Reques
         <div class="infra-container">
             <div class="infra-header">
                 <h1>
-                    <img src="blackhole-logo.png" alt="BlackHole Logo">
+                    <img src="../media/blackhole-logo.png" alt="BlackHole Logo">
                     Infrastructure Dashboard
                 </h1>
             </div>
