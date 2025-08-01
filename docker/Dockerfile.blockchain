@@ -1,8 +1,8 @@
 # BlackHole Main Blockchain Docker Image
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24.3-alpine AS builder
 
-# Set GOTOOLCHAIN to allow downloading newer Go versions
-ENV GOTOOLCHAIN=go1.24.3
+# Set GOTOOLCHAIN to allow downloading newer Go versions (if needed)
+ENV GOTOOLCHAIN=local
 
 # Install required packages
 RUN apk add --no-cache git gcc musl-dev sqlite-dev
@@ -10,7 +10,7 @@ RUN apk add --no-cache git gcc musl-dev sqlite-dev
 # Set working directory
 WORKDIR /app
 
-# Copy go mod files first for better caching
+# Copy go workspace files first for better caching
 COPY go.work go.work.sum ./
 COPY bridge-sdk/go.mod bridge-sdk/go.sum ./bridge-sdk/
 COPY core/go.mod ./core/
@@ -18,16 +18,16 @@ COPY libs/go.mod ./libs/
 COPY services/go.mod ./services/
 COPY parachains/go.mod ./parachains/
 
-# Download dependencies
-WORKDIR /app/core/relay-chain
-RUN go mod download
-
-# Copy the entire source code
-WORKDIR /app
+# Copy the entire source code (needed for go.work)
+COPY bridge-sdk/ ./bridge-sdk/
 COPY core/ ./core/
 COPY libs/ ./libs/
 COPY services/ ./services/
 COPY parachains/ ./parachains/
+
+# Download dependencies
+WORKDIR /app/core/relay-chain
+RUN go mod download
 
 # Build the main blockchain application
 WORKDIR /app/core/relay-chain

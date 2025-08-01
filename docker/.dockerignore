@@ -1,0 +1,90 @@
+# Ignore large files and directories to reduce Docker build context
+**/*.exe
+**/*.dll
+**/*.so
+**/*.dylib
+**/*.a
+**/*.lib
+
+# Ignore build artifacts
+**/target/
+**/build/
+**/dist/
+**/out/
+**/.build/
+
+# Ignore version control
+**/.git/
+**/.svn/
+**/.hg/
+
+# Ignore IDE files
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*~
+
+# Ignore OS files
+**/.DS_Store
+**/Thumbs.db
+**/desktop.ini
+
+# Ignore logs
+**/*.log
+**/logs/
+
+# Ignore temporary files
+**/tmp/
+**/temp/
+**/.tmp/
+**/.temp/
+
+# Ignore node modules
+**/node_modules/
+
+# Ignore large data files
+**/data/
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Ignore test files
+**/test/
+**/tests/
+**/*_test.go
+**/*_test.rs
+**/*_test.py
+
+# Ignore documentation
+**/docs/
+**/*.md
+!README.md
+
+# Ignore media files
+**/*.mp4
+**/*.avi
+**/*.mov
+**/*.jpg
+**/*.jpeg
+**/*.png
+**/*.gif
+**/*.svg
+
+# Ignore backup files
+**/*.bak
+**/*.backup
+**/*.old
+
+# Ignore cache directories
+**/.cache/
+**/cache/
+
+# Keep only essential files for bridge-sdk
+!bridge-sdk/
+!core/
+!libs/
+!services/
+!parachains/
+!go.work
+!go.work.sum
