@@ -377,3 +377,13 @@
 14:25:13.554796 version@stat F·[2] S·3KiB[3KiB] Sc·[0.50]
 14:25:13.559026 db@janitor F·4 G·0
 14:25:13.559026 db@open done T·5.2744ms
+=============== Aug 1, 2025 (IST) ===============
+14:37:56.471231 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+14:37:56.471751 version@stat F·[2] S·3KiB[3KiB] Sc·[0.50]
+14:37:56.472273 db@open opening
+14:37:56.472273 journal@recovery F·1
+14:37:56.472273 journal@recovery recovering @82
+14:37:56.473849 memdb@flush created L0@84 N·2 S·619B "acc..dd1,v55":"acc..151,v56"
+14:37:56.474370 version@stat F·[3] S·4KiB[4KiB] Sc·[0.75]
+14:37:56.478525 db@janitor F·5 G·0
+14:37:56.478525 db@open done T·6.2521ms
