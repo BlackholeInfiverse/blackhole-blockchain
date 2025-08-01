@@ -1,8 +1,8 @@
 # BlackHole Bridge SDK Docker Image
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24.3-alpine AS builder
 
-# Set GOTOOLCHAIN to allow downloading newer Go versions
-ENV GOTOOLCHAIN=go1.24.3
+# Set GOTOOLCHAIN to use local Go version (avoid network downloads)
+ENV GOTOOLCHAIN=local
 
 # Install required packages
 RUN apk add --no-cache git gcc musl-dev sqlite-dev
@@ -27,9 +27,9 @@ COPY parachains/ ./parachains/
 # Copy the entire bridge-sdk source code (needed for go.work)
 COPY bridge-sdk/ ./bridge-sdk/
 
-# Download dependencies
-WORKDIR /app/bridge-sdk
-RUN go mod download
+# # Download dependencies
+# WORKDIR /app/bridge-sdk
+# RUN go mod download
 
 # Build the bridge-sdk application
 WORKDIR /app/bridge-sdk/example

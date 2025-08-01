@@ -11,15 +11,13 @@ import (
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/escrow"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/token"
-	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/workflow"
 )
 
 type APIServer struct {
-	blockchain      *chain.Blockchain
-	bridge          *bridge.Bridge
-	port            int
-	escrowManager   interface{} // Will be initialized as *escrow.EscrowManager
-	workflowManager *workflow.WorkflowManager
+	blockchain    *chain.Blockchain
+	bridge        *bridge.Bridge
+	port          int
+	escrowManager interface{} // Will be initialized as *escrow.EscrowManager
 }
 
 func NewAPIServer(blockchain *chain.Blockchain, bridgeInstance *bridge.Bridge, port int) *APIServer {
@@ -37,10 +35,7 @@ func NewAPIServer(blockchain *chain.Blockchain, bridgeInstance *bridge.Bridge, p
 	}
 }
 
-// SetWorkflowManager sets the workflow manager for the API server
-func (s *APIServer) SetWorkflowManager(wm *workflow.WorkflowManager) {
-	s.workflowManager = wm
-}
+// Note: Workflow manager functionality removed - bridge SDK runs separately
 
 // NewEscrowManagerForBlockchain creates a new escrow manager for the blockchain
 func NewEscrowManagerForBlockchain(blockchain *chain.Blockchain) interface{} {
@@ -99,12 +94,7 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/bridge/subscribe", s.enableCORS(s.handleBridgeSubscribe))
 	http.HandleFunc("/api/bridge/approval/simulate", s.enableCORS(s.handleBridgeApprovalSimulation))
 
-	// Workflow management endpoints
-	http.HandleFunc("/api/workflow/status", s.enableCORS(s.handleWorkflowStatus))
-	http.HandleFunc("/api/workflow/components", s.enableCORS(s.handleWorkflowComponents))
-	http.HandleFunc("/api/workflow/bridge/status", s.enableCORS(s.handleWorkflowBridgeStatus))
-	http.HandleFunc("/api/workflow/bridge/port", s.enableCORS(s.handleWorkflowBridgePort))
-	http.HandleFunc("/api/workflow/health", s.enableCORS(s.handleWorkflowHealth))
+	// Note: Workflow management removed - bridge SDK runs separately
 
 	// Unified monitoring endpoints
 	http.HandleFunc("/api/monitoring/unified", s.enableCORS(s.handleUnifiedMonitoring))
@@ -321,33 +311,46 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
 
         async function fetchBridgeStatus(retryCount = 0) {
             try {
-                console.log('Fetching bridge status, attempt:', retryCount + 1);
-                const response = await fetch('/api/workflow/bridge/status');
-                const data = await response.json();
-                console.log('Bridge status response:', data);
-                updateBridgeUI(data);
+                console.log('Checking bridge SDK status, attempt:', retryCount + 1);
+                // Check bridge SDK directly on port 8084
+                const bridgeUrl = 'http://localhost:8084';
+                const response = await fetch(bridgeUrl + '/health');
+
+                if (response.ok) {
+                    const healthData = await response.json();
+                    console.log('Bridge SDK health response:', healthData);
+
+                    // Create compatible response format
+                    const bridgeData = {
+                        success: true,
+                        data: {
+                            bridge_status: {
+                                status: 'running',
+                                healthy: true,
+                                name: 'bridge-sdk'
+                            },
+                            sdk_running: true,
+                            sdk_port: 8084
+                        }
+                    };
+                    updateBridgeUI(bridgeData);
+                } else {
+                    throw new Error('Bridge SDK not responding');
+                }
             } catch (error) {
-                console.error('Error fetching bridge status:', error);
+                console.error('Error checking bridge SDK:', error);
 
                 // Retry up to 3 times with increasing delay
                 if (retryCount < 3) {
-                    console.log('Retrying bridge status fetch in', (retryCount + 1) * 2, 'seconds...');
+                    console.log('Retrying bridge status check in', (retryCount + 1) * 2, 'seconds...');
                     setTimeout(() => fetchBridgeStatus(retryCount + 1), (retryCount + 1) * 2000);
                 } else {
-                    updateBridgeUI({ success: false, error: 'Bridge not available' });
+                    updateBridgeUI({ success: false, error: 'Bridge SDK not available' });
                 }
             }
         }
 
-        async function fetchWorkflowComponents() {
-            try {
-                const response = await fetch('/api/workflow/components');
-                const data = await response.json();
-                updateWorkflowComponents(data);
-            } catch (error) {
-                console.error('Error fetching workflow components:', error);
-            }
-        }
+        // Note: fetchWorkflowComponents removed - bridge SDK runs separately
 
         function updateUI(data) {
             // Update stats
@@ -418,49 +421,28 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
                 dashboardBtn.style.background = '#95a5a6';
             }
 
-            // Fetch workflow components
-            fetchWorkflowComponents();
+            // Note: Workflow components removed - bridge SDK runs separately
         }
 
-        function updateWorkflowComponents(data) {
-            const container = document.getElementById('bridge-components-list');
-
-            if (data.success && data.data && data.data.components) {
-                const components = data.data.components;
-                let html = '';
-
-                for (const [name, component] of Object.entries(components)) {
-                    const statusColor = component.healthy ? '#27ae60' : '#e74c3c';
-                    const statusIcon = component.healthy ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg>';
-
-                    html += '<div style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px;">';
-                    html += '<strong>' + name + '</strong> ';
-                    html += '<span style="color: ' + statusColor + ';">' + statusIcon + ' ' + component.status + '</span><br>';
-                    html += '<small>Version: ' + component.version + ' | Errors: ' + component.error_count + '</small>';
-                    html += '</div>';
-                }
-
-                container.innerHTML = html || '<em>No components available</em>';
-            } else {
-                container.innerHTML = '<em>Components not available</em>';
-            }
-        }
+        // Note: updateWorkflowComponents removed - bridge SDK runs separately
 
         function openBridgeDashboard() {
-            // Get bridge port and open dashboard
-            fetch('/api/workflow/bridge/port')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.data.running) {
-                        const port = data.data.port;
-                        window.open('http://localhost:' + port, '_blank');
+            // Bridge SDK runs on port 8084 when started separately
+            const bridgePort = 8084;
+            const bridgeUrl = 'http://localhost:' + bridgePort;
+
+            // Check if bridge is accessible before opening
+            fetch(bridgeUrl + '/health')
+                .then(response => {
+                    if (response.ok) {
+                        window.open(bridgeUrl, '_blank');
                     } else {
-                        alert('Bridge dashboard is not available. Please ensure the bridge service is running.');
+                        alert('Bridge dashboard is not accessible. Please ensure the bridge SDK is running:\n\ncd bridge-sdk/example\ngo run main.go');
                     }
                 })
                 .catch(error => {
-                    console.error('Error getting bridge port:', error);
-                    alert('Error accessing bridge dashboard.');
+                    console.error('Bridge not accessible:', error);
+                    alert('Bridge dashboard is not accessible. Please ensure the bridge SDK is running:\n\ncd bridge-sdk/example\ngo run main.go');
                 });
         }
 
@@ -3419,149 +3401,13 @@ func (s *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Workflow Management Handlers
+// Note: Workflow Management Handlers removed - bridge SDK runs separately
 
-// handleWorkflowStatus returns the status of the workflow manager
-func (s *APIServer) handleWorkflowStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 
-	if s.workflowManager == nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Workflow manager not available",
-		})
-		return
-	}
 
-	status := s.workflowManager.GetStatus()
-	healthy := s.workflowManager.IsHealthy()
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"data": map[string]interface{}{
-			"healthy":    healthy,
-			"components": status,
-			"timestamp":  time.Now().Format(time.RFC3339),
-		},
-	})
-}
 
-// handleWorkflowComponents returns the status of all workflow components
-func (s *APIServer) handleWorkflowComponents(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 
-	if s.workflowManager == nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Workflow manager not available",
-		})
-		return
-	}
-
-	components := s.workflowManager.GetStatus()
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"data": map[string]interface{}{
-			"components": components,
-			"count":      len(components),
-			"timestamp":  time.Now().Format(time.RFC3339),
-		},
-	})
-}
-
-// handleWorkflowBridgeStatus returns the status of the bridge component
-func (s *APIServer) handleWorkflowBridgeStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if s.workflowManager == nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Workflow manager not available",
-		})
-		return
-	}
-
-	bridgeComponent, err := s.workflowManager.GetBridgeComponent()
-	if err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("Bridge component not available: %v", err),
-		})
-		return
-	}
-
-	status := bridgeComponent.GetStatus()
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"data": map[string]interface{}{
-			"bridge_status": status,
-			"sdk_running":   bridgeComponent.IsBridgeSDKRunning(),
-			"sdk_port":      bridgeComponent.GetBridgeSDKPort(),
-			"timestamp":     time.Now().Format(time.RFC3339),
-		},
-	})
-}
-
-// handleWorkflowBridgePort returns the bridge SDK port
-func (s *APIServer) handleWorkflowBridgePort(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if s.workflowManager == nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Workflow manager not available",
-		})
-		return
-	}
-
-	bridgeComponent, err := s.workflowManager.GetBridgeComponent()
-	if err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("Bridge component not available: %v", err),
-		})
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"data": map[string]interface{}{
-			"port":      bridgeComponent.GetBridgeSDKPort(),
-			"running":   bridgeComponent.IsBridgeSDKRunning(),
-			"timestamp": time.Now().Format(time.RFC3339),
-		},
-	})
-}
-
-// handleWorkflowHealth returns the health status of the workflow system
-func (s *APIServer) handleWorkflowHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if s.workflowManager == nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Workflow manager not available",
-		})
-		return
-	}
-
-	healthy := s.workflowManager.IsHealthy()
-	status := "unhealthy"
-	if healthy {
-		status = "healthy"
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"data": map[string]interface{}{
-			"status":    status,
-			"healthy":   healthy,
-			"timestamp": time.Now().Format(time.RFC3339),
-		},
-	})
-}
 
 // Unified Monitoring Handlers
 
@@ -3572,17 +3418,7 @@ func (s *APIServer) handleUnifiedMonitoring(w http.ResponseWriter, r *http.Reque
 	// Collect blockchain metrics
 	blockchainInfo := s.blockchain.GetBlockchainInfo()
 
-	// Collect workflow metrics
-	var workflowMetrics map[string]interface{}
-	var workflowHealth bool
-	if s.workflowManager != nil {
-		workflowMetrics = make(map[string]interface{})
-		components := s.workflowManager.GetAllComponents()
-		for name, component := range components {
-			workflowMetrics[name] = component.GetMetrics()
-		}
-		workflowHealth = s.workflowManager.IsHealthy()
-	}
+	// Note: Workflow metrics removed - bridge SDK runs separately
 
 	// Collect system health
 	systemHealth := map[string]interface{}{
@@ -3591,27 +3427,19 @@ func (s *APIServer) handleUnifiedMonitoring(w http.ResponseWriter, r *http.Reque
 			"block_height": blockchainInfo["blockHeight"],
 			"pending_txs":  blockchainInfo["pendingTxs"],
 		},
-		"workflow": map[string]interface{}{
-			"healthy":    workflowHealth,
-			"available":  s.workflowManager != nil,
-		},
 	}
 
-	// Calculate overall system health
+	// Calculate overall system health (blockchain only)
 	overallHealth := true
-	if s.workflowManager != nil {
-		overallHealth = workflowHealth
-	}
 
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"overall_health":    overallHealth,
-			"system_health":     systemHealth,
-			"blockchain_info":   blockchainInfo,
-			"workflow_metrics":  workflowMetrics,
-			"timestamp":         time.Now().Format(time.RFC3339),
-			"uptime_seconds":    time.Since(time.Now().Add(-time.Hour)).Seconds(), // Mock uptime
+			"overall_health":   overallHealth,
+			"system_health":    systemHealth,
+			"blockchain_info":  blockchainInfo,
+			"timestamp":        time.Now().Format(time.RFC3339),
+			"uptime_seconds":   time.Since(time.Now().Add(-time.Hour)).Seconds(), // Mock uptime
 		},
 	}
 
@@ -3888,16 +3716,7 @@ func (s *APIServer) handleMonitoringMetrics(w http.ResponseWriter, r *http.Reque
 		"timestamp":  time.Now().Format(time.RFC3339),
 	}
 
-	// Add workflow metrics if available
-	if s.workflowManager != nil {
-		workflowMetrics := make(map[string]interface{})
-		components := s.workflowManager.GetAllComponents()
-		for name, component := range components {
-			workflowMetrics[name] = component.GetMetrics()
-		}
-		metrics["workflow"] = workflowMetrics
-		metrics["workflow_health"] = s.workflowManager.IsHealthy()
-	}
+	// Note: Workflow metrics removed - bridge SDK runs separately
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,

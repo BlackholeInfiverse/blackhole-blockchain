@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # Bridge SDK Service Only (for testing without blockchain)
+  bridge-sdk:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: blackhole-bridge-sdk-only
+    ports:
+      - "8084:8084"   # Bridge SDK dashboard
+      - "9090:9090"   # Relay server
+    environment:
+      - BRIDGE_PORT=8084
+      - DATABASE_PATH=./data/bridge_fixed.db
+      - LOG_LEVEL=info
+      - LOG_FILE=./logs/bridge.log
+      - REPLAY_PROTECTION_ENABLED=true
+      - CIRCUIT_BREAKER_ENABLED=true
+      - MAX_RETRIES=3
+      - ENABLE_COLORED_LOGS=true
+      - ENABLE_DOCUMENTATION=true
+      - ETHEREUM_RPC=wss://eth-mainnet.ws.alchemyapi.io/v2/demo
+      - SOLANA_RPC=https://api.mainnet-beta.solana.com
+      - GOTOOLCHAIN=local
+    volumes:
+      - bridge_data:/app/data
+      - bridge_logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  bridge_data:
+    driver: local
+  bridge_logs:
+    driver: local

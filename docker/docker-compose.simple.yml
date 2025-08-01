@@ -57,7 +57,7 @@ services:
       - ETHEREUM_RPC=${ETHEREUM_RPC:-wss://eth-mainnet.ws.alchemyapi.io/v2/demo}
       - SOLANA_RPC=${SOLANA_RPC:-https://api.mainnet-beta.solana.com}
       - BLACKHOLE_RPC=${BLACKHOLE_RPC:-http://blockchain:8545}
-      - GOTOOLCHAIN=go1.24.3
+      - GOTOOLCHAIN=local
     volumes:
       - ../bridge-sdk/example:/app:ro
       - bridge_data:/app/data
