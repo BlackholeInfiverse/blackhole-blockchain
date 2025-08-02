@@ -35,6 +35,13 @@ blockchaindb_*/
 blockchain_state_*.json
 monitoring.log
 
+# Bridge SDK Database Files
+data/
+.data/
+bridge.db
+*.bolt
+*.boltdb
+
 # Docker volumes
 data/blockchain/*
 data/mongodb/*

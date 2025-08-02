@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	bridgesdk "github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk"
@@ -22,12 +23,12 @@ func main() {
 		ForceColors: true,
 	})
 
-	// Create configuration
+	// Create configuration with unique database path
 	config := &bridgesdk.Config{
 		EthereumRPC:             "https://eth-sepolia.g.alchemy.com/v2/demo",
 		SolanaRPC:               "https://api.devnet.solana.com",
 		BlackHoleRPC:            "http://localhost:8080", // BlackHole API endpoint
-		DatabasePath:            "./data/bridge.db",
+		DatabasePath:            fmt.Sprintf("./bridge_%d.db", time.Now().Unix()), // Unique database path
 		LogLevel:                "info",
 		MaxRetries:              3,
 		RetryDelayMs:            5000,
