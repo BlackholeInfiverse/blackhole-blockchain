@@ -234,19 +234,13 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 	// Initialize Cross-Chain DEX (will be properly initialized later with bridge)
 	// bc.CrossChainDEX = dex.NewCrossChainDEX(localDEX, bridge, bc)
 
-	// Only initialize genesis state for fresh blockchain
+	// Initialize genesis state for fresh blockchain (TokenRegistry only)
 	if !isExistingBlockchain {
-		fmt.Printf("🆕 Initializing fresh blockchain state...\n")
-		bc.GlobalState["system"] = &AccountState{
-			Balance: 10000000, // same as genesis rewardTx.Amount
-			Nonce:   0,
-		}
-		bc.GlobalState["03e2459b73c0c6522530f6b26e834d992dfc55d170bee35d0bcdc047fe0d61c25b"] = &AccountState{
-			Balance: 1000, // give this wallet 1000 tokens initially
-			Nonce:   0,
-		}
+		fmt.Printf("🆕 Initializing fresh blockchain state (TokenRegistry only)...\n")
+		// Note: All balances now managed through TokenRegistry
+		// Genesis balances will be set up in token initialization below
 	} else {
-		fmt.Printf("🔄 Skipping genesis state initialization for existing blockchain\n")
+		fmt.Printf("🔄 Loading existing blockchain (TokenRegistry only)...\n")
 	}
 
 	// Create native token with proper supply management
@@ -288,8 +282,31 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 			return nil, fmt.Errorf("failed to mint genesis validator tokens: %v", err)
 		}
 
+		// Mint tokens to system account for bridge testing
+		systemBalance := uint64(10000000)
+		err = nativeToken.Mint("system", systemBalance)
+		if err != nil {
+			return nil, fmt.Errorf("failed to mint system tokens: %v", err)
+		}
+
+		// Mint some tokens to test accounts
+		testAccounts := map[string]uint64{
+			"alice":   1000,
+			"bob":     500,
+			"charlie": 300,
+		}
+
+		for account, balance := range testAccounts {
+			err = nativeToken.Mint(account, balance)
+			if err != nil {
+				fmt.Printf("⚠️ Failed to mint tokens to %s: %v\n", account, err)
+			}
+		}
+
 		fmt.Printf("✅ Genesis validator initialized with %d stake and %d BHX tokens\n",
 			genesisValidatorStake, genesisValidatorStake)
+		fmt.Printf("✅ System account initialized with %d BHX tokens\n", systemBalance)
+		fmt.Printf("✅ Test accounts initialized with tokens\n")
 	} else {
 		fmt.Printf("🔄 Loading existing blockchain - restoring token balances...\n")
 
@@ -843,12 +860,17 @@ func (bc *Blockchain) GetPendingTransactions() []*Transaction {
 	return bc.PendingTxs
 }
 
-func (bc *Blockchain) GetBalance(addr string) uint64 {
-	state, ok := bc.GlobalState[addr]
-	if !ok {
+// GetBalance now uses TokenRegistry - specify token symbol
+func (bc *Blockchain) GetTokenBalance(addr, tokenSymbol string) uint64 {
+	token, exists := bc.TokenRegistry[tokenSymbol]
+	if !exists {
 		return 0
 	}
-	return state.Balance
+	balance, err := token.BalanceOf(addr)
+	if err != nil {
+		return 0
+	}
+	return balance
 }
 
 // GetTokenBalanceWithCache retrieves token balance using production cache system
@@ -987,41 +1009,19 @@ func (bc *Blockchain) ProcessTransaction(tx *Transaction) error {
 		return nil
 	}
 
-	// Ensure sender exists and has sufficient balance
-	senderState := bc.getOrCreateAccount(tx.From)
+	// All transaction types now use TokenRegistry for balance validation
+	token, exists := bc.TokenRegistry[tx.TokenID]
+	if !exists {
+		return fmt.Errorf("token %s not found", tx.TokenID)
+	}
 
-	// Validate balance based on transaction type
-	switch tx.Type {
-	case RegularTransfer:
-		if senderState.Balance < tx.Amount {
-			return fmt.Errorf("insufficient balance: has %d, needs %d", senderState.Balance, tx.Amount)
-		}
-	case TokenTransfer:
-		// Check token balance
-		token, exists := bc.TokenRegistry[tx.TokenID]
-		if !exists {
-			return fmt.Errorf("token %s not found", tx.TokenID)
-		}
-		balance, err := token.BalanceOf(tx.From)
-		if err != nil {
-			return fmt.Errorf("failed to get token balance: %v", err)
-		}
-		if balance < tx.Amount {
-			return fmt.Errorf("insufficient token balance: has %d, needs %d", balance, tx.Amount)
-		}
-	case StakeDeposit:
-		// Check token balance for staking
-		token, exists := bc.TokenRegistry[tx.TokenID]
-		if !exists {
-			return fmt.Errorf("token %s not found", tx.TokenID)
-		}
-		balance, err := token.BalanceOf(tx.From)
-		if err != nil {
-			return fmt.Errorf("failed to get token balance: %v", err)
-		}
-		if balance < tx.Amount {
-			return fmt.Errorf("insufficient token balance for staking: has %d, needs %d", balance, tx.Amount)
-		}
+	balance, err := token.BalanceOf(tx.From)
+	if err != nil {
+		return fmt.Errorf("failed to get token balance: %v", err)
+	}
+
+	if balance < tx.Amount {
+		return fmt.Errorf("insufficient token balance: has %d, needs %d", balance, tx.Amount)
 	}
 
 	// Queue transaction for block inclusion
@@ -1113,37 +1113,35 @@ func (bc *Blockchain) ApplyTransaction(tx *Transaction) bool {
 }
 
 func (bc *Blockchain) applyRegularTransfer(tx *Transaction) bool {
-	sender := tx.From
-	receiver := tx.To
-	amount := tx.Amount
-
-	// Get or create sender account
-	senderState := bc.getOrCreateAccount(sender)
-	fmt.Printf("   📤 Sender '%s' balance before transaction: %d\n", sender, senderState.Balance)
-
-	// Check for insufficient funds (should already be validated, but double-check)
-	if sender != "system" && senderState.Balance < amount {
-		fmt.Printf("   ❌ Transaction failed: Insufficient funds (has %d, needs %d)\n", senderState.Balance, amount)
+	// All transfers now use TokenRegistry (RegularTransfer = TokenTransfer)
+	token, exists := bc.TokenRegistry[tx.TokenID]
+	if !exists {
+		fmt.Printf("   ❌ Token %s not found\n", tx.TokenID)
 		return false
 	}
 
-	// Deduct from sender (unless it's a system transaction)
-	if sender != "system" {
-		senderState.Balance -= amount
-		bc.SetBalance(sender, senderState.Balance)
-		fmt.Printf("   ✅ Sender '%s' balance after deduction: %d\n", sender, senderState.Balance)
+	// Get balances before transfer
+	senderBalance, _ := token.BalanceOf(tx.From)
+	receiverBalance, _ := token.BalanceOf(tx.To)
+
+	fmt.Printf("   📤 Sender '%s' balance before transaction: %d %s\n", tx.From, senderBalance, tx.TokenID)
+	fmt.Printf("   📥 Receiver '%s' balance before transaction: %d %s\n", tx.To, receiverBalance, tx.TokenID)
+
+	// Execute transfer through TokenRegistry
+	err := token.Transfer(tx.From, tx.To, tx.Amount)
+	if err != nil {
+		fmt.Printf("   ❌ Transfer failed: %v\n", err)
+		return false
 	}
 
-	// Get or create receiver account
-	receiverState := bc.getOrCreateAccount(receiver)
-	fmt.Printf("   📥 Receiver '%s' balance before transaction: %d\n", receiver, receiverState.Balance)
+	// Get balances after transfer
+	newSenderBalance, _ := token.BalanceOf(tx.From)
+	newReceiverBalance, _ := token.BalanceOf(tx.To)
 
-	// Add to receiver
-	receiverState.Balance += amount
-	bc.SetBalance(receiver, receiverState.Balance)
-	fmt.Printf("   ✅ Receiver '%s' balance after addition: %d\n", receiver, receiverState.Balance)
+	fmt.Printf("   ✅ Sender '%s' balance after transfer: %d %s\n", tx.From, newSenderBalance, tx.TokenID)
+	fmt.Printf("   ✅ Receiver '%s' balance after transfer: %d %s\n", tx.To, newReceiverBalance, tx.TokenID)
 
-	fmt.Println("✅ Regular transfer applied successfully")
+	fmt.Println("✅ Regular transfer applied successfully via TokenRegistry")
 	return true
 }
 
@@ -1420,15 +1418,8 @@ func (bc *Blockchain) GetMempoolStatus() map[string]interface{} {
 	}
 }
 
-func (bc *Blockchain) SetBalance(addr string, balance uint64) {
-	state, ok := bc.GlobalState[addr]
-	if !ok {
-		state = &AccountState{}
-	}
-	state.Balance = balance
-	bc.GlobalState[addr] = state
-	_ = bc.SaveAccountState(addr, state)
-}
+// SetBalance removed - use TokenRegistry.Mint/Transfer instead
+// This ensures all balance changes go through proper token operations
 
 func (bc *Blockchain) SaveAccountState(addr string, state *AccountState) error {
 	data, err := json.Marshal(state)
