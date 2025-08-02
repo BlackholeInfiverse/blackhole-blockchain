@@ -1,3 +1,3 @@
-module github.com/blackhole-blockchain/services
+module github.com/Shivam-Patel-G/blackhole-blockchain/services
 
-go 1.24.2
+go 1.24.3

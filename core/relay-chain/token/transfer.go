@@ -1,6 +1,7 @@
 package token
 
 import (
+	"encoding/json"
 	"errors"
 	"log"
 	"time"
@@ -75,6 +76,13 @@ func (t *Token) Transfer(from, to string, amount uint64) error {
 		},
 	}
 	t.emitEvent(event)
+	eventJson, err := json.MarshalIndent(event, "", "  ")
+	if err != nil {
+		log.Printf("Failed to marshal event: %v", err)
+	} else {
+		log.Printf("[EVENT_JSON] %s", string(eventJson))
+	}
+
 
 	log.Printf("Transfer successful: %s[%d→%d], %s[%d→%d]",
 		from, oldFromBalance, t.balances[from],

@@ -53,3 +53,8 @@ data/wallet/*
 .idea/
 .vscode/
 *.iml
+
+# Reference and backup directories
+reference-shantanu-bridge-work/
+bridge-sdk-backup/
+temp-test-files/

@@ -1,11 +1,13 @@
 go 1.24.3
 
 use (
-
+	.
 	./bridge-sdk
 	./core/relay-chain
 	./libs
 	./parachains
+	./services
 	./services/wallet
-
+	./services/validator-faucet
+	./smart-testnet
 )

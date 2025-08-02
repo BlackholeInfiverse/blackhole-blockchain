@@ -2434,8 +2434,8 @@ func (s *APIServer) handleRelaySubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	tx.ID = tx.CalculateHash()
 
-	// Validate and add to pending transactions
-	err := s.blockchain.ValidateTransaction(tx)
+	// Process transaction (validates AND adds to mempool)
+	err := s.blockchain.ProcessTransaction(tx)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -2444,6 +2444,9 @@ func (s *APIServer) handleRelaySubmit(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	fmt.Printf("✅ Bridge transaction added to mempool: %s (%s → %s, %d %s)\n",
+		tx.ID, tx.From, tx.To, tx.Amount, tx.TokenID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
