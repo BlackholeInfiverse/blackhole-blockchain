@@ -1,0 +1,252 @@
+BlackHole Root Network –
+5-Day Integration Sprint
+Sprint Theme:
+“Build the Neural Root – Connect All Chains, Secure All States, Enable All Beings”
+Dev Roles:
+• Jay – Wallet, Key Mgmt, Cybercrime Smart Contract, Validator Onboarding
+• Shivam – Token Logic, Approvals, Event Emission
+• Sairam – Staking Core, Validator Logic, Reward Flows
+• Nihal – DEX Engine, OTC Trade Verification, Multi-Sig
+• Shantanu – Bridge Infra, Listener, Root Sync
+• Keval & Aryan – Cybercrime Smart Contract + Onchain Enforcement Layer
+• Vinayak – Review, Git Hygiene, Integration Testing
+Day-by-Day Breakdown
+Day 1 – Root Bootstrap & Validator Readiness
+Day 2 – Mycelium Integration Test (E2E Sim Run)
+Owner Task Output
+Jay Setup Validator Faucet + Wallet Integration Faucet-ready validator onboarding via
+web wallet
+Shivam Token logic cleanup (mint, burn, events) mintBurnHandler.go → Event triggers
+for relay, rewards
+Sairam Stake registration docker-compose + Validator
+state machine
+CLI + .env based validator setup
+Nihal Audit DEX pool math + OTC rate logic Final constants + API test proof
+Shantan
+u
+Launch docker infra with ETH/SOL listener ETH/SOL event → BlackHole relay →
+Log proofAryan/
+Keval
+Cybercrime contract stub (offense logging &
+token freeze logic)
+/contracts/cybercrime.sol +
+Freeze(address) stub tested
+Owne
+r
+Task Output
+Day 3 – Logging, Monitoring, Defense Mesh
+Day 4 – Stress Test + Safety Protocols
+Day 5 – Final Push, Review, Merge
+All
+Devs
+Mint → Stake → OTC → Swap → Bridge Flow
+(recorded session) CLI logs + video capture for audit
+Jay Add Wallet ↔ Cybercrime API Hook (Smart
+Contract + Signing)
+JS → Web3 → FreezeTx example
+pushedShiva
+m
+Token approval via bridge-call test + snapshot for
+root sync
+bridge/approve.go updated
+Saira
+m
+Stake + reward emission triggered from bridge-
+synced events
+Staking events replayed + validator
+rewards distributed
+Nihal OTC multi-sig replay test, swap slippage edge
+tested
+OTC sig hash logs saved
+Shant
+anu Validate ETH→BH→SOL full relay sequence Logs and latency trace for relay
+Owner Task Output
+Jay Key rotation logic + freeze/unfreeze flow
+(Cybercrime live test)
+freezeTx.js + webhook alert via
+Discord/CLI
+Shivam Zap-based structured logs for token + staking Colored CLI logs saved
+Sairam Staking slashing rules + validator penalty sim Slash logs (one validator)
+Nihal DEX swap history log + price curve dump priceAudit.json + timestamp graph
+Shantanu Root sync monitor for bridge (event → finality →
+insertion)
+eventRootMap.log
+Aryan/
+Keval
+Cybercrime contract test suite + audit coverage
+report
+test/cybercrime.test.js +
+coverage.html
+Owner Task Output
+All Devs 10,000 tx sim run (wallet → DEX → stake →
+bridge)
+Load graph + chain latency
+summary
+Jay Validate wallet under chain stress No key mismatch, faucet errors
+Shivam Token approval spike test (1000+ tx) No event loss or lag
+Nihal DEX pool balance after flood event Pool resilience graph
+Sairam Stake inflation edge test under stress Reward ratio validation logs
+Shantanu ETH/SOL bridge retry flood protection test maxConcurrency, timeout test
+passed
+Aryan/
+Keval Attempt 3 freeze events + replay via bridge Multi-chain freeze replay proof
+Owner Task Output
+All Devs Submit merge-ready code branches + PRs All modules up to date + Dockerfile in
+each service
+Scoring Matrix (Per Dev)
+Total: 10 per dev – All are expected to score 8.5+ minimum to proceed
+to Mainnet Simulation Phase.
+Here’s the step-by-step 5-day sprint breakdown for each dev, with tasks stacked logically and with
+performance expectations. This is designed to ensure high throughput, clear interdependencies, and
+merge-readiness by Day 5.
+Jay –
+Wallet, Key Mgmt, Cybercrime Contract
+Day 1
+• Audit wallet → staking + DEX → event sync.
+• Add faucet + keygen for multi-wallet validator onboarding.
+• Freeze wallet ↔ relay + Cybercrime base API wiring.
+Vinayak Approve PRs, run test matrix, sign off
+Testnet v0.1 tag Final tag: v0.1-testnet
+Jay Smart contract merged (Cybercrime) + CLI
+doc
+/docs/cybercrime-cli.md
+Shivam README.md + event table for tokens docs/token-events.md
+Sairam Validator quickstart final doc validator-setup.md
+Nihal DEX/OTC README with API calls docs/dex-api.md
+Shantanu Bridge endpoint list + gRPC schema bridge/api-schema.proto
+Aryan/
+Keval Cybercrime testing video uploaded Link shared internally
+Metric Ma
+x Criteria
+Module Completion 3 All code pushed, tested, with working logs or demo
+Code Quality 2 Clean, readable, well-commented, no unhandled panics
+Integration
+Coordination 2 Successfully called by or calling other modules
+Logs + Monitoring 1 Structured logs, good error traceability
+Docs + Dev Experience 1 Minimal README, clear usage examples
+Ownership + Creativity 1 Took initiative on features, edge cases, or future compatibility
+ideas
+• Sync w/ Keval & Aryan on Cybercrime Smart Contract scope.
+Day 2
+• Build /freeze & /unfreeze CLI for wallet.
+• Add replay protection for signed transactions.
+• Link wallet freeze status with token transfer block.
+Day 3
+• Test 5-wallet rotation for validator + faucet load.
+• Integrate wallet behavior under Cybercrime stress.
+• Test fallback key recovery & log corruption.
+Day 4
+• Simulate 10k wallet txs (stake, DEX, OTC).
+• Validate memory/cpu performance under key refresh.
+• Stress test freeze logic (multi-chain).
+Day 5
+• Merge wallet code + wallet freeze docs.
+• Create wallet-admin.md (multisig, freeze, relays).
+• Join review session w/ Vinayak for E2E.
+Shivam –
+Token Logic, Approvals, Bridge Events
+Day 1
+• Refactor token logic: mint, burn, supply cap.
+• Bridge token transfer event emitter with metadata.
+• Test approval function for staking, DEX, OTC.
+Day 2
+• Finalize bridge approvals via token simulation.
+• Add adminOverride(address) for token ops.
+• Fix cross-contract approvals (ERC20 + bridge).
+Day 3
+• Structured logs for all token transactions.
+• Sync reward inflation logic with Sairam.
+• Dry run bridge replay and log gas usage.
+Day 4
+• Push high-frequency approval test (1000+ tx).
+• Confirm no token overflow/reentrancy bugs.
+• Add unit tests for all transfer edge cases.
+Day 5
+• Merge /token, /approvals modules.
+• Write token-events.md + schema table.
+• Validate token audit logs for bridge/DEX.
+Sairam –
+Staking, Validator Lifecycle
+Day 1
+• Finalize validator registration flow (docker + env).
+• Build validator state machine + JSON status outputs.
+• Start staking audit checklist doc.
+Day 2
+• Simulate 3+ validator lifecycle flows (join, slash, exit).
+• Link staking reward emission to token logic.
+• Bridge-sync staking rewards: proof from Shantanu.
+Day 3
+• Add logs for validator events (slash, reward, exit).
+• Test edge cases for stake duration expiry.
+• Dry run validator rotation manually.
+Day 4
+• Load test reward issuance with bridge-triggered events.
+• Confirm no inflation bug or staking pool leak.
+• Patch duration rounding + floating point errors.
+Day 5
+• Finalize staking-api.md.
+• Push docker-compose setup for validators.
+• Join system-wide test & review.
+Nihal –
+DEX, OTC, Pool Health
+Day 1
+• Verify all liquidity pool constants.
+• Fix swap edge slippage test case.
+• Review OTC rate logic + multisig triggers.
+Day 2
+• Simulate OTC trade via CLI + multi-sig approval replay.
+• Record all DEX swap logs w/ timestamps.
+• Dump pool state snapshot pre/post swap.
+Day 3
+• Stress test 50 DEX swaps + 20 OTC trades.
+• Log any imbalance + slippage deviation.
+• Integrate swap price output to bridge log system.
+Day 4
+• Simulate DEX pool drain attempt.
+• Protect against imbalance attacks.
+• Finalize OTC CLI + signature validation logic.
+Day 5
+• Write dex-api.md + OTC usage doc.
+• Push swap simulation video/log.
+• Merge DEX module into final image.
+Shantanu –
+Bridge SDK, Sync Infra, Relay Protection
+Day 1
+• Freeze ETH/SOL listener modules (bridge core).
+• Write retry logic for dropped events.
+• Init relay server & mock endpoint for testing.
+Day 2
+• Finalize gRPC + REST relay endpoint schemas.
+• Expose /log/event, /log/retry, /bridge/status.
+• Sync bridge events to validator + token modules.
+Day 3
+• Monitor full event loop from ETH → BH → SOL.
+• Add latency metrics & success/fail tags.
+• Dump event root tree per 10 blocks.
+Day 4
+• Load test relay for 10k tx + 1000 retries.
+• Inject random delay/failures in ETH listener.
+• Confirm bridge fallback recovery.
+Day 5
+• Write bridge-schema.proto + bridge summary docs.
+• Push final docker-compose + endpoint test script.
+• Review system-wide consistency w/ Vinayak.
+Keval & Aryan –
+Cybercrime Smart Contract
+All Days (split parallel)
+Vinayak –
+Reviewer & Final Auditor
+Da
+y Task
+1 Build CyberCrime.sol stub: freeze, report, unfreeze.
+2 Simulate violation & freeze event on Jay’s wallet.
+3 Add logging hooks, cross-chain ID for freeze sync.
+4 Run 3 simulations with relay involved (multi-chain freeze).
+5 Merge smart contract, upload test coverage, push /docs/
+freeze.md.
+Daily Task
+Track Git commits, PR quality, test coverage.
+Conduct 2 E2E test runs by Day 3 and 5.
+Approve merge requests, validate logs, and confirm system
+stability.
+Record a full demo session on Day 5.

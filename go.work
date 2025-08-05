@@ -9,5 +9,4 @@ use (
 	./services
 	./services/wallet
 	./services/validator-faucet
-	./smart-testnet
 )

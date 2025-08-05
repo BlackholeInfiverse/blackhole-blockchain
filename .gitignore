@@ -42,6 +42,14 @@ bridge.db
 *.bolt
 *.boltdb
 
+# Smart Contract Files
+contracts/node_modules/
+contracts/.env
+contracts/cache/
+contracts/artifacts/
+contracts/deployments/
+contracts/typechain-types/
+
 # Docker volumes
 data/blockchain/*
 data/mongodb/*

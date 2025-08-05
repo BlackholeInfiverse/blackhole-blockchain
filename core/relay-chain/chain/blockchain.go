@@ -50,6 +50,7 @@ type Blockchain struct {
 	GlobalState      map[string]*AccountState
 	DB               *leveldb.DB
 	DEX              interface{}
+	AIFraudChecker   *AIFraudChecker    // AI fraud detection service integration
 	CrossChainDEX    interface{} // Will be *dex.CrossChainDEX
 	EscrowManager    interface{}
 	MultiSigManager  interface{}
@@ -219,10 +220,14 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		validatorManager: NewValidatorManager(stakeLedger),
 		TokenRegistry:    make(map[string]*token.Token),
 		MempoolThreshold: 3, // Default: create block when 3 transactions are pending
+		AIFraudChecker:   NewAIFraudChecker(),   // Initialize AI fraud detection integration
 	}
 
 	// Initialize slashing manager after TokenRegistry is created
 	bc.SlashingManager = NewSlashingManager(stakeLedger, bc.TokenRegistry)
+
+	// Initialize AI fraud detection
+	fmt.Printf("🤖 AI fraud detection integration initialized\n")
 
 	// Initialize production-grade caching system
 	encryptionKey := []byte("blackhole-blockchain-cache-key-2024") // In production, use proper key management
@@ -1007,6 +1012,20 @@ func (bc *Blockchain) ProcessTransaction(tx *Transaction) error {
 	if tx.From == "system" {
 		bc.PendingTxs = append(bc.PendingTxs, tx)
 		return nil
+	}
+
+	// Check AI fraud detection - block transactions from flagged wallets
+	if bc.AIFraudChecker != nil {
+		// Send transaction data to AI for analysis (async)
+		go bc.AIFraudChecker.SendTransactionData(tx)
+
+		// Check if wallet is flagged by AI
+		if bc.AIFraudChecker.IsWalletFlagged(tx.From) {
+			return fmt.Errorf("transaction blocked: sender wallet %s flagged by AI fraud detection", tx.From)
+		}
+		if bc.AIFraudChecker.IsWalletFlagged(tx.To) {
+			return fmt.Errorf("transaction blocked: recipient wallet %s flagged by AI fraud detection", tx.To)
+		}
 	}
 
 	// All transaction types now use TokenRegistry for balance validation

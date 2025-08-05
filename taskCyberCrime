@@ -1,0 +1,95 @@
+Current Team Breakdown (Updated)
+• Blockchain Core (BHC)
+◦ Shivam – Token logic, Approvals, Event Emission
+◦ Shantanu – Bridge SDK, Cross-chain Sync, Relays
+◦ Nihal – DEX, OTC, Pool Health, Swap Mechanics
+• Cybercrime / AI Enforcement Layer (AIxLaw)
+◦ Keval – Cybercrime Smart Contract Lead
+◦ Aryan – Event Hooking, Logging, Multichain Freeze Logic
+◦ Yashika – ML Audit + Violation Detection Logic (Off-chain initially)
+• DevOps (Learning phase)
+◦ Vinayak – Learning Docker, PRs, GitOps; shadowing full-stack integration
+4-Day Consolidation Sprint Plan (v0.2-testnet Ready)
+🎯 Sprint Goal:
+Deploy token & coin to the DEX with working swap, bridge, staking, and freeze/violation
+enforcement. Push v0.2-testnet tag and run live audit session.
+Day 1: Patch & Sync
+All focus on unimplemented/half-complete modules. Target: feature parity across devs.
+Shivam
+• Final review of mintBurnHandler event logs → ensure it emits structured event logs for
+relay.
+• Add getAuditTrail(address) API for token history (supports AI/ML audit).
+• Refactor adminOverride to be chain-safe (signed multisig required).
+Shantanu
+• Finalize gRPC schemas (bridge/api-schema.proto)
+• Complete /log/retry, /log/status endpoints and test them
+• Simulate ETH → BH → SOL + vice versa with logs, 2 chains → 1 listener proof.
+Nihal
+• Run DEX slippage edge case test (swap with large delta, tiny liquidity).
+• Add slippage protection to pool contract.
+• Test OTC trade failure + multi-sig override (3/5 signers)
+Keval & Aryan
+• Rebuild Cybercrime.sol (core freeze, report, unfreeze logic)
+• Hook into Shivam’s /token/transfer for enforcement triggers
+• Test freeze() → event → bridge replay → confirm token transfer block.
+Yashika
+• Begin off-chain ML logic stub for violation detection (e.g. anomalous swap, flash dump).
+• Output JSON with format:
+{
+"address": "0x123...",
+"violation": "Rapid token dump",
+"score": 0.87,
+"recommended_action": "freeze"
+}
+• Sync with Keval to format logs for real-time detection
+Day 2: End-to-End Chain Test + AI Enforcement
+Run full simulation from wallet to DEX to bridge to cybercrime trigger.
+Shivam
+• Push /token-audit endpoint to return full transfer history
+• Confirm approve() to bridge / stake triggers log emission
+Shantanu
+• Log latency of bridge events
+• Test retry + fallback from simulated dropped event
+Nihal
+• Simulate flash attack → verify DEX recovers gracefully
+• Dump DEX state before/after attack → share with Yashika
+Keval & Aryan
+• Deploy cybercrime contract to local + testnet
+• Simulate 2 violations and 1 false positive
+• Record logs, freeze/unfreeze triggers
+Yashika
+• Run detection logic on dump event
+• Trigger freeze recommendation to CyberCrime.sol
+• Write ml-detection.md explaining how system scores and recommends
+Day 3: Dockerize, PR Freeze, Final Integration
+Prepare the full system for clean deploy.
+All Devs
+• Ensure Dockerfile exists for every microservice.
+• Push all final commits to dev → raise PR to main with full test logs
+• Run E2E CLI test:
+mint → approve → stake → swap → bridge → cybercrime
+Vinayak
+• Clone and test every Docker container
+• Practice merging one branch + resolving PR conflicts
+• Prepare GitHub Actions to auto-lint or test if possible
+Day 4: Final Audit +
+v0.2-testnet
+Launch
+Tag testnet release and prepare full walkthrough/demo.
+All Devs
+• Run testnet simulation (screen-recorded)
+• Push v0.2-testnet tag
+• Prepare 1-pager per module:
+◦ Shivam → token-events.md
+◦ Shantanu → bridge-api.md
+◦ Nihal → dex-api.md
+◦ Keval → cybercrime-cli.md
+◦ Yashika → ml-detection.md
+Vinayak (test capability along with the team)
+• Observe testnet launch
+• Write first draft of docker-readme.md for deploying whole system locally
+What This Unlocks:
+• v0.2-testnet → usable token, DEX, bridge, freeze
+• Ready to mint/distribute coin on testnet via faucet
+• Full AI-flag → smart contract enforcement flow in place
+• Next step: build Cybercrime dashboard, real-time audit engine, bridge deployment

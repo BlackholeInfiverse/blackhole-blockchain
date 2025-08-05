@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/bridge"
@@ -97,6 +99,12 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/relay/status", s.enableCORS(s.handleRelayStatus))
 	http.HandleFunc("/api/relay/events", s.enableCORS(s.handleRelayEvents))
 	http.HandleFunc("/api/relay/validate", s.enableCORS(s.handleRelayValidate))
+
+	// AI fraud detection integration - minimal endpoints for status
+	http.HandleFunc("/api/ai-fraud/status", s.enableCORS(s.handleAIFraudStatus))
+
+	// ML data endpoint for Yashika
+	http.HandleFunc("/api/transaction-data", s.enableCORS(s.handleTransactionData))
 
 	// Health check endpoint (using handleHealth instead of duplicate handleHealthCheck)
 
@@ -3225,4 +3233,159 @@ func (s *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 			"total_supply": s.blockchain.TotalSupply,
 		},
 	})
+}
+
+// handleAIFraudStatus provides status of AI fraud detection integration
+func (s *APIServer) handleAIFraudStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	status := map[string]interface{}{
+		"ai_fraud_enabled": s.blockchain.AIFraudChecker.Enabled,
+		"service_url":      s.blockchain.AIFraudChecker.ServiceURL,
+		"cache_size":       len(s.blockchain.AIFraudChecker.FlaggedCache),
+		"cache_timeout":    s.blockchain.AIFraudChecker.CacheTimeout.String(),
+		"message":          "AI fraud detection integration active",
+	}
+
+	json.NewEncoder(w).Encode(status)
+}
+
+// handleTransactionData provides transaction data for ML analysis (Yashika)
+func (s *APIServer) handleTransactionData(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get query parameters for filtering
+	limitStr := r.URL.Query().Get("limit")
+	daysStr := r.URL.Query().Get("days")
+
+	limit := 1000 // Default limit
+	days := 7     // Default 7 days
+
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 10000 {
+			limit = l
+		}
+	}
+
+	if daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 && d <= 365 {
+			days = d
+		}
+	}
+
+	// Get recent transactions
+	transactions := s.getTransactionDataForML(limit, days)
+
+	response := map[string]interface{}{
+		"success":           true,
+		"total_transactions": len(transactions),
+		"limit":             limit,
+		"days":              days,
+		"generated_at":      time.Now().UTC().Format(time.RFC3339),
+		"transactions":      transactions,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// getTransactionDataForML formats transaction data for ML analysis
+func (s *APIServer) getTransactionDataForML(limit, days int) []map[string]interface{} {
+	transactions := []map[string]interface{}{}
+	cutoffTime := time.Now().AddDate(0, 0, -days)
+	count := 0
+
+	// Get transactions from all blocks (most recent first)
+	for i := len(s.blockchain.Blocks) - 1; i >= 0 && count < limit; i-- {
+		block := s.blockchain.Blocks[i]
+
+		// Skip old blocks (use block header timestamp)
+		if block.Header.Timestamp.Before(cutoffTime) {
+			continue
+		}
+
+		for _, tx := range block.Transactions {
+			if count >= limit {
+				break
+			}
+
+			// Format transaction data for ML
+			txData := map[string]interface{}{
+				"tx_hash":       tx.ID,
+				"from_address":  tx.From,
+				"to_address":    tx.To,
+				"amount":        tx.Amount,
+				"token":         tx.TokenID,
+				"timestamp":     tx.Timestamp,
+				"tx_type":       int(tx.Type),
+				"tx_type_name":  s.getTransactionTypeName(tx.Type),
+				"block_number":  i,
+				"block_hash":    block.Hash,
+				"gas_limit":     tx.GasLimit,
+				"gas_price":     tx.GasPrice,
+				"fee":           tx.Fee,
+				"status":        "confirmed",
+			}
+
+			// Add DEX-specific data if it's a DEX transaction
+			if tx.Type == chain.TokenTransfer && tx.TokenID != "" {
+				txData["is_dex_trade"] = s.isDEXTransaction(tx)
+				if s.isDEXTransaction(tx) {
+					txData["dex_data"] = s.getDEXTransactionData(tx)
+				}
+			}
+
+			// Add staking-specific data
+			if tx.Type == chain.StakeDeposit || tx.Type == chain.StakeWithdraw {
+				txData["staking_data"] = map[string]interface{}{
+					"stake_amount": tx.Amount,
+					"validator":    tx.To, // For staking, 'To' is usually the validator
+				}
+			}
+
+			transactions = append(transactions, txData)
+			count++
+		}
+	}
+
+	return transactions
+}
+
+// getTransactionTypeName returns human-readable transaction type
+func (s *APIServer) getTransactionTypeName(txType chain.TransactionType) string {
+	switch txType {
+	case chain.RegularTransfer:
+		return "regular_transfer"
+	case chain.TokenTransfer:
+		return "token_transfer"
+	case chain.TokenMint:
+		return "token_mint"
+	case chain.TokenBurn:
+		return "token_burn"
+	case chain.StakeDeposit:
+		return "stake_deposit"
+	case chain.StakeWithdraw:
+		return "stake_withdraw"
+	case chain.SmartContractCall:
+		return "smart_contract_call"
+	default:
+		return "unknown"
+	}
+}
+
+// isDEXTransaction checks if transaction is DEX-related
+func (s *APIServer) isDEXTransaction(tx *chain.Transaction) bool {
+	// Simple heuristic: if transaction involves DEX-related addresses or patterns
+	// You can enhance this based on your DEX implementation
+	return tx.From == "dex" || tx.To == "dex" ||
+		   strings.Contains(tx.From, "pool") || strings.Contains(tx.To, "pool")
+}
+
+// getDEXTransactionData extracts DEX-specific transaction data
+func (s *APIServer) getDEXTransactionData(tx *chain.Transaction) map[string]interface{} {
+	return map[string]interface{}{
+		"trade_type":    "swap", // Could be "swap", "add_liquidity", "remove_liquidity"
+		"token_pair":    tx.TokenID,
+		"trade_amount":  tx.Amount,
+		"estimated_price": 0.0, // You can calculate this based on your DEX logic
+	}
 }
