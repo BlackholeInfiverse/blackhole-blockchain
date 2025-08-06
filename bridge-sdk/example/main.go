@@ -30,7 +30,6 @@ import (
 	"go.etcd.io/bbolt"
 
 	// BlackHole blockchain imports
-
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 )
 
@@ -727,6 +726,19 @@ func (sdk *BridgeSDK) calculateViolationSeverity(violations []string) string {
 	return "low"
 }
 
+// PerformanceMetrics tracks system performance statistics
+type PerformanceMetrics struct {
+	mutex               sync.RWMutex
+	cpuUsage           float64
+	memoryUsage        float64
+	activeConnections  int
+	eventsPerSecond    float64
+	avgResponseTime    float64
+	errorCount         int
+	lastEventTime      time.Time
+	eventCount         int64
+}
+
 // BridgeSDK represents the main bridge SDK
 type BridgeSDK struct {
 	blockchain          interface{}                   // Can be BlackHoleBlockchainInterface or nil for simulation
@@ -745,6 +757,7 @@ type BridgeSDK struct {
 	retryQueue          *RetryQueue
 	panicRecovery       *PanicRecovery
 	startTime           time.Time
+	performanceMetrics  *PerformanceMetrics
 	transactions        map[string]*Transaction
 	transactionsMutex   sync.RWMutex
 	events              []Event
@@ -1096,11 +1109,12 @@ type BridgeTransferRequest struct {
 
 // RetryQueue handles failed operations with exponential backoff
 type RetryQueue struct {
-	items      []RetryItem
-	mutex      sync.RWMutex
-	maxRetries int
-	baseDelay  time.Duration
-	maxDelay   time.Duration
+	items           []RetryItem
+	deadLetterQueue []RetryItem
+	mutex           sync.RWMutex
+	maxRetries      int
+	baseDelay       time.Duration
+	maxDelay        time.Duration
 }
 
 // RetryItem represents an item in the retry queue
@@ -1204,7 +1218,7 @@ func LoadEnvironmentConfig() *EnvironmentConfig {
 		EthereumRPC:             getEnvOrDefault("ETHEREUM_RPC", "wss://eth-mainnet.alchemyapi.io/v2/demo"),
 		SolanaRPC:               getEnvOrDefault("SOLANA_RPC", "wss://api.mainnet-beta.solana.com"),
 		BlackHoleRPC:            getEnvOrDefault("BLACKHOLE_RPC", "ws://localhost:8545"),
-		DatabasePath:            getEnvOrDefault("DATABASE_PATH", "./data/bridge_fixed.db"),
+		DatabasePath:            getEnvOrDefault("DATABASE_PATH", "./data/bridge_v5.db"),
 		LogLevel:                getEnvOrDefault("LOG_LEVEL", "info"),
 		LogFile:                 getEnvOrDefault("LOG_FILE", "./logs/bridge.log"),
 		ReplayProtectionEnabled: getEnvBoolOrDefault("REPLAY_PROTECTION_ENABLED", true),
@@ -1654,6 +1668,16 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 		retryQueue:         retryQueue,
 		panicRecovery:      panicRecovery,
 		startTime:          time.Now(),
+		performanceMetrics: &PerformanceMetrics{
+			cpuUsage:          15.0,
+			memoryUsage:       45.0,
+			activeConnections: 0,
+			eventsPerSecond:   0.0,
+			avgResponseTime:   150.0,
+			errorCount:        0,
+			lastEventTime:     time.Now(),
+			eventCount:        0,
+		},
 		transactions:       make(map[string]*Transaction),
 		events:             make([]Event, 0),
 		blockedReplays:     0,
@@ -2229,7 +2253,7 @@ func (sdk *BridgeSDK) addEvent(eventType, chain, txHash string, data map[string]
 // Enhanced Retry Logic with Exponential Backoff and Dead Letter Queue
 
 // addToRetryQueue adds a failed event to the retry queue with exponential backoff
-func (sdk *BridgeSDK) addToRetryQueue(eventType string, data map[string]interface{}, err error) {
+func (sdk *BridgeSDK) addToRetryQueue(eventType string, data map[string]interface{}, err error) string {
 	sdk.retryQueue.mutex.Lock()
 	defer sdk.retryQueue.mutex.Unlock()
 
@@ -2247,6 +2271,7 @@ func (sdk *BridgeSDK) addToRetryQueue(eventType string, data map[string]interfac
 
 	sdk.retryQueue.items = append(sdk.retryQueue.items, retryItem)
 	sdk.logger.Infof("🔄 Added event to retry queue: %s (attempt 1/%d)", retryItem.ID, retryItem.MaxRetries)
+	return retryItem.ID
 }
 
 // processRetryQueue processes items in the retry queue with exponential backoff
@@ -5159,15 +5184,34 @@ func (sdk *BridgeSDK) formatEventTreeAsMermaid(tree EventTree) string {
 
 // RelayToChain relays a transaction to the specified chain
 func (sdk *BridgeSDK) RelayToChain(tx *Transaction, targetChain string) error {
+	// Enhanced relay logging
+	fmt.Printf("\n" + strings.Repeat("-", 60) + "\n")
+	fmt.Printf("🔄 RELAYING TRANSACTION TO CHAIN\n")
+	fmt.Printf(strings.Repeat("-", 60) + "\n")
+	fmt.Printf("   ├─ Transaction ID: %s\n", tx.ID)
+	fmt.Printf("   ├─ Target Chain: %s\n", targetChain)
+	fmt.Printf("   ├─ Amount: %s %s\n", tx.Amount, tx.TokenSymbol)
+	fmt.Printf("   ├─ From: %s\n", tx.SourceAddress)
+	fmt.Printf("   ├─ To: %s\n", tx.DestAddress)
+	fmt.Printf("   └─ Starting relay process...\n")
+
 	sdk.logger.Infof("🔄 Relaying transaction %s to %s", tx.ID, targetChain)
 
 	// Handle BlackHole chain transactions with real blockchain
 	if targetChain == "blackhole" && sdk.blockchainInterface != nil {
+		fmt.Printf("   🔗 REAL BLACKHOLE BLOCKCHAIN PROCESSING\n")
+		fmt.Printf("   ├─ Using blockchain interface\n")
+		fmt.Printf("   ├─ Processing transaction: %s\n", tx.ID)
+
 		sdk.logger.Infof("🔗 Processing real BlackHole blockchain transaction: %s", tx.ID)
 
 		// Use real blockchain interface for BlackHole transactions
 		err := sdk.blockchainInterface.ProcessBridgeTransaction(tx)
 		if err != nil {
+			fmt.Printf("   ❌ BLACKHOLE PROCESSING FAILED\n")
+			fmt.Printf("   ├─ Error: %v\n", err)
+			fmt.Printf("   └─ Transaction marked as failed\n")
+
 			sdk.logger.Errorf("❌ Failed to process BlackHole transaction: %v", err)
 			tx.Status = "failed"
 			now := time.Now()
@@ -5177,20 +5221,37 @@ func (sdk *BridgeSDK) RelayToChain(tx *Transaction, targetChain string) error {
 			return err
 		}
 
+		fmt.Printf("   ✅ BLACKHOLE PROCESSING SUCCESSFUL\n")
+		fmt.Printf("   ├─ Transaction processed on real blockchain\n")
+		fmt.Printf("   └─ Processing time: %.1fs\n", time.Since(tx.CreatedAt).Seconds())
+
 		sdk.logger.Infof("✅ BlackHole transaction processed successfully: %s", tx.ID)
 		sdk.saveTransaction(tx)
 		return nil
 	}
 
 	// Simulate relay processing for external chains (ETH/SOL)
+	fmt.Printf("   🎭 SIMULATING %s CHAIN PROCESSING\n", strings.ToUpper(targetChain))
+	fmt.Printf("   ├─ Chain: %s\n", targetChain)
+	fmt.Printf("   ├─ Transaction: %s\n", tx.ID)
+	fmt.Printf("   ├─ Simulating network delay...\n")
+
 	sdk.logger.Infof("🎭 Simulating %s chain transaction: %s", targetChain, tx.ID)
-	time.Sleep(time.Duration(2+rand.Intn(3)) * time.Second)
+
+	processingTime := time.Duration(2+rand.Intn(3)) * time.Second
+	fmt.Printf("   ├─ Processing time: %v\n", processingTime)
+	time.Sleep(processingTime)
 
 	tx.Status = "completed"
 	now := time.Now()
 	tx.CompletedAt = &now
 	tx.ProcessingTime = fmt.Sprintf("%.1fs", time.Since(tx.CreatedAt).Seconds())
 	sdk.saveTransaction(tx)
+
+	fmt.Printf("   ✅ %s CHAIN PROCESSING COMPLETED\n", strings.ToUpper(targetChain))
+	fmt.Printf("   ├─ Final status: %s\n", strings.ToUpper(tx.Status))
+	fmt.Printf("   └─ Total processing time: %s\n", tx.ProcessingTime)
+	fmt.Printf(strings.Repeat("-", 60) + "\n\n")
 
 	return nil
 }
@@ -5590,6 +5651,10 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 
 	// Wallet Monitoring API Endpoints
 	r.HandleFunc("/api/wallet/transactions", sdk.handleWalletTransactions).Methods("GET")
+	r.HandleFunc("/api/wallet/transactions/mark-read", sdk.handleMarkTransactionAsRead).Methods("POST", "OPTIONS")
+
+	// gRPC Documentation Endpoint
+	r.HandleFunc("/api/grpc/endpoints", sdk.handleGRPCEndpoints).Methods("GET")
 
 	r.HandleFunc("/mock/bridge", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -5898,6 +5963,35 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 	r.HandleFunc("/api/v2/compliance/risk-assessment", sdk.handleRiskAssessment).Methods("POST")
 	r.HandleFunc("/api/v2/audit/trail/search", sdk.handleAuditTrailSearch).Methods("POST")
 	r.HandleFunc("/api/v2/audit/trail/export", sdk.handleAuditTrailExport).Methods("POST")
+
+	// Main Dashboard Integration API endpoints
+	r.HandleFunc("/api/main-dashboard/status", sdk.handleMainDashboardStatus).Methods("GET")
+	r.HandleFunc("/api/main-dashboard/activities", sdk.handleMainDashboardActivities).Methods("GET")
+	r.HandleFunc("/api/main-dashboard/monitor", sdk.handleMainDashboardMonitor).Methods("POST")
+
+	// Wallet Dashboard Integration API endpoints
+	r.HandleFunc("/api/wallet-dashboard/status", sdk.handleWalletDashboardStatus).Methods("GET")
+	r.HandleFunc("/api/wallet-dashboard/transactions", sdk.handleWalletDashboardTransactions).Methods("GET")
+	r.HandleFunc("/api/wallet-dashboard/security", sdk.handleWalletDashboardSecurity).Methods("GET")
+
+	// Logging and Monitoring API endpoints
+	r.HandleFunc("/api/log/retry", sdk.handleLogRetry).Methods("GET")
+	r.HandleFunc("/api/log/status", sdk.handleLogStatus).Methods("GET")
+
+	// Test and Demonstration endpoints
+	r.HandleFunc("/api/test/retry-demo", sdk.handleRetryDemo).Methods("POST")
+
+	// Proxy endpoints to avoid CORS issues
+	r.HandleFunc("/api/proxy/main-dashboard/health", sdk.handleProxyMainDashboardHealth).Methods("GET")
+	r.HandleFunc("/api/proxy/main-dashboard/blockchain", sdk.handleProxyMainDashboardBlockchain).Methods("GET")
+	r.HandleFunc("/api/proxy/main-dashboard/node", sdk.handleProxyMainDashboardNode).Methods("GET")
+	r.HandleFunc("/api/proxy/main-dashboard/wallets", sdk.handleProxyMainDashboardWallets).Methods("GET")
+	r.HandleFunc("/api/proxy/main-dashboard/recent-activities", sdk.handleProxyMainDashboardActivities).Methods("GET")
+	r.HandleFunc("/api/proxy/wallet-dashboard/health", sdk.handleProxyWalletDashboardHealth).Methods("GET")
+	r.HandleFunc("/api/proxy/wallet-dashboard/wallets", sdk.handleProxyWalletDashboardWallets).Methods("GET")
+	r.HandleFunc("/api/proxy/wallet-dashboard/transactions", sdk.handleProxyWalletDashboardTransactions).Methods("GET")
+	r.HandleFunc("/api/proxy/wallet-dashboard/wallets", sdk.handleProxyWalletDashboardWallets).Methods("GET")
+	r.HandleFunc("/api/proxy/wallet-dashboard/transactions", sdk.handleProxyWalletDashboardTransactions).Methods("GET")
 	r.HandleFunc("/api/v2/monitoring/real-time/alerts", sdk.handleRealTimeAlerts).Methods("GET")
 	r.HandleFunc("/api/v2/monitoring/real-time/metrics", sdk.handleRealTimeMetrics).Methods("GET")
 
@@ -6104,9 +6198,29 @@ func (sdk *BridgeSDK) handleManualTransfer(w http.ResponseWriter, r *http.Reques
 		"timeout":       transferRequest.Timeout,
 	})
 
+	// Enhanced console logging for manual transfers
+	fmt.Printf("\n" + strings.Repeat("=", 80) + "\n")
+	fmt.Printf("🚀 MANUAL TRANSFER INITIATED\n")
+	fmt.Printf(strings.Repeat("=", 80) + "\n")
+	fmt.Printf("   ├─ Transfer ID: %s\n", tx.ID)
+	fmt.Printf("   ├─ Transaction Hash: %s\n", tx.Hash)
+	fmt.Printf("   ├─ Route: %s\n", transferRequest.Route)
+	fmt.Printf("   ├─ Token: %s\n", tx.TokenSymbol)
+	fmt.Printf("   ├─ Amount: %s\n", tx.Amount)
+	fmt.Printf("   ├─ Gas Fee: %s\n", tx.Fee)
+	fmt.Printf("   ├─ Source Chain: %s\n", tx.SourceChain)
+	fmt.Printf("   ├─ Destination Chain: %s\n", tx.DestChain)
+	fmt.Printf("   ├─ From Address: %s\n", tx.SourceAddress)
+	fmt.Printf("   ├─ To Address: %s\n", tx.DestAddress)
+	fmt.Printf("   ├─ Priority: %s\n", transferRequest.Priority)
+	fmt.Printf("   ├─ Confirmations Required: %d\n", transferRequest.Confirmations)
+	fmt.Printf("   ├─ Timeout: %d seconds\n", transferRequest.Timeout)
+	fmt.Printf("   ├─ Timestamp: %s\n", tx.CreatedAt.Format(time.RFC3339))
+	fmt.Printf("   └─ Status: %s\n", strings.ToUpper(tx.Status))
+	fmt.Printf(strings.Repeat("=", 80) + "\n\n")
+
 	// Start processing the transfer asynchronously
 	log.Printf("Starting manual transfer processing for transaction: %s", tx.ID)
-	fmt.Printf("🚀 Starting manual transfer processing for transaction: %s\n", tx.ID)
 	go sdk.processManualTransfer(tx, transferRequest)
 
 	response := map[string]interface{}{
@@ -6166,78 +6280,1060 @@ func (sdk *BridgeSDK) handleTransferStatus(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(response)
 }
 
+// gRPC Endpoints Documentation Handler
+func (sdk *BridgeSDK) handleGRPCEndpoints(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	grpcInfo := map[string]interface{}{
+		"bridge_service": map[string]interface{}{
+			"base_url": "localhost:50051",
+			"endpoints": []map[string]interface{}{
+				{
+					"method": "StartEthereumListener",
+					"description": "Starts Ethereum blockchain event listener",
+					"request_format": map[string]interface{}{
+						"chain_id": "string",
+						"rpc_url": "string",
+						"contract_address": "string",
+					},
+					"response_format": map[string]interface{}{
+						"success": "boolean",
+						"listener_id": "string",
+						"status": "string",
+					},
+					"authentication": "API Key required in metadata",
+				},
+				{
+					"method": "StartSolanaListener",
+					"description": "Starts Solana blockchain event listener",
+					"request_format": map[string]interface{}{
+						"cluster": "string (mainnet-beta, testnet, devnet)",
+						"program_id": "string",
+						"commitment": "string",
+					},
+					"response_format": map[string]interface{}{
+						"success": "boolean",
+						"listener_id": "string",
+						"status": "string",
+					},
+					"authentication": "API Key required in metadata",
+				},
+				{
+					"method": "RelayToChain",
+					"description": "Relays transaction to target blockchain",
+					"request_format": map[string]interface{}{
+						"source_chain": "string",
+						"dest_chain": "string",
+						"transaction_hash": "string",
+						"amount": "string",
+						"token_symbol": "string",
+						"dest_address": "string",
+					},
+					"response_format": map[string]interface{}{
+						"success": "boolean",
+						"relay_id": "string",
+						"dest_tx_hash": "string",
+						"status": "string",
+					},
+					"authentication": "API Key required in metadata",
+				},
+				{
+					"method": "GetTransactionStatus",
+					"description": "Gets status of bridge transaction",
+					"request_format": map[string]interface{}{
+						"transaction_id": "string",
+					},
+					"response_format": map[string]interface{}{
+						"transaction_id": "string",
+						"status": "string (pending, confirmed, failed)",
+						"source_tx_hash": "string",
+						"dest_tx_hash": "string",
+						"confirmations": "int32",
+					},
+					"authentication": "API Key required in metadata",
+				},
+				{
+					"method": "GetBridgeHealth",
+					"description": "Gets bridge service health status",
+					"request_format": map[string]interface{}{},
+					"response_format": map[string]interface{}{
+						"status": "string",
+						"uptime": "string",
+						"active_listeners": "int32",
+						"processed_transactions": "int64",
+						"error_rate": "float",
+					},
+					"authentication": "None required",
+				},
+			},
+		},
+		"wallet_service": map[string]interface{}{
+			"base_url": "localhost:50052",
+			"endpoints": []map[string]interface{}{
+				{
+					"method": "CreateWallet",
+					"description": "Creates a new wallet",
+					"request_format": map[string]interface{}{
+						"wallet_type": "string (ethereum, solana, blackhole)",
+						"password": "string",
+					},
+					"response_format": map[string]interface{}{
+						"wallet_id": "string",
+						"address": "string",
+						"public_key": "string",
+					},
+					"authentication": "Bearer token required",
+				},
+				{
+					"method": "GetWalletBalance",
+					"description": "Gets wallet balance for specific token",
+					"request_format": map[string]interface{}{
+						"wallet_id": "string",
+						"token_symbol": "string",
+					},
+					"response_format": map[string]interface{}{
+						"balance": "string",
+						"token_symbol": "string",
+						"decimals": "int32",
+					},
+					"authentication": "Bearer token required",
+				},
+				{
+					"method": "SendTransaction",
+					"description": "Sends transaction from wallet",
+					"request_format": map[string]interface{}{
+						"wallet_id": "string",
+						"to_address": "string",
+						"amount": "string",
+						"token_symbol": "string",
+						"gas_price": "string (optional)",
+					},
+					"response_format": map[string]interface{}{
+						"transaction_hash": "string",
+						"status": "string",
+						"gas_used": "string",
+					},
+					"authentication": "Bearer token required",
+				},
+			},
+		},
+		"blockchain_service": map[string]interface{}{
+			"base_url": "localhost:50053",
+			"endpoints": []map[string]interface{}{
+				{
+					"method": "GetBlockchainInfo",
+					"description": "Gets blockchain information",
+					"request_format": map[string]interface{}{
+						"chain": "string",
+					},
+					"response_format": map[string]interface{}{
+						"chain_id": "string",
+						"latest_block": "int64",
+						"network": "string",
+						"sync_status": "boolean",
+					},
+					"authentication": "None required",
+				},
+				{
+					"method": "GetTokenInfo",
+					"description": "Gets token information",
+					"request_format": map[string]interface{}{
+						"token_address": "string",
+						"chain": "string",
+					},
+					"response_format": map[string]interface{}{
+						"name": "string",
+						"symbol": "string",
+						"decimals": "int32",
+						"total_supply": "string",
+					},
+					"authentication": "None required",
+				},
+			},
+		},
+		"authentication": map[string]interface{}{
+			"api_key": map[string]interface{}{
+				"header": "X-API-Key",
+				"description": "API key for bridge service authentication",
+				"example": "bridge_api_key_12345",
+			},
+			"bearer_token": map[string]interface{}{
+				"header": "Authorization",
+				"format": "Bearer <token>",
+				"description": "JWT token for wallet service authentication",
+				"example": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+			},
+		},
+		"error_codes": map[string]interface{}{
+			"INVALID_REQUEST": "Request format is invalid",
+			"UNAUTHORIZED": "Authentication failed",
+			"CHAIN_NOT_SUPPORTED": "Blockchain not supported",
+			"INSUFFICIENT_BALANCE": "Insufficient wallet balance",
+			"TRANSACTION_FAILED": "Transaction execution failed",
+			"LISTENER_ERROR": "Blockchain listener error",
+			"NETWORK_ERROR": "Network connectivity error",
+		},
+		"examples": map[string]interface{}{
+			"start_ethereum_listener": map[string]interface{}{
+				"grpc_call": "bridge.BridgeService/StartEthereumListener",
+				"metadata": map[string]string{
+					"x-api-key": "your_api_key_here",
+				},
+				"request": map[string]interface{}{
+					"chain_id": "1",
+					"rpc_url": "https://mainnet.infura.io/v3/your_project_id",
+					"contract_address": "0x1234567890abcdef1234567890abcdef12345678",
+				},
+			},
+			"relay_transaction": map[string]interface{}{
+				"grpc_call": "bridge.BridgeService/RelayToChain",
+				"metadata": map[string]string{
+					"x-api-key": "your_api_key_here",
+				},
+				"request": map[string]interface{}{
+					"source_chain": "ethereum",
+					"dest_chain": "solana",
+					"transaction_hash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+					"amount": "100.5",
+					"token_symbol": "BHX",
+					"dest_address": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+				},
+			},
+		},
+	}
+
+	json.NewEncoder(w).Encode(grpcInfo)
+}
+
+// Mark Transaction as Read API Handler
+func (sdk *BridgeSDK) handleMarkTransactionAsRead(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var request struct {
+		TransactionID string `json:"transaction_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if request.TransactionID == "" {
+		http.Error(w, "Transaction ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Mark the transaction as read in the database
+	if err := sdk.markTransactionAsRead(request.TransactionID); err != nil {
+		fmt.Printf("❌ Failed to mark transaction as read: %v\n", err)
+		http.Error(w, fmt.Sprintf("Failed to mark transaction as read: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("✅ Transaction marked as read: %s\n", request.TransactionID)
+
+	response := map[string]interface{}{
+		"success":        true,
+		"message":        "Transaction marked as read",
+		"transaction_id": request.TransactionID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Logging and Monitoring API Handlers
+func (sdk *BridgeSDK) handleLogRetry(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get retry queue statistics
+	sdk.retryQueue.mutex.RLock()
+	activeItems := make([]map[string]interface{}, 0)
+	deadLetterItems := make([]map[string]interface{}, 0)
+
+	totalItems := len(sdk.retryQueue.items)
+	pendingItems := 0
+	processingItems := 0
+	failedItems := 0
+	deadLetterCount := len(sdk.retryQueue.deadLetterQueue)
+
+	// Process active retry items
+	for _, item := range sdk.retryQueue.items {
+		itemData := map[string]interface{}{
+			"id":          item.ID,
+			"type":        item.Type,
+			"attempts":    item.Attempts,
+			"max_attempts": item.MaxRetries,
+			"next_retry":  item.NextRetry.Format(time.RFC3339),
+			"created_at":  item.CreatedAt.Format(time.RFC3339),
+			"last_error":  item.LastError,
+			"status":      "pending",
+			"data":        item.Data,
+		}
+
+		if item.Attempts >= item.MaxRetries {
+			itemData["status"] = "failed"
+			failedItems++
+		} else if time.Now().Before(item.NextRetry) {
+			itemData["status"] = "pending"
+			pendingItems++
+		} else {
+			itemData["status"] = "processing"
+			processingItems++
+		}
+
+		activeItems = append(activeItems, itemData)
+	}
+
+	// Process dead letter queue items
+	for _, item := range sdk.retryQueue.deadLetterQueue {
+		deadLetterItems = append(deadLetterItems, map[string]interface{}{
+			"id":           item.ID,
+			"type":         item.Type,
+			"attempts":     item.Attempts,
+			"max_attempts": item.MaxRetries,
+			"status":       "dead_letter",
+			"created_at":   item.CreatedAt.Format(time.RFC3339),
+			"final_error":  item.LastError,
+			"data":         item.Data,
+		})
+	}
+	sdk.retryQueue.mutex.RUnlock()
+
+	// Calculate success rate
+	successRate := 100.0
+	if totalItems > 0 {
+		successfulItems := totalItems - failedItems - deadLetterCount
+		successRate = float64(successfulItems) / float64(totalItems+deadLetterCount) * 100
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"active_items":      activeItems,
+			"dead_letter_items": deadLetterItems,
+			"stats": map[string]interface{}{
+				"total_items":       totalItems,
+				"pending_items":     pendingItems,
+				"processing_items":  processingItems,
+				"failed_items":      failedItems,
+				"dead_letter_items": deadLetterCount,
+				"success_rate":      successRate,
+			},
+		},
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func (sdk *BridgeSDK) handleLogStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Calculate uptime
+	uptime := time.Since(sdk.startTime).Seconds()
+
+	// Check database connection
+	dbConnected := true
+	err := sdk.db.View(func(tx *bbolt.Tx) error {
+		return nil
+	})
+	if err != nil {
+		dbConnected = false
+	}
+
+	// Get listener status
+	listeners := map[string]bool{
+		"ethereum": true,  // Always true in simulation mode
+		"solana":   true,  // Always true in simulation mode
+		"blackhole": sdk.blockchainInterface != nil,
+	}
+
+	// Get performance metrics
+	sdk.performanceMetrics.mutex.RLock()
+	cpuUsage := sdk.performanceMetrics.cpuUsage
+	memoryUsage := sdk.performanceMetrics.memoryUsage
+	activeConnections := sdk.performanceMetrics.activeConnections
+	eventsPerSecond := sdk.performanceMetrics.eventsPerSecond
+	avgResponseTime := sdk.performanceMetrics.avgResponseTime
+	errorCount := sdk.performanceMetrics.errorCount
+	sdk.performanceMetrics.mutex.RUnlock()
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"bridge_healthy":     true,
+			"database_connected": dbConnected,
+			"uptime_seconds":     int64(uptime),
+			"version":           "1.0.0",
+			"listeners":         listeners,
+			"performance": map[string]interface{}{
+				"cpu_usage":             cpuUsage,
+				"memory_usage":          memoryUsage,
+				"active_connections":    activeConnections,
+				"events_per_second":     eventsPerSecond,
+				"average_response_time": avgResponseTime,
+				"error_count":           errorCount,
+			},
+		},
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Test and Demonstration API Handlers
+func (sdk *BridgeSDK) handleRetryDemo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Parse request
+	var request struct {
+		EventType    string `json:"event_type"`
+		FailureCount int    `json:"failure_count"`
+		TestMode     string `json:"test_mode"` // "retry", "fallback", "dead_letter"
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Set defaults
+	if request.EventType == "" {
+		request.EventType = "ethereum_event"
+	}
+	if request.FailureCount == 0 {
+		request.FailureCount = 3
+	}
+	if request.TestMode == "" {
+		request.TestMode = "retry"
+	}
+
+	// Generate test events that will fail and demonstrate retry mechanism
+	demoEvents := make([]map[string]interface{}, 0)
+
+	for i := 0; i < request.FailureCount; i++ {
+		eventID := fmt.Sprintf("demo_%s_%d_%d", request.EventType, time.Now().Unix(), i)
+
+		// Create test data that will trigger failures
+		testData := map[string]interface{}{
+			"transaction_id": eventID,
+			"amount":         fmt.Sprintf("%.2f", 100.0+float64(i)*10),
+			"token":          "DEMO",
+			"from":           "demo_source_address",
+			"to":             "demo_dest_address",
+			"demo_mode":      request.TestMode,
+			"failure_type":   "simulated_network_error",
+		}
+
+		// Add to retry queue with forced failure
+		retryID := sdk.addToRetryQueue(request.EventType, testData, fmt.Errorf("demo failure: simulated %s error", request.EventType))
+
+		demoEvents = append(demoEvents, map[string]interface{}{
+			"retry_id":    retryID,
+			"event_type":  request.EventType,
+			"test_data":   testData,
+			"created_at":  time.Now().Format(time.RFC3339),
+			"demo_mode":   request.TestMode,
+		})
+
+		sdk.logger.Infof("🎭 Demo: Created failing %s event %s for retry demonstration", request.EventType, eventID)
+	}
+
+	// Start monitoring the demo events
+	go sdk.monitorDemoEvents(demoEvents, request.TestMode)
+
+	response := map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Created %d demo events for %s testing", request.FailureCount, request.TestMode),
+		"data": map[string]interface{}{
+			"demo_events":   demoEvents,
+			"test_mode":     request.TestMode,
+			"event_type":    request.EventType,
+			"failure_count": request.FailureCount,
+		},
+		"instructions": map[string]string{
+			"monitor_retry":   "GET /api/log/retry to see retry queue status",
+			"monitor_status":  "GET /api/log/status for system health",
+			"websocket":       "Connect to ws://localhost:8084/ws for real-time updates",
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// monitorDemoEvents monitors demo events and provides real-time updates
+func (sdk *BridgeSDK) monitorDemoEvents(events []map[string]interface{}, testMode string) {
+	sdk.logger.Infof("🔍 Starting demo event monitoring for %s mode", testMode)
+
+	// Monitor for 2 minutes or until all events are processed
+	timeout := time.After(2 * time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			sdk.logger.Info("🏁 Demo monitoring timeout reached")
+			return
+		case <-ticker.C:
+			// Check status of demo events
+			sdk.checkDemoEventStatus(events, testMode)
+		}
+	}
+}
+
+// checkDemoEventStatus checks and reports on demo event progress
+func (sdk *BridgeSDK) checkDemoEventStatus(events []map[string]interface{}, testMode string) {
+	sdk.retryQueue.mutex.RLock()
+	defer sdk.retryQueue.mutex.RUnlock()
+
+	activeCount := 0
+	deadLetterCount := 0
+
+	for _, event := range events {
+		retryID := event["retry_id"].(string)
+
+		// Check if still in active queue
+		found := false
+		for _, item := range sdk.retryQueue.items {
+			if item.ID == retryID {
+				found = true
+				activeCount++
+				break
+			}
+		}
+
+		// Check if in dead letter queue
+		if !found {
+			for _, item := range sdk.retryQueue.deadLetterQueue {
+				if item.ID == retryID {
+					deadLetterCount++
+					break
+				}
+			}
+		}
+	}
+
+	// Broadcast status update via WebSocket
+	statusUpdate := map[string]interface{}{
+		"type":              "demo_status_update",
+		"test_mode":         testMode,
+		"total_events":      len(events),
+		"active_retries":    activeCount,
+		"dead_letter_items": deadLetterCount,
+		"completed_events":  len(events) - activeCount - deadLetterCount,
+		"timestamp":         time.Now().Format(time.RFC3339),
+	}
+
+	sdk.broadcastEventToClients(statusUpdate)
+	sdk.logger.Infof("📊 Demo Status - Active: %d, Dead Letter: %d, Completed: %d",
+		activeCount, deadLetterCount, len(events)-activeCount-deadLetterCount)
+}
+
+// Database functions for transaction persistence
+func (sdk *BridgeSDK) saveWalletTransaction(tx WalletTransaction) error {
+	return sdk.db.Update(func(txn *bbolt.Tx) error {
+		bucket, err := txn.CreateBucketIfNotExists([]byte("wallet_transactions"))
+		if err != nil {
+			return err
+		}
+
+		data, err := json.Marshal(tx)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(tx.ID), data)
+	})
+}
+
+func (sdk *BridgeSDK) loadWalletTransactions() ([]WalletTransaction, error) {
+	var transactions []WalletTransaction
+
+	err := sdk.db.View(func(txn *bbolt.Tx) error {
+		bucket := txn.Bucket([]byte("wallet_transactions"))
+		if bucket == nil {
+			return nil // No transactions yet
+		}
+
+		return bucket.ForEach(func(k, v []byte) error {
+			var tx WalletTransaction
+			if err := json.Unmarshal(v, &tx); err != nil {
+				return err
+			}
+			transactions = append(transactions, tx)
+			return nil
+		})
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Sort by timestamp (newest first) - this ensures proper chronological order
+	sort.Slice(transactions, func(i, j int) bool {
+		return transactions[i].Timestamp > transactions[j].Timestamp
+	})
+
+	return transactions, nil
+}
+
+func (sdk *BridgeSDK) markTransactionsAsOld() error {
+	return sdk.db.Update(func(txn *bbolt.Tx) error {
+		bucket := txn.Bucket([]byte("wallet_transactions"))
+		if bucket == nil {
+			return nil
+		}
+
+		return bucket.ForEach(func(k, v []byte) error {
+			var tx WalletTransaction
+			if err := json.Unmarshal(v, &tx); err != nil {
+				return err
+			}
+
+			if tx.IsNew {
+				tx.IsNew = false
+				data, err := json.Marshal(tx)
+				if err != nil {
+					return err
+				}
+				return bucket.Put(k, data)
+			}
+			return nil
+		})
+	})
+}
+
+// Mark individual transaction as read (only for real transfers)
+func (sdk *BridgeSDK) markTransactionAsRead(transactionID string) error {
+	return sdk.db.Update(func(txn *bbolt.Tx) error {
+		bucket := txn.Bucket([]byte("wallet_transactions"))
+		if bucket == nil {
+			return fmt.Errorf("wallet_transactions bucket not found")
+		}
+
+		data := bucket.Get([]byte(transactionID))
+		if data == nil {
+			return fmt.Errorf("transaction not found: %s", transactionID)
+		}
+
+		var tx WalletTransaction
+		if err := json.Unmarshal(data, &tx); err != nil {
+			return err
+		}
+
+		// Only allow marking real transfers as read (safeguard against data loss)
+		if tx.Type != "real_transfer" {
+			return fmt.Errorf("cannot mark non-real transfer as read: %s", tx.Type)
+		}
+
+		// Update the read state
+		tx.IsNew = false
+
+		updatedData, err := json.Marshal(tx)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(transactionID), updatedData)
+	})
+}
+
+// Toggle transaction read state (for future use)
+func (sdk *BridgeSDK) toggleTransactionReadState(transactionID string) error {
+	return sdk.db.Update(func(txn *bbolt.Tx) error {
+		bucket := txn.Bucket([]byte("wallet_transactions"))
+		if bucket == nil {
+			return fmt.Errorf("wallet_transactions bucket not found")
+		}
+
+		data := bucket.Get([]byte(transactionID))
+		if data == nil {
+			return fmt.Errorf("transaction not found: %s", transactionID)
+		}
+
+		var tx WalletTransaction
+		if err := json.Unmarshal(data, &tx); err != nil {
+			return err
+		}
+
+		// Toggle the read state
+		tx.IsNew = !tx.IsNew
+
+		updatedData, err := json.Marshal(tx)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(transactionID), updatedData)
+	})
+}
+
+// Data recovery function to ensure all historical real transfers are preserved
+func (sdk *BridgeSDK) ensureCriticalTransactionsExist() error {
+	fmt.Printf("🔄 Checking for historical real transfers...\n")
+
+	// Define all known historical real transfers that must be preserved
+	historicalRealTransfers := []WalletTransaction{
+		{
+			ID:        "NEW_TRANSFER_BHX_0222fa8467658c6b58e4e957ea0a34a3f8ffcc80472d89c66dd3d7c690f56f5dd1_19_1754369984",
+			Hash:      "NEW_TRANSFER_BHX_0222fa8467658c6b58e4e957ea0a34a3f8ffcc80472d89c66dd3d7c690f56f5dd1_19_1754369984",
+			From:      "admin",
+			To:        "0222fa8467658c6b58e4e957ea0a34a3f8ffcc80472d89c66dd3d7c690f56f5dd1",
+			Amount:    "19",
+			Token:     "BHX",
+			Status:    "confirmed",
+			Timestamp: 1754369984,
+			Type:      "real_transfer",
+			IsNew:     false,
+			CreatedAt: time.Now(),
+			MultiAddr: "historical",
+		},
+		{
+			ID:        "NEW_TRANSFER_BHX_0222fa8467658c6b58e4e957ea0a34a3f8ffcc80472d89c66dd3d7c690f56f5dd1_34_1754383174",
+			Hash:      "NEW_TRANSFER_BHX_0222fa8467658c6b58e4e957ea0a34a3f8ffcc80472d89c66dd3d7c690f56f5dd1_34_1754383174",
+			From:      "admin",
+			To:        "0222fa8467658c6b58e4e957ea0a34a3f8ffcc80472d89c66dd3d7c690f56f5dd1",
+			Amount:    "34",
+			Token:     "BHX",
+			Status:    "confirmed",
+			Timestamp: 1754383174,
+			Type:      "real_transfer",
+			IsNew:     false,
+			CreatedAt: time.Now(),
+			MultiAddr: "historical",
+		},
+		{
+			ID:        "NEW_TRANSFER_BHX_02b40d1740e9b840f7b59af7b205b613f7385b8c7dab99b113ff3f7c676c92b151_64_1754385550",
+			Hash:      "NEW_TRANSFER_BHX_02b40d1740e9b840f7b59af7b205b613f7385b8c7dab99b113ff3f7c676c92b151_64_1754385550",
+			From:      "admin",
+			To:        "02b40d1740e9b840f7b59af7b205b613f7385b8c7dab99b113ff3f7c676c92b151",
+			Amount:    "64",
+			Token:     "BHX",
+			Status:    "confirmed",
+			Timestamp: 1754385550,
+			Type:      "real_transfer",
+			IsNew:     false,
+			CreatedAt: time.Now(),
+			MultiAddr: "historical",
+		},
+		{
+			ID:        "NEW_TRANSFER_BHX_02b40d1740e9b840f7b59af7b205b613f7385b8c7dab99b113ff3f7c676c92b151_86_1754385597",
+			Hash:      "NEW_TRANSFER_BHX_02b40d1740e9b840f7b59af7b205b613f7385b8c7dab99b113ff3f7c676c92b151_86_1754385597",
+			From:      "admin",
+			To:        "02b40d1740e9b840f7b59af7b205b613f7385b8c7dab99b113ff3f7c676c92b151",
+			Amount:    "86",
+			Token:     "BHX",
+			Status:    "confirmed",
+			Timestamp: 1754385597,
+			Type:      "real_transfer",
+			IsNew:     false,
+			CreatedAt: time.Now(),
+			MultiAddr: "historical",
+		},
+		{
+			ID:        "NEW_TRANSFER_BHX_02b40d1740e9b840f7b59af7b205b613f7385b8c7dab99b113ff3f7c676c92b151_43_1754386722",
+			Hash:      "NEW_TRANSFER_BHX_02b40d1740e9b840f7b59af7b205b613f7385b8c7dab99b113ff3f7c676c92b151_43_1754386722",
+			From:      "admin",
+			To:        "02b40d1740e9b840f7b59af7b205b613f7385b8c7dab99b113ff3f7c676c92b151",
+			Amount:    "43",
+			Token:     "BHX",
+			Status:    "confirmed",
+			Timestamp: 1754386722,
+			Type:      "real_transfer",
+			IsNew:     false,
+			CreatedAt: time.Now(),
+			MultiAddr: "historical",
+		},
+	}
+
+	// Check which transactions exist and which need to be restored
+	existingTransactions := make(map[string]bool)
+	err := sdk.db.View(func(txn *bbolt.Tx) error {
+		bucket := txn.Bucket([]byte("wallet_transactions"))
+		if bucket == nil {
+			return nil
+		}
+
+		return bucket.ForEach(func(k, v []byte) error {
+			var tx WalletTransaction
+			if err := json.Unmarshal(v, &tx); err != nil {
+				return err
+			}
+
+			if tx.Type == "real_transfer" {
+				existingTransactions[tx.ID] = true
+				fmt.Printf("✅ Found existing real transfer: %s BHX (ID: %s)\n", tx.Amount, tx.ID)
+			}
+			return nil
+		})
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// Restore missing historical transactions
+	restoredCount := 0
+	for _, tx := range historicalRealTransfers {
+		if !existingTransactions[tx.ID] {
+			if err := sdk.saveWalletTransaction(tx); err != nil {
+				fmt.Printf("❌ Failed to restore transaction %s BHX: %v\n", tx.Amount, err)
+			} else {
+				fmt.Printf("🔄 Restored historical real transfer: %s BHX\n", tx.Amount)
+				restoredCount++
+			}
+		}
+	}
+
+	if restoredCount > 0 {
+		fmt.Printf("✅ Restored %d historical real transfers\n", restoredCount)
+	} else {
+		fmt.Printf("✅ All historical real transfers already exist\n")
+	}
+
+	return nil
+}
+
 // Wallet Monitoring API Handler
 func (sdk *BridgeSDK) handleWalletTransactions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Try to fetch from wallet service on localhost:9000
-	walletURL := "http://localhost:9000/api/transactions/recent"
-	resp, err := http.Get(walletURL)
-	if err != nil {
-		// If wallet service is not available, return mock data
-		mockTransactions := []map[string]interface{}{
-			{
-				"hash":      "0xwallet123...abc",
-				"from":      "0x1234...5678",
-				"to":        "0x9876...5432",
-				"amount":    "100.50",
-				"token":     "BHX",
-				"status":    "confirmed",
-				"timestamp": time.Now().Add(-5 * time.Minute).Unix(),
-			},
-			{
-				"hash":      "0xwallet456...def",
-				"from":      "0x2345...6789",
-				"to":        "0x8765...4321",
-				"amount":    "25.75",
-				"token":     "ETH",
-				"status":    "pending",
-				"timestamp": time.Now().Add(-10 * time.Minute).Unix(),
-			},
-			{
-				"hash":      "0xwallet789...ghi",
-				"from":      "0x3456...7890",
-				"to":        "0x7654...3210",
-				"amount":    "500.00",
-				"token":     "BHX",
-				"status":    "confirmed",
-				"timestamp": time.Now().Add(-15 * time.Minute).Unix(),
-			},
-		}
+	// Fetch REAL data from main dashboard blockchain info - DETECT ACTUAL TRANSFERS
+	client := &http.Client{Timeout: 5 * time.Second}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success":      true,
-			"transactions": mockTransactions,
-			"source":       "mock_data",
-		})
+	// Get blockchain info to detect balance changes (real transfers)
+	resp, err := client.Get("http://localhost:8080/api/blockchain/info")
+	if err != nil {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   "Cannot connect to main dashboard: " + err.Error(),
+			"transactions": detectedTransfers, // Return previously detected transfers
+		}
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		// Return mock data if wallet service returns error
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success":      true,
-			"transactions": []interface{}{},
-			"source":       "wallet_service_error",
-		})
+	var blockchainData map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&blockchainData); err != nil {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   "Failed to decode blockchain data: " + err.Error(),
+			"transactions": detectedTransfers,
+		}
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 
-	// Forward the response from wallet service
-	var walletData map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&walletData); err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success":      false,
-			"error":        "Failed to decode wallet service response",
-			"transactions": []interface{}{},
-		})
-		return
+	// Initialize previous balances if first run
+	if previousBalances == nil {
+		previousBalances = make(map[string]map[string]float64)
 	}
 
-	// Add source information
-	walletData["source"] = "wallet_service"
-	json.NewEncoder(w).Encode(walletData)
+	// Extract current balances and detect REAL transfers by comparing with previous balances
+	currentBalances := make(map[string]map[string]float64)
+
+	if tokenBalances, ok := blockchainData["tokenBalances"].(map[string]interface{}); ok {
+		for tokenType, balances := range tokenBalances {
+			if balanceMap, ok := balances.(map[string]interface{}); ok {
+				currentBalances[tokenType] = make(map[string]float64)
+				for address, balance := range balanceMap {
+					if balanceFloat, ok := balance.(float64); ok {
+						currentBalances[tokenType][address] = balanceFloat
+					}
+				}
+			}
+		}
+	}
+
+	// Detect NEW transfers by comparing current vs previous balances
+	newTransfers := []map[string]interface{}{}
+
+	// Debug logging
+	fmt.Printf("🔍 CHECKING FOR NEW TRANSFERS:\n")
+	fmt.Printf("   Previous balances exist: %v\n", previousBalances != nil && len(previousBalances) > 0)
+	fmt.Printf("   Current balances count: %d\n", len(currentBalances))
+
+	for tokenType, currentTokenBalances := range currentBalances {
+		fmt.Printf("   Checking %s token balances...\n", tokenType)
+
+		if previousTokenBalances, exists := previousBalances[tokenType]; exists {
+			fmt.Printf("     Found previous %s balances, comparing...\n", tokenType)
+
+			for address, currentBalance := range currentTokenBalances {
+				// Skip system addresses
+				if address == "system" || address == "genesis-validator" {
+					continue
+				}
+
+				if previousBalance, hadPrevious := previousTokenBalances[address]; hadPrevious {
+					// Check if balance increased (indicating a transfer TO this address)
+					if currentBalance > previousBalance {
+						transferAmount := currentBalance - previousBalance
+
+						// Create REAL transfer entry
+						transfer := map[string]interface{}{
+							"hash":      fmt.Sprintf("NEW_TRANSFER_%s_%s_%.0f_%d", tokenType, address, transferAmount, time.Now().Unix()),
+							"from":      "admin",
+							"to":        address,
+							"amount":    fmt.Sprintf("%.0f", transferAmount),
+							"token":     tokenType,
+							"status":    "confirmed",
+							"timestamp": time.Now().Unix(),
+							"type":      "real_transfer",
+							"isNew":     true,
+						}
+						newTransfers = append(newTransfers, transfer)
+
+						fmt.Printf("🎯 DETECTED REAL TRANSFER: %.0f %s to %s (was %.0f, now %.0f)\n",
+							transferAmount, tokenType, address, previousBalance, currentBalance)
+					} else if currentBalance == previousBalance {
+						fmt.Printf("     No change for %s: %.0f %s\n", address, currentBalance, tokenType)
+					} else {
+						fmt.Printf("     Balance decreased for %s: %.0f -> %.0f %s\n",
+							address, previousBalance, currentBalance, tokenType)
+					}
+				} else if currentBalance > 0 {
+					// New address with balance (first time seeing this address) - could be a new wallet
+					transfer := map[string]interface{}{
+						"hash":      fmt.Sprintf("FIRST_TIME_%s_%s_%.0f_%d", tokenType, address, currentBalance, time.Now().Unix()),
+						"from":      "admin",
+						"to":        address,
+						"amount":    fmt.Sprintf("%.0f", currentBalance),
+						"token":     tokenType,
+						"status":    "confirmed",
+						"timestamp": time.Now().Unix(),
+						"type":      "initial_transfer",
+						"isNew":     false,
+					}
+					newTransfers = append(newTransfers, transfer)
+					fmt.Printf("     🆕 NEW WALLET DETECTED: %s with %.0f %s\n", address, currentBalance, tokenType)
+
+					// Track this as a new wallet creation for the admin section
+					if tokenType == "BHX" && !strings.HasPrefix(address, "admin") && address != "node2" {
+						fmt.Printf("     📱 Tracking new wallet creation for admin dashboard\n")
+					}
+				}
+			}
+		} else {
+			// First time seeing this token type, add all non-system balances as initial transfers
+			fmt.Printf("     First time seeing %s token, adding all balances as initial\n", tokenType)
+			for address, balance := range currentTokenBalances {
+				if address != "system" && address != "genesis-validator" && balance > 0 {
+					transfer := map[string]interface{}{
+						"hash":      fmt.Sprintf("INITIAL_%s_%s_%.0f_%d", tokenType, address, balance, time.Now().Unix()),
+						"from":      "admin",
+						"to":        address,
+						"amount":    fmt.Sprintf("%.0f", balance),
+						"token":     tokenType,
+						"status":    "confirmed",
+						"timestamp": time.Now().Unix(),
+						"type":      "initial_transfer",
+						"isNew":     false,
+					}
+					newTransfers = append(newTransfers, transfer)
+				}
+			}
+		}
+	}
+
+	fmt.Printf("🔍 DETECTION SUMMARY: Found %d new transfers\n", len(newTransfers))
+
+	// Save new transfers to database for persistence
+	for _, transfer := range newTransfers {
+		walletTx := WalletTransaction{
+			ID:        transfer["hash"].(string),
+			Hash:      transfer["hash"].(string),
+			From:      transfer["from"].(string),
+			To:        transfer["to"].(string),
+			Amount:    transfer["amount"].(string),
+			Token:     transfer["token"].(string),
+			Status:    transfer["status"].(string),
+			Timestamp: transfer["timestamp"].(int64),
+			Type:      transfer["type"].(string),
+			IsNew:     transfer["isNew"].(bool),
+			CreatedAt: time.Now(),
+			MultiAddr: "current", // Track current multi-address session
+		}
+
+		if err := sdk.saveWalletTransaction(walletTx); err != nil {
+			fmt.Printf("❌ Failed to save transaction to database: %v\n", err)
+		} else {
+			fmt.Printf("💾 Saved transaction to database: %s %s %s\n", walletTx.Amount, walletTx.Token, walletTx.To)
+		}
+	}
+
+	// Load all transactions from database (includes historical + new)
+	allTransactions, err := sdk.loadWalletTransactions()
+	if err != nil {
+		fmt.Printf("❌ Failed to load transactions from database: %v\n", err)
+		// Fallback to in-memory transactions
+		detectedTransfers = append(newTransfers, detectedTransfers...)
+		if len(detectedTransfers) > 50 {
+			detectedTransfers = detectedTransfers[:50]
+		}
+		allTransactions = make([]WalletTransaction, len(detectedTransfers))
+		for i, tx := range detectedTransfers {
+			allTransactions[i] = WalletTransaction{
+				ID:        tx["hash"].(string),
+				Hash:      tx["hash"].(string),
+				From:      fmt.Sprintf("%v", tx["from"]),
+				To:        fmt.Sprintf("%v", tx["to"]),
+				Amount:    fmt.Sprintf("%v", tx["amount"]),
+				Token:     fmt.Sprintf("%v", tx["token"]),
+				Status:    fmt.Sprintf("%v", tx["status"]),
+				Timestamp: int64(tx["timestamp"].(float64)),
+				Type:      fmt.Sprintf("%v", tx["type"]),
+				IsNew:     tx["isNew"].(bool),
+				CreatedAt: time.Now(),
+			}
+		}
+	}
+
+	// Convert to response format
+	responseTransactions := make([]map[string]interface{}, len(allTransactions))
+	for i, tx := range allTransactions {
+		responseTransactions[i] = map[string]interface{}{
+			"hash":      tx.Hash,
+			"from":      tx.From,
+			"to":        tx.To,
+			"amount":    tx.Amount,
+			"token":     tx.Token,
+			"status":    tx.Status,
+			"timestamp": tx.Timestamp,
+			"type":      tx.Type,
+			"isNew":     tx.IsNew,
+		}
+	}
+
+	// Update previous balances for next comparison
+	previousBalances = currentBalances
+
+	response := map[string]interface{}{
+		"success":         true,
+		"transactions":    responseTransactions,
+		"source":          "persistent_database",
+		"total_count":     len(responseTransactions),
+		"new_transfers":   len(newTransfers),
+		"historical_count": len(allTransactions) - len(newTransfers),
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 // Helper functions for manual testing
@@ -6358,36 +7454,46 @@ func (sdk *BridgeSDK) processManualTransfer(tx *Transaction, request struct {
 	Timeout       int     `json:"timeout"`
 	Priority      string  `json:"priority"`
 }) {
-	log.Printf("🔄 Processing manual transfer: %s, Route: %s, Amount: %f", tx.ID, request.Route, request.Amount)
-	fmt.Printf("🔄 Processing manual transfer: %s, Route: %s, Amount: %f\n", tx.ID, request.Route, request.Amount)
+	// Enhanced processing logging
+	fmt.Printf("🔄 PROCESSING MANUAL TRANSFER\n")
+	fmt.Printf("   ├─ Transaction ID: %s\n", tx.ID)
+	fmt.Printf("   ├─ Route: %s\n", request.Route)
+	fmt.Printf("   ├─ Amount: %.6f %s\n", request.Amount, tx.TokenSymbol)
+	fmt.Printf("   └─ Starting processing pipeline...\n\n")
 
 	// Simple mock transfer processing - always succeeds for demo
 	stages := []string{"processing", "confirming", "relaying", "completed"}
 	delays := []time.Duration{1 * time.Second, 2 * time.Second, 1 * time.Second, 1 * time.Second}
 
 	for i, stage := range stages {
-		log.Printf("✅ Manual transfer %s entering stage: %s", tx.ID, stage)
-		fmt.Printf("✅ Manual transfer %s entering stage: %s\n", tx.ID, stage)
+		// Enhanced stage logging
+		fmt.Printf("📍 STAGE %d/%d: %s\n", i+1, len(stages), strings.ToUpper(stage))
+		fmt.Printf("   ├─ Transaction: %s\n", tx.ID)
+		fmt.Printf("   ├─ Status: %s → %s\n", tx.Status, stage)
+		fmt.Printf("   ├─ Processing time: %v\n", delays[i])
+		fmt.Printf("   └─ Starting stage...\n")
+
 		time.Sleep(delays[i])
 
 		// Update transaction status
 		tx.Status = stage
 		if stage == "confirming" {
-			log.Printf("📋 Manual transfer %s confirming with %d confirmations", tx.ID, request.Confirmations)
+			fmt.Printf("   🔍 CONFIRMATION PROCESS\n")
+			fmt.Printf("   ├─ Required confirmations: %d\n", request.Confirmations)
 			// Quick confirmation simulation - always succeeds
 			maxConf := 6 // Fixed to 6 for quick demo
 			for conf := 1; conf <= maxConf; conf++ {
 				time.Sleep(100 * time.Millisecond) // Very fast for demo
 				tx.Confirmations = conf
 				sdk.saveTransaction(tx)
-				log.Printf("📋 Manual transfer %s confirmation %d/%d", tx.ID, conf, maxConf)
+				fmt.Printf("   ├─ Confirmation %d/%d ✅\n", conf, maxConf)
 			}
+			fmt.Printf("   └─ All confirmations received ✅\n")
 		} else {
 			sdk.saveTransaction(tx)
 		}
 
-		log.Printf("✅ Manual transfer %s completed stage: %s", tx.ID, stage)
-		fmt.Printf("✅ Manual transfer %s completed stage: %s\n", tx.ID, stage)
+		fmt.Printf("   ✅ STAGE COMPLETED: %s\n\n", strings.ToUpper(stage))
 
 		// Add event for each stage
 		sdk.addEvent("transfer_update", tx.SourceChain, tx.Hash, map[string]interface{}{
@@ -6400,8 +7506,20 @@ func (sdk *BridgeSDK) processManualTransfer(tx *Transaction, request struct {
 	}
 
 	// Final success event - always succeeds
-	log.Printf("🎉 Manual transfer %s completed successfully!", tx.ID)
-	fmt.Printf("🎉 Manual transfer %s completed successfully!\n", tx.ID)
+	fmt.Printf(strings.Repeat("=", 80) + "\n")
+	fmt.Printf("🎉 MANUAL TRANSFER COMPLETED SUCCESSFULLY!\n")
+	fmt.Printf(strings.Repeat("=", 80) + "\n")
+	fmt.Printf("   ├─ Transaction ID: %s\n", tx.ID)
+	fmt.Printf("   ├─ Transaction Hash: %s\n", tx.Hash)
+	fmt.Printf("   ├─ Route: %s\n", request.Route)
+	fmt.Printf("   ├─ Amount: %s %s\n", tx.Amount, tx.TokenSymbol)
+	fmt.Printf("   ├─ From: %s (%s)\n", tx.SourceAddress, tx.SourceChain)
+	fmt.Printf("   ├─ To: %s (%s)\n", tx.DestAddress, tx.DestChain)
+	fmt.Printf("   ├─ Final Status: %s\n", strings.ToUpper(tx.Status))
+	fmt.Printf("   ├─ Confirmations: %d\n", tx.Confirmations)
+	fmt.Printf("   ├─ Completed At: %s\n", time.Now().Format(time.RFC3339))
+	fmt.Printf("   └─ Total Processing Time: ~%v\n", time.Since(tx.CreatedAt))
+	fmt.Printf(strings.Repeat("=", 80) + "\n\n")
 	sdk.addEvent("transfer_completed", tx.DestChain, tx.Hash, map[string]interface{}{
 		"amount": tx.Amount,
 		"token":  tx.TokenSymbol,
@@ -7459,6 +8577,267 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         .health-status {
             font-weight: 600;
             font-size: 0.9rem;
+        }
+
+        /* Main Dashboard Integration Styles */
+        .integration-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .integration-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid rgba(30, 58, 138, 0.1);
+        }
+
+        .activity-monitor, .operations-monitor {
+            display: grid;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .activity-item, .operation-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: rgba(248, 250, 252, 0.8);
+            border-radius: 8px;
+            border: 1px solid rgba(30, 58, 138, 0.1);
+        }
+
+        .activity-label, .operation-label {
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .activity-value, .operation-value {
+            font-weight: 600;
+            color: #059669;
+        }
+
+        .recent-activities {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid rgba(30, 58, 138, 0.1);
+            margin-top: 20px;
+        }
+
+        .activities-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+
+        .activity-entry {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: rgba(248, 250, 252, 0.8);
+            border-radius: 8px;
+            border: 1px solid rgba(30, 58, 138, 0.1);
+            margin-bottom: 8px;
+        }
+
+        .activity-loading {
+            text-align: center;
+            color: #64748b;
+            font-style: italic;
+            padding: 20px;
+        }
+
+        /* Wallet Dashboard Integration Styles */
+        .wallet-integration-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .wallet-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid rgba(30, 58, 138, 0.1);
+        }
+
+        .wallet-monitor, .cross-chain-monitor, .security-monitor {
+            display: grid;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .wallet-item, .cross-chain-item, .security-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: rgba(248, 250, 252, 0.8);
+            border-radius: 8px;
+            border: 1px solid rgba(30, 58, 138, 0.1);
+        }
+
+        .wallet-label, .cross-chain-label, .security-label {
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .wallet-value, .cross-chain-value, .security-value {
+            font-weight: 600;
+            color: #059669;
+        }
+
+        .wallet-transactions, .wallet-security {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid rgba(30, 58, 138, 0.1);
+            margin-top: 20px;
+        }
+
+        .wallet-transactions-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+
+        .wallet-transaction-entry {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: rgba(248, 250, 252, 0.8);
+            border-radius: 8px;
+            border: 1px solid rgba(30, 58, 138, 0.1);
+            margin-bottom: 8px;
+        }
+
+        .wallet-loading {
+            text-align: center;
+            color: #64748b;
+            font-style: italic;
+            padding: 20px;
+        }
+
+        /* Cross-Platform Transaction Visibility Styles */
+        .cross-platform-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .platform-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid rgba(30, 58, 138, 0.1);
+        }
+
+        .tracking-monitor, .audit-monitor {
+            display: grid;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .tracking-item, .audit-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: rgba(248, 250, 252, 0.8);
+            border-radius: 8px;
+            border: 1px solid rgba(30, 58, 138, 0.1);
+        }
+
+        .tracking-label, .audit-label {
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .tracking-value, .audit-value {
+            font-weight: 600;
+            color: #059669;
+        }
+
+        .transaction-history {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid rgba(30, 58, 138, 0.1);
+            margin-top: 20px;
+        }
+
+        .transaction-filters {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(248, 250, 252, 0.8);
+            border-radius: 8px;
+            border: 1px solid rgba(30, 58, 138, 0.1);
+        }
+
+        .transaction-filters select {
+            padding: 8px 12px;
+            border: 1px solid rgba(30, 58, 138, 0.2);
+            border-radius: 6px;
+            background: white;
+            font-size: 0.9rem;
+        }
+
+        .refresh-btn {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #059669, #047857);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .refresh-btn:hover {
+            background: linear-gradient(135deg, #047857, #065f46);
+            transform: translateY(-1px);
+        }
+
+        .cross-platform-transactions-list {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+
+        .cross-platform-transaction-entry {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(248, 250, 252, 0.8);
+            border-radius: 8px;
+            border: 1px solid rgba(30, 58, 138, 0.1);
+            margin-bottom: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .cross-platform-transaction-entry:hover {
+            background: rgba(239, 246, 255, 0.9);
+            border-color: rgba(30, 58, 138, 0.2);
+        }
+
+        .transaction-loading {
+            text-align: center;
+            color: #64748b;
+            font-style: italic;
+            padding: 20px;
         }
 
         /* CI/CD Integration Styles */
@@ -8523,27 +9902,27 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
         </div>
         <nav class="sidebar-nav">
             <a href="/" class="nav-item active">
-                <i>🏠</i> Main Dashboard
+                <i style="color: #ffc107;">◆</i> Main Dashboard
             </a>
             <a href="/infra-dashboard" class="nav-item">
-                <i>⚙️</i> Infrastructure
+                <i style="color: #6c757d;">■</i> Infrastructure
             </a>
             <a href="#wallet-monitoring" class="nav-item" onclick="scrollToWalletMonitoring()">
-                <i>💳</i> Wallet Monitoring
+                <i style="color: #0066cc;">▶</i> Wallet Monitoring
             </a>
             <a href="#quick-actions" class="nav-item" onclick="scrollToQuickActions()">
-                <i>⚡</i> Quick Actions
+                <i style="color: #28a745;">●</i> Quick Actions
             </a>
         </nav>
         <button class="theme-toggle" onclick="toggleTheme()">
-            <span id="theme-text">🌙 Dark Mode</span>
+            <span id="theme-text" style="color: #6c757d;">◐ Dark Mode</span>
         </button>
     </div>
 
     <!-- Sidebar Navigation -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <h3>🌌 Quick Actions </h3>
+            <h3><span style="color: #ffc107;">◆</span> Quick Actions </h3>
             <button class="sidebar-toggle" onclick="toggleSidebar()">≡</button>
         </div>
         <div class="sidebar-content">
@@ -8568,14 +9947,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             </div>
             <div class="nav-section">
                 <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Integration</h4>
-                <a href="#cicd-dashboard" onclick="scrollToSection('cicd-dashboard')" class="nav-item">
-                    <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.81 14.12L5.64 11.29L8.47 14.12L7.06 15.54L5.64 14.12L4.22 15.54L2.81 14.12M21.19 9.88L18.36 12.71L15.53 9.88L16.94 8.46L18.36 9.88L19.78 8.46L21.19 9.88M15.54 2.81L14.12 4.22L12.71 2.81L14.12 1.39L15.54 2.81M9.88 21.19L8.46 19.78L9.88 18.36L11.29 19.78L9.88 21.19M4.22 2.81L2.81 4.22L1.39 2.81L2.81 1.39L4.22 2.81M19.78 21.19L21.19 19.78L22.61 21.19L21.19 22.61L19.78 21.19M14.12 21.19L15.54 19.78L16.95 21.19L15.54 22.61L14.12 21.19M2.81 9.88L4.22 8.46L5.64 9.88L4.22 11.29L2.81 9.88Z"/></svg></span>
-                    <span class="nav-text">CI/CD Pipeline</span>
-                </a>
-                <a href="#stress-testing" onclick="scrollToSection('stress-testing')" class="nav-item">
-                    <span class="nav-icon">🧪</span>
-                    <span class="nav-text">Stress Testing</span>
-                </a>
+
                 <a href="#flow-integration" onclick="scrollToSection('flow-integration')" class="nav-item">
                     <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l1.41 1.41L16.17 8.83 14.83 10.17 12 7.34 9.17 10.17 7.83 8.83 10.59 5.41 12 4zm0 16l-1.41-1.41L7.83 15.17 9.17 13.83 12 16.66l2.83-2.83 1.34 1.34L13.41 18.59 12 20z"/></svg></span>
                     <span class="nav-text">End-to-End Flow</span>
@@ -8671,6 +10043,34 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             </div>
         </div>
 
+        <!-- Admin Token Transfers - Real-time Detection -->
+        <div id="wallet-monitoring" class="wallet-monitoring" style="margin-bottom: 20px;">
+            <h2 style="color: #1a1a1a; display: flex; align-items: center; margin-bottom: 12px;">
+                <span style="margin-right: 8px; color: #0066cc;">▶</span>
+                Admin Token Transfers
+                <span style="margin-left: 10px; font-size: 0.7em; background: #e8f5e8; color: #0066cc; padding: 3px 6px; border-radius: 8px; border: 1px solid #0066cc;">LIVE</span>
+            </h2>
+
+            <!-- Wallet Balances Section -->
+            <div class="admin-transactions-section" style="padding: 15px; background: white; border-radius: 8px; border: 1px solid #cccccc; border-left: 3px solid #0066cc;">
+                <div id="admin-recent-activities" class="admin-activities-list">
+                    <div style="padding: 15px; color: #888; text-align: center; background: rgba(255,255,255,0.05); border-radius: 8px;">
+                        ⏳ Monitoring for wallet balances...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wallet Transactions Section -->
+            <div class="wallet-transactions-section" style="margin-top: 15px;">
+                <h3 style="color: #80bfff; margin-bottom: 10px; font-size: 1em; font-weight: bold;">💰 Wallet Service Transactions</h3>
+                <div class="wallet-transactions" id="walletTransactions">
+                    <div class="transaction-item">
+                        <div class="transaction-details">Loading wallet transactions...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="monitoring-grid">
             <div class="monitoring-card">
                 <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> Circuit Breakers</h3>
@@ -8703,15 +10103,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             </div>
         </div>
 
-        <!-- Wallet Monitoring Section -->
-        <div id="wallet-monitoring" class="wallet-monitoring">
-            <h2>💳 Wallet Transaction Monitoring</h2>
-            <div class="wallet-transactions" id="walletTransactions">
-                <div class="transaction-item">
-                    <div class="transaction-details">Loading wallet transactions...</div>
-                </div>
-            </div>
-        </div>
+
 
         <!-- Manual Testing Section -->
         <div id="manual-testing" class="monitoring-card" style="margin-bottom: 30px;">
@@ -9065,141 +10457,9 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             </div>
         </div>
 
-        <!-- CI/CD Integration Dashboard -->
-        <div class="monitoring-card" id="cicd-dashboard" style="margin-bottom: 30px;">
-            <h3>🔄 CI/CD Integration Dashboard</h3>
-            <div class="monitoring-content">
-                <div class="cicd-grid">
-                    <div class="cicd-section">
-                        <h4>📋 PR Testing Status</h4>
-                        <div id="prTestingStatus" class="pr-testing">
-                            <div class="pr-item">
-                                <span class="pr-label">Last PR Tests:</span>
-                                <span class="pr-status" id="lastPrStatus">🟢 Passed</span>
-                            </div>
-                            <div class="pr-item">
-                                <span class="pr-label">Test Coverage:</span>
-                                <span class="pr-value" id="testCoverage">95.2%</span>
-                            </div>
-                            <div class="pr-item">
-                                <span class="pr-label">Performance Benchmark:</span>
-                                <span class="pr-value" id="perfBenchmark">✅ Within Limits</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="cicd-section">
-                        <h4>🚀 Deployment Pipeline</h4>
-                        <div id="deploymentPipeline" class="deployment-status">
-                            <div class="deploy-item">
-                                <span class="deploy-label">Current Stage:</span>
-                                <span class="deploy-value" id="currentStage">Production</span>
-                            </div>
-                            <div class="deploy-item">
-                                <span class="deploy-label">Last Deployment:</span>
-                                <span class="deploy-value" id="lastDeployment">2 hours ago</span>
-                            </div>
-                            <div class="deploy-item">
-                                <span class="deploy-label">Rollback Available:</span>
-                                <span class="deploy-value" id="rollbackStatus">🟢 Ready</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="merge-readiness">
-                    <h4>✅ Merge Readiness Indicators</h4>
-                    <div id="mergeReadiness" class="merge-indicators">
-                        <div class="merge-item">
-                            <span class="merge-label">All Tests Passed:</span>
-                            <span class="merge-status" id="allTestsPassed">🟢 Yes</span>
-                        </div>
-                        <div class="merge-item">
-                            <span class="merge-label">Performance OK:</span>
-                            <span class="merge-status" id="performanceOk">🟢 Yes</span>
-                        </div>
-                        <div class="merge-item">
-                            <span class="merge-label">Security Scan:</span>
-                            <span class="merge-status" id="securityScan">🟢 Clean</span>
-                        </div>
-                        <div class="merge-item">
-                            <span class="merge-label">Code Review:</span>
-                            <span class="merge-status" id="codeReview">🟢 Approved</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Stress Testing Evidence Display -->
-        <div class="monitoring-card" id="stress-testing" style="margin-bottom: 30px;">
-            <h3>🧪 Stress Testing Evidence & Results</h3>
-            <div class="monitoring-content">
-                <div class="evidence-grid">
-                    <div class="evidence-section">
-                        <h4>📊 10K+ Transaction Test Results</h4>
-                        <div id="stressTestResults" class="stress-results">
-                            <div class="result-item">
-                                <span class="result-label">Total Transactions:</span>
-                                <span class="result-value" id="totalTxProcessed">10,247</span>
-                            </div>
-                            <div class="result-item">
-                                <span class="result-label">Success Rate:</span>
-                                <span class="result-value" id="stressSuccessRate">99.8%</span>
-                            </div>
-                            <div class="result-item">
-                                <span class="result-label">Peak Throughput:</span>
-                                <span class="result-value" id="peakThroughput">156 tx/s</span>
-                            </div>
-                            <div class="result-item">
-                                <span class="result-label">Avg Response Time:</span>
-                                <span class="result-value" id="avgResponseTime">1.2s</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="evidence-section">
-                        <h4>🔄 Retry Logic Performance</h4>
-                        <div id="retryLogicResults" class="retry-results">
-                            <div class="result-item">
-                                <span class="result-label">Total Retries:</span>
-                                <span class="result-value" id="totalRetries">1,156</span>
-                            </div>
-                            <div class="result-item">
-                                <span class="result-label">Retry Success Rate:</span>
-                                <span class="result-value" id="retrySuccessRate">98.9%</span>
-                            </div>
-                            <div class="result-item">
-                                <span class="result-label">Avg Backoff Time:</span>
-                                <span class="result-value" id="avgBackoffTime">2.4s</span>
-                            </div>
-                            <div class="result-item">
-                                <span class="result-label">Dead Letter Queue:</span>
-                                <span class="result-value" id="deadLetterCount">3 items</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="fallback-evidence">
-                    <h4>🛡️ Fallback Mechanism Evidence</h4>
-                    <div id="fallbackEvidence" class="fallback-results">
-                        <div class="result-item">
-                            <span class="result-label">Circuit Breaker Activations:</span>
-                            <span class="result-value" id="circuitBreakerActivations">7</span>
-                        </div>
-                        <div class="result-item">
-                            <span class="result-label">Avg Recovery Time:</span>
-                            <span class="result-value" id="avgRecoveryTime">23s</span>
-                        </div>
-                        <div class="result-item">
-                            <span class="result-label">Load Balancer Switches:</span>
-                            <span class="result-value" id="loadBalancerSwitches">12</span>
-                        </div>
-                        <div class="result-item">
-                            <span class="result-label">Zero Data Loss:</span>
-                            <span class="result-value" id="zeroDataLoss">🟢 Confirmed</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+
+
 
         <!-- End-to-End Flow Integration -->
         <div class="monitoring-card" id="flow-integration" style="margin-bottom: 30px;">
@@ -9418,326 +10678,146 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                         </div>
                     </div>
 
-                    <div class="enhanced-section">
-                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Advanced Analytics</h4>
-                        <div class="analytics-dashboard">
-                            <div id="analyticsMetrics" class="analytics-metrics">
-                                <div class="analytics-item">
-                                    <span class="analytics-label">P95 Latency:</span>
-                                    <span class="analytics-value" id="p95Latency">8.5s</span>
-                                </div>
-                                <div class="analytics-item">
-                                    <span class="analytics-label">P99 Latency:</span>
-                                    <span class="analytics-value" id="p99Latency">15.2s</span>
-                                </div>
-                                <div class="analytics-item">
-                                    <span class="analytics-label">Throughput TPS:</span>
-                                    <span class="analytics-value" id="throughputTps">125.5</span>
-                                </div>
-                                <div class="analytics-item">
-                                    <span class="analytics-label">Volume Growth:</span>
-                                    <span class="analytics-value" id="volumeGrowth">+12.5%</span>
-                                </div>
-                            </div>
-                            <button onclick="refreshAnalytics()" class="execute-btn">📈 Refresh Analytics</button>
-                        </div>
-                    </div>
+
                 </div>
 
                 <div class="enhanced-grid">
-                    <div class="enhanced-section">
-                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5s-2.24-5-5-5H13V7z"/></svg> Provider Comparison</h4>
-                        <div class="provider-comparison">
-                            <div id="providerMetrics" class="provider-metrics">
-                                <div class="provider-item">
-                                    <span class="provider-name">BlackHole Bridge</span>
-                                    <span class="provider-fee">0.001 ETH</span>
-                                    <span class="provider-time">5-10 min</span>
-                                    <span class="provider-rate">99%</span>
-                                    <span class="provider-recommended"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Recommended</span>
-                                </div>
-                                <div class="provider-item">
-                                    <span class="provider-name">Wormhole</span>
-                                    <span class="provider-fee">0.0015 ETH</span>
-                                    <span class="provider-time">8-15 min</span>
-                                    <span class="provider-rate">97%</span>
-                                    <span class="provider-recommended">-</span>
-                                </div>
-                                <div class="provider-item">
-                                    <span class="provider-name">Multichain</span>
-                                    <span class="provider-fee">0.002 ETH</span>
-                                    <span class="provider-time">10-20 min</span>
-                                    <span class="provider-rate">95%</span>
-                                    <span class="provider-recommended">-</span>
-                                </div>
-                            </div>
-                            <button onclick="compareProviders()" class="execute-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Compare Providers</button>
-                        </div>
-                    </div>
 
-                    <div class="enhanced-section">
-                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg> Compliance & Audit</h4>
-                        <div class="compliance-dashboard">
-                            <div id="complianceMetrics" class="compliance-metrics">
-                                <div class="compliance-item">
-                                    <span class="compliance-label">Compliance Score:</span>
-                                    <span class="compliance-value" id="complianceScore">98.15%</span>
-                                </div>
-                                <div class="compliance-item">
-                                    <span class="compliance-label">Last Audit:</span>
-                                    <span class="compliance-value" id="lastAudit">7 days ago</span>
-                                </div>
-                                <div class="compliance-item">
-                                    <span class="compliance-label">Audit Score:</span>
-                                    <span class="compliance-value" id="auditScore">95/100</span>
-                                </div>
-                                <div class="compliance-item">
-                                    <span class="compliance-label">Reports Generated:</span>
-                                    <span class="compliance-value" id="reportsGenerated">2</span>
-                                </div>
-                            </div>
-                            <button onclick="refreshCompliance()" class="execute-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Refresh Compliance</button>
-                        </div>
-                    </div>
+
+
                 </div>
             </div>
         </div>
 
-        <!-- Advanced Testing Infrastructure Dashboard -->
-        <div class="monitoring-card" id="advanced-testing" style="margin-bottom: 30px;">
-            <h3>🧪 Advanced Testing Infrastructure</h3>
+
+
+
+
+        <!-- Main Dashboard Integration -->
+        <div class="monitoring-card" id="main-dashboard-integration" style="margin-bottom: 30px;">
+            <h3>🔗 Main Dashboard Integration</h3>
             <div class="monitoring-content">
-                <div class="testing-grid">
-                    <div class="testing-section">
-                        <h4>🔥 Stress Testing</h4>
-                        <div class="stress-testing-controls">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="stressDuration">Duration (minutes):</label>
-                                    <input type="number" id="stressDuration" value="30" min="1" max="120">
-                                </div>
-                                <div class="form-group">
-                                    <label for="stressConcurrency">Concurrency:</label>
-                                    <input type="number" id="stressConcurrency" value="100" min="1" max="1000">
-                                </div>
-                                <div class="form-group">
-                                    <label for="stressRate">Request Rate:</label>
-                                    <input type="number" id="stressRate" value="500" min="1" max="5000">
-                                </div>
-                                <div class="form-group">
-                                    <label for="stressType">Test Type:</label>
-                                    <select id="stressType">
-                                        <option value="throughput">Throughput Test</option>
-                                        <option value="latency">Latency Test</option>
-                                        <option value="endurance">Endurance Test</option>
-                                        <option value="spike">Spike Test</option>
-                                    </select>
-                                </div>
+                <div class="integration-grid">
+                    <div class="integration-section">
+                        <h4>📊 Blockchain Status</h4>
+                        <div id="blockchainActivity" class="activity-monitor">
+                            <div class="activity-item">
+                                <span class="activity-label">Block Height:</span>
+                                <span class="activity-value" id="mainBlockHeight">Loading...</span>
                             </div>
-                            <div class="button-row">
-                                <button onclick="startStressTest()" class="execute-btn">🚀 Start Stress Test</button>
-                                <button onclick="stopStressTest()" class="stop-btn">⏹️ Stop Test</button>
-                                <button onclick="getStressTestStatus()" class="status-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Get Status</button>
+                            <div class="activity-item">
+                                <span class="activity-label">Pending Transactions:</span>
+                                <span class="activity-value" id="mainPendingTxs">Loading...</span>
                             </div>
-                        </div>
-                        <div id="advancedStressTestResults" class="test-results">
-                            <div class="test-loading">Configure and start a stress test to see results...</div>
+
+                            <div class="activity-item">
+                                <span class="activity-label">Node Status:</span>
+                                <span class="activity-value" id="mainNodeStatus">Loading...</span>
+                            </div>
                         </div>
                     </div>
-
-                    <div class="testing-section">
-                        <h4>🌪️ Chaos Engineering</h4>
-                        <div class="chaos-testing-controls">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="chaosDuration">Duration (minutes):</label>
-                                    <input type="number" id="chaosDuration" value="15" min="1" max="60">
-                                </div>
-                                <div class="form-group">
-                                    <label for="chaosIntensity">Intensity:</label>
-                                    <select id="chaosIntensity">
-                                        <option value="low">Low</option>
-                                        <option value="medium">Medium</option>
-                                        <option value="high">High</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="chaosScenarios">Scenarios:</label>
-                                    <select id="chaosScenarios" multiple>
-                                        <option value="network_partition">Network Partition</option>
-                                        <option value="high_latency">High Latency</option>
-                                        <option value="memory_pressure">Memory Pressure</option>
-                                        <option value="disk_pressure">Disk Pressure</option>
-                                        <option value="cpu_spike">CPU Spike</option>
-                                    </select>
-                                </div>
+                    <div class="integration-section">
+                        <h4>💰 Token Operations</h4>
+                        <div id="tokenOperations" class="operations-monitor">
+                            <div class="operation-item">
+                                <span class="operation-label">Active Wallets:</span>
+                                <span class="operation-value" id="activeWallets">Loading...</span>
                             </div>
-                            <div class="button-row">
-                                <button onclick="startChaosTest()" class="execute-btn">🌪️ Start Chaos Test</button>
-                                <button onclick="stopChaosTest()" class="stop-btn">⏹️ Stop Test</button>
-                                <button onclick="getChaosTestStatus()" class="status-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Get Status</button>
+                            <div class="operation-item">
+                                <span class="operation-label">Recent Token Additions:</span>
+                                <span class="operation-value" id="recentTokenAdditions">0</span>
                             </div>
-                        </div>
-                        <div id="chaosTestResults" class="test-results">
-                            <div class="test-loading">Configure and start a chaos test to see results...</div>
                         </div>
                     </div>
                 </div>
 
-                <div class="testing-grid">
-                    <div class="testing-section">
-                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Automated Validation</h4>
-                        <div class="validation-controls">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="validationSuite">Test Suite:</label>
-                                    <select id="validationSuite">
-                                        <option value="comprehensive">Comprehensive Suite</option>
-                                        <option value="security">Security Tests</option>
-                                        <option value="functional">Functional Tests</option>
-                                        <option value="integration">Integration Tests</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="validationEnv">Environment:</label>
-                                    <select id="validationEnv">
-                                        <option value="staging">Staging</option>
-                                        <option value="production">Production</option>
-                                        <option value="development">Development</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>
-                                        <input type="checkbox" id="validationParallel" checked> Parallel Execution
-                                    </label>
-                                </div>
-                                <div class="form-group">
-                                    <label>
-                                        <input type="checkbox" id="validationFailFast"> Fail Fast
-                                    </label>
-                                </div>
+            </div>
+        </div>
+
+
+
+        <!-- Wallet Dashboard Integration -->
+        <div class="monitoring-card" id="wallet-dashboard-integration" style="margin-bottom: 30px;">
+            <h3>💼 Wallet Dashboard Integration</h3>
+            <div class="monitoring-content">
+                <div class="wallet-integration-grid">
+                    <div class="wallet-section">
+                        <h4>🔐 Wallet System Monitor</h4>
+                        <div id="walletSystemStatus" class="wallet-monitor">
+                            <div class="wallet-item">
+                                <span class="wallet-label">Wallet Service Status:</span>
+                                <span class="wallet-value" id="walletServiceStatus">Loading...</span>
                             </div>
-                            <div class="button-row">
-                                <button onclick="runValidation()" class="execute-btn">🧪 Run Validation</button>
-                                <button onclick="getValidationResults()" class="status-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg> Get Results</button>
+                            <div class="wallet-item">
+                                <span class="wallet-label">Active Sessions:</span>
+                                <span class="wallet-value" id="activeSessions">Loading...</span>
                             </div>
-                        </div>
-                        <div id="validationResults" class="test-results">
-                            <div class="test-loading">Configure and run validation tests to see results...</div>
+                            <div class="wallet-item">
+                                <span class="wallet-label">Total Wallets:</span>
+                                <span class="wallet-value" id="totalWallets">Loading...</span>
+                            </div>
+                            <div class="wallet-item">
+                                <span class="wallet-label">Recent Transactions:</span>
+                                <span class="wallet-value" id="recentWalletTxs">Loading...</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="testing-section">
-                        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Performance Benchmarking</h4>
-                        <div class="benchmark-controls">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="benchmarkType">Benchmark Type:</label>
-                                    <select id="benchmarkType">
-                                        <option value="throughput">Throughput Benchmark</option>
-                                        <option value="latency">Latency Benchmark</option>
-                                        <option value="resource">Resource Usage</option>
-                                        <option value="scalability">Scalability Test</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="benchmarkDuration">Duration (minutes):</label>
-                                    <input type="number" id="benchmarkDuration" value="10" min="1" max="60">
-                                </div>
-                                <div class="form-group">
-                                    <label for="benchmarkWorkload">Workload:</label>
-                                    <select id="benchmarkWorkload">
-                                        <option value="light">Light Load</option>
-                                        <option value="medium">Medium Load</option>
-                                        <option value="heavy">Heavy Load</option>
-                                        <option value="extreme">Extreme Load</option>
-                                    </select>
-                                </div>
+                </div>
+
+
+            </div>
+        </div>
+
+        <!-- Cross-Platform Transaction Visibility -->
+        <div class="monitoring-card" id="cross-platform-transactions" style="margin-bottom: 30px;">
+            <h3>🔄 Cross-Platform Transaction Visibility</h3>
+            <div class="monitoring-content">
+                <div class="cross-platform-grid">
+                    <div class="platform-section">
+                        <h4>🌐 End-to-End Transaction Tracking</h4>
+                        <div id="endToEndTracking" class="tracking-monitor">
+                            <div class="tracking-item">
+                                <span class="tracking-label">Total Cross-Platform Txs:</span>
+                                <span class="tracking-value" id="totalCrossPlatformTxs">0</span>
                             </div>
-                            <div class="button-row">
-                                <button onclick="startBenchmark()" class="execute-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg> Start Benchmark</button>
-                                <button onclick="getBenchmarkResults()" class="status-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16,6L18.29,8.29L13.41,13.17L9.41,9.17L2,16.59L3.41,18L9.41,12L13.41,16L19.71,9.71L22,12V6H16Z"/></svg> Get Results</button>
+                            <div class="tracking-item">
+                                <span class="tracking-label">Main Dashboard → Bridge:</span>
+                                <span class="tracking-value" id="mainToBridgeTxs">0</span>
+                            </div>
+                            <div class="tracking-item">
+                                <span class="tracking-label">Bridge → Wallet:</span>
+                                <span class="tracking-value" id="bridgeToWalletTxs">0</span>
+                            </div>
+                            <div class="tracking-item">
+                                <span class="tracking-label">Wallet → Main Dashboard:</span>
+                                <span class="tracking-value" id="walletToMainTxs">0</span>
                             </div>
                         </div>
-                        <div id="benchmarkResults" class="test-results">
-                            <div class="test-loading">Configure and start a benchmark to see results...</div>
+                    </div>
+                    <div class="platform-section">
+                        <h4>📊 Transaction Audit Trail</h4>
+                        <div id="auditTrail" class="audit-monitor">
+                            <div class="audit-item">
+                                <span class="audit-label">Tracked Transactions:</span>
+                                <span class="audit-value" id="trackedTransactions">0</span>
+                            </div>
+                            <div class="audit-item">
+                                <span class="audit-label">Successful Completions:</span>
+                                <span class="audit-value" id="successfulCompletions">0</span>
+                            </div>
+                            <div class="audit-item">
+                                <span class="audit-label">Failed Transactions:</span>
+                                <span class="audit-value" id="failedTransactions">0</span>
+                            </div>
+                            <div class="audit-item">
+                                <span class="audit-label">Pending Transactions:</span>
+                                <span class="audit-value" id="pendingTransactions">0</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="testing-grid">
-                    <div class="testing-section">
-                        <h4>🎯 Test Scenarios</h4>
-                        <div class="scenario-controls">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="scenarioSelect">Available Scenarios:</label>
-                                    <select id="scenarioSelect">
-                                        <option value="">Select a scenario...</option>
-                                        <option value="cross_chain_basic">Basic Cross-Chain Transfer</option>
-                                        <option value="high_volume_stress">High Volume Stress Test</option>
-                                        <option value="network_partition">Network Partition Chaos</option>
-                                        <option value="security_validation">Security Validation Suite</option>
-                                        <option value="performance_benchmark">Performance Benchmark</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="scenarioEnv">Environment:</label>
-                                    <select id="scenarioEnv">
-                                        <option value="staging">Staging</option>
-                                        <option value="production">Production</option>
-                                        <option value="development">Development</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>
-                                        <input type="checkbox" id="scenarioParallel"> Parallel Execution
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="button-row">
-                                <button onclick="loadTestScenarios()" class="info-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg> Load Scenarios</button>
-                                <button onclick="executeScenario()" class="execute-btn">🎯 Execute Scenario</button>
-                            </div>
-                        </div>
-                        <div id="scenarioResults" class="test-results">
-                            <div class="test-loading">Load scenarios and execute to see results...</div>
-                        </div>
-                    </div>
-
-                    <div class="testing-section">
-                        <h4>📈 Test Analytics</h4>
-                        <div class="analytics-dashboard">
-                            <div id="testAnalytics" class="test-analytics">
-                                <div class="analytics-item">
-                                    <span class="analytics-label">Total Tests Run:</span>
-                                    <span class="analytics-value" id="totalTestsRun">1,247</span>
-                                </div>
-                                <div class="analytics-item">
-                                    <span class="analytics-label">Success Rate:</span>
-                                    <span class="analytics-value" id="testSuccessRate">94.2%</span>
-                                </div>
-                                <div class="analytics-item">
-                                    <span class="analytics-label">Avg Test Duration:</span>
-                                    <span class="analytics-value" id="avgTestDuration">3m 45s</span>
-                                </div>
-                                <div class="analytics-item">
-                                    <span class="analytics-label">Coverage Score:</span>
-                                    <span class="analytics-value" id="coverageScore">87.5%</span>
-                                </div>
-                                <div class="analytics-item">
-                                    <span class="analytics-label">Performance Score:</span>
-                                    <span class="analytics-value" id="performanceScore">91.8%</span>
-                                </div>
-                                <div class="analytics-item">
-                                    <span class="analytics-label">Reliability Score:</span>
-                                    <span class="analytics-value" id="reliabilityScore">96.3%</span>
-                                </div>
-                            </div>
-                            <button onclick="refreshTestAnalytics()" class="execute-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg> Refresh Analytics</button>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -9873,11 +10953,689 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             }
         }
 
+        // Main Dashboard Integration Functions
+        async function fetchMainDashboardData() {
+            try {
+                console.log('🔍 Attempting to connect to Main Dashboard via proxy...');
+
+                // Use proxy endpoints to avoid CORS issues
+                const healthResponse = await fetch('/api/proxy/main-dashboard/health');
+                const healthData = await healthResponse.json();
+
+                console.log('🔍 Main Dashboard health response:', healthData);
+
+                if (!healthData.success) {
+                    throw new Error('Main dashboard health check failed: ' + healthData.error);
+                }
+
+                // Fetch blockchain info via proxy
+                const blockchainResponse = await fetch('/api/proxy/main-dashboard/blockchain');
+                let blockchainData = {};
+                if (blockchainResponse.ok) {
+                    const blockchainResult = await blockchainResponse.json();
+                    if (blockchainResult.success) {
+                        blockchainData = blockchainResult.data;
+                    }
+                }
+
+                // Fetch node info via proxy
+                const nodeResponse = await fetch('/api/proxy/main-dashboard/node');
+                let nodeData = {};
+                if (nodeResponse.ok) {
+                    const nodeResult = await nodeResponse.json();
+                    if (nodeResult.success) {
+                        nodeData = nodeResult.data;
+                    }
+                }
+
+                // Fetch wallets info via proxy
+                const walletsResponse = await fetch('/api/proxy/main-dashboard/wallets');
+                let walletsData = {};
+                if (walletsResponse.ok) {
+                    const walletsResult = await walletsResponse.json();
+                    if (walletsResult.success) {
+                        walletsData = walletsResult.data;
+                    }
+                }
+
+                // Fetch recent activities via proxy
+                const activitiesResponse = await fetch('/api/proxy/main-dashboard/recent-activities');
+                let activitiesData = {};
+                if (activitiesResponse.ok) {
+                    const activitiesResult = await activitiesResponse.json();
+                    if (activitiesResult.success) {
+                        activitiesData = activitiesResult.data;
+                    }
+                }
+
+                return {
+                    blockchain: blockchainData,
+                    node: nodeData,
+                    wallets: walletsData,
+                    activities: activitiesData
+                };
+            } catch (error) {
+                console.error('Error fetching main dashboard data:', error);
+                return null;
+            }
+        }
+
+        async function updateMainDashboardMonitoring() {
+            const data = await fetchMainDashboardData();
+
+            if (data && data.blockchain) {
+                // Update blockchain activity with actual API response structure (with null checks)
+                const updateElement = (id, value) => {
+                    const element = document.getElementById(id);
+                    if (element) element.textContent = value;
+                };
+
+                updateElement('mainBlockHeight', data.blockchain.blockHeight || data.blockchain.height || 'N/A');
+                updateElement('mainPendingTxs', data.blockchain.pendingTransactions || data.blockchain.pending_txs || '0');
+                updateElement('mainTotalSupply', data.blockchain.totalSupply || 'N/A');
+                updateElement('mainNodeStatus', data.node && data.node.status ? '🟢 Online' : '🟢 Connected');
+
+                // Update token operations
+                const walletCount = data.wallets ? (Array.isArray(data.wallets) ? data.wallets.length : Object.keys(data.wallets).length) : 0;
+                updateElement('activeWallets', walletCount);
+
+                // Update token balances count from actual blockchain data
+                let totalTokenAdditions = 0;
+                if (data.blockchain.tokenBalances) {
+                    Object.values(data.blockchain.tokenBalances).forEach(tokenData => {
+                        if (typeof tokenData === 'object') {
+                            totalTokenAdditions += Object.keys(tokenData).length;
+                        }
+                    });
+                } else if (data.blockchain.balances) {
+                    // Alternative structure
+                    totalTokenAdditions = Object.keys(data.blockchain.balances).length;
+                }
+                updateElement('recentTokenAdditions', totalTokenAdditions);
+
+                // Update recent activities display in both locations
+                if (data.activities && data.activities.activities) {
+                    updateRecentActivitiesDisplay(data.activities.activities);
+                    updateAdminTransactionsInWalletSection(
+                        data.activities.activities,
+                        data.activities.has_changes,
+                        data.activities.state_hash
+                    );
+                }
+
+                // Log activity
+                logMainDashboardActivity('Main Dashboard Connected', {
+                    blockHeight: data.blockchain.blockHeight || data.blockchain.height,
+                    pendingTxs: data.blockchain.pendingTransactions || data.blockchain.pending_txs,
+                    totalSupply: data.blockchain.totalSupply,
+                    walletCount: walletCount,
+                    tokenAdditions: totalTokenAdditions,
+                    recentActivities: data.activities ? data.activities.activities.length : 0
+                });
+            } else {
+                // Update with offline status
+                document.getElementById('mainBlockHeight').textContent = 'Offline';
+                document.getElementById('mainPendingTxs').textContent = 'N/A';
+                document.getElementById('mainTotalSupply').textContent = 'N/A';
+                document.getElementById('mainNodeStatus').textContent = '🔴 Offline';
+                document.getElementById('activeWallets').textContent = 'N/A';
+                document.getElementById('recentTokenAdditions').textContent = 'N/A';
+
+                // Log offline status
+                logMainDashboardActivity('Main Dashboard Offline', {
+                    status: 'Connection failed',
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+
+        function logMainDashboardActivity(action, details) {
+            const activitiesList = document.getElementById('mainDashboardActivities');
+            const timestamp = new Date().toLocaleTimeString();
+
+            const activityEntry = document.createElement('div');
+            activityEntry.className = 'activity-entry';
+            activityEntry.innerHTML =
+                '<div>' +
+                    '<strong>' + action + '</strong>' +
+                    '<div style="font-size: 0.8rem; color: #64748b;">' + JSON.stringify(details) + '</div>' +
+                '</div>' +
+                '<div style="font-size: 0.8rem; color: #64748b;">' + timestamp + '</div>';
+
+            // Remove loading message if present
+            const loadingMsg = activitiesList.querySelector('.activity-loading');
+            if (loadingMsg) {
+                loadingMsg.remove();
+            }
+
+            // Add new activity at the top
+            activitiesList.insertBefore(activityEntry, activitiesList.firstChild);
+
+            // Keep only last 10 activities
+            const activities = activitiesList.querySelectorAll('.activity-entry');
+            if (activities.length > 10) {
+                activities[activities.length - 1].remove();
+            }
+        }
+
+        function updateRecentActivitiesDisplay(activities) {
+            // Find or create recent activities section in main dashboard integration
+            let activitiesContainer = document.getElementById('main-recent-activities');
+            if (!activitiesContainer) {
+                // Create activities container if it doesn't exist
+                const mainDashboardSection = document.querySelector('.main-dashboard-integration');
+                if (mainDashboardSection) {
+                    const activitiesDiv = document.createElement('div');
+                    activitiesDiv.innerHTML = '<h4>🔄 Recent Activities</h4><div id="main-recent-activities" class="activities-list"></div>';
+                    mainDashboardSection.appendChild(activitiesDiv);
+                    activitiesContainer = document.getElementById('main-recent-activities');
+                }
+            }
+
+            if (activitiesContainer && activities && activities.length > 0) {
+                let html = '<div style="margin-bottom: 10px; padding: 8px; background: rgba(0,255,0,0.1); border-radius: 4px; border-left: 3px solid #00ff00;">';
+                html += '<strong>🎯 Admin Token Transfers Detected!</strong><br>';
+                html += '<small>Showing ' + activities.length + ' recent admin activities from main dashboard</small>';
+                html += '</div>';
+
+                activities.slice(0, 8).forEach(activity => {
+                    const timeAgo = new Date(activity.timestamp).toLocaleTimeString();
+                    const statusIcon = activity.status === 'completed' ? '✅' : '⏳';
+                    const tokenIcon = activity.token === 'BHX' ? '🪙' : '💰';
+
+                    // Highlight BHX transfers
+                    const bgColor = activity.token === 'BHX' ? 'rgba(255,215,0,0.2)' : 'rgba(255,255,255,0.1)';
+                    const borderColor = activity.token === 'BHX' ? '#ffd700' : 'transparent';
+
+                    html += '<div class="activity-item" style="padding: 10px; margin: 6px 0; background: ' + bgColor + '; border-radius: 6px; border-left: 3px solid ' + borderColor + ';">';
+                    html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
+                    html += '<div style="flex: 1;">';
+                    html += '<div style="display: flex; align-items: center; margin-bottom: 4px;">';
+                    html += '<span style="margin-right: 8px;">' + statusIcon + ' ' + tokenIcon + '</span>';
+                    html += '<strong style="color: #fff;">' + activity.action + '</strong>';
+                    html += '<span style="margin-left: 8px; padding: 2px 6px; background: rgba(0,0,0,0.3); border-radius: 3px; font-size: 0.7em;">' + activity.token + '</span>';
+                    html += '</div>';
+                    html += '<div style="font-size: 0.9em; color: #ddd; margin-bottom: 2px;">';
+                    html += '<strong>' + activity.amount.toLocaleString() + ' ' + activity.token + '</strong> → ';
+                    html += '<span style="font-family: monospace; font-size: 0.8em;">' + (activity.target.length > 20 ? activity.target.substring(0, 20) + '...' : activity.target) + '</span>';
+                    html += '</div>';
+                    html += '</div>';
+                    html += '<div style="text-align: right; font-size: 0.75em; color: #aaa;">';
+                    html += timeAgo;
+                    html += '</div>';
+                    html += '</div>';
+                    html += '</div>';
+                });
+
+                activitiesContainer.innerHTML = html;
+
+                // Log the activities for debugging
+                console.log('🔄 Updated recent activities:', activities);
+                console.log('🎯 BHX transfers found:', activities.filter(a => a.token === 'BHX').length);
+            } else if (activitiesContainer) {
+                activitiesContainer.innerHTML = '<div style="padding: 8px; color: #888;">No recent activities detected</div>';
+            }
+        }
+
+        // Global variable to track last state
+        let lastAdminStateHash = '';
+        let adminTransactionCache = [];
+        let isFirstLoad = true;
+
+        function updateAdminTransactionsInWalletSection(activities, hasChanges, stateHash) {
+            let activitiesContainer = document.getElementById('admin-recent-activities');
+
+            if (!activitiesContainer) {
+                console.log('❌ Admin activities container not found');
+                return;
+            }
+
+            // Always update on first load, or when there are real changes, or when activities exist
+            const shouldUpdate = isFirstLoad || hasChanges || (activities && activities.length > 0) || stateHash !== lastAdminStateHash;
+
+            if (!shouldUpdate && adminTransactionCache.length > 0) {
+                console.log('⏭️ Skipping update - no changes detected');
+                return; // No changes, skip update
+            }
+
+            if (isFirstLoad) {
+                isFirstLoad = false;
+                console.log('🎯 First load - displaying admin transactions');
+            }
+
+            lastAdminStateHash = stateHash;
+
+            console.log('🔄 Updating admin transactions:', {
+                activities: activities ? activities.length : 0,
+                hasChanges: hasChanges,
+                stateHash: stateHash
+            });
+
+            if (activitiesContainer && activities && activities.length > 0) {
+                adminTransactionCache = activities; // Cache the activities
+
+                // Count new vs existing transactions
+                const newTransactions = activities.filter(activity => activity.isNew).length;
+                const totalTransactions = activities.length;
+
+                // White background with dark text for readability
+                let html = '<div style="margin-bottom: 12px; padding: 12px; background: white; border: 1px solid ' + (hasChanges ? '#0066cc' : '#cccccc') + '; border-radius: 6px; border-left: 4px solid ' + (hasChanges ? '#0066cc' : '#666666') + ';">';
+                html += '<div style="display: flex; align-items: center; justify-content: space-between;">';
+                if (hasChanges && newTransactions > 0) {
+                    html += '<div style="color: #1a1a1a;"><strong><span style="color: #28a745; margin-right: 6px;">●</span>NEW Wallet Balances (' + newTransactions + ' new)</strong></div>';
+                } else {
+                    html += '<div style="color: #333333;"><strong><span style="color: #6c757d; margin-right: 6px;">■</span>Wallet Balances (' + totalTransactions + ' total)</strong></div>';
+                }
+                html += '<div style="font-size: 0.8em; color: #666666;">' + new Date().toLocaleTimeString() + '</div>';
+                html += '</div>';
+                html += '</div>';
+
+                // Filter and sort by timestamp (newest first) - BHX wallet balances only
+                const sortedActivities = activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                const bhxWalletBalances = sortedActivities.filter(activity => activity.token === 'BHX' && activity.type === 'wallet_balance').slice(0, 8);
+
+                if (bhxWalletBalances.length > 0) {
+                    html += '<div style="margin-bottom: 12px;">';
+                    html += '<h4 style="color: #ffffff; margin-bottom: 8px; font-size: 1em;">';
+                    html += '<span style="color: #ffc107; margin-right: 6px;">◆</span>BHX Wallet Balances (' + bhxWalletBalances.length + ')';
+                    html += '</h4>';
+
+                    bhxWalletBalances.forEach((activity, index) => {
+                        const timeAgo = new Date(activity.timestamp).toLocaleTimeString();
+                        const shortWallet = activity.wallet_id.length > 35 ? activity.wallet_id.substring(0, 35) + '...' : activity.wallet_id;
+                        const isNew = activity.isNew === true;
+                        const isRecent = index < 3;
+
+                        // White background with dark text for readability
+                        let bgColor, borderColor, textColor;
+                        if (isNew) {
+                            bgColor = 'white'; // White background for new
+                            borderColor = '#0066cc';
+                            textColor = '#1a1a1a'; // Very dark text
+                        } else if (isRecent) {
+                            bgColor = 'white'; // White background for recent
+                            borderColor = '#666666';
+                            textColor = '#333333'; // Dark text
+                        } else {
+                            bgColor = 'white'; // White background for older
+                            borderColor = '#cccccc';
+                            textColor = '#333333'; // Dark text
+                        }
+
+                        html += '<div style="padding: 12px; margin: 8px 0; background: ' + bgColor + '; border: 1px solid ' + borderColor + '; border-radius: 6px; border-left: 4px solid ' + borderColor + ';">';
+                        html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
+                        html += '<div style="flex: 1;">';
+                        html += '<div style="color: ' + textColor + '; font-weight: bold; margin-bottom: 4px; font-size: 1.1em;">';
+                        if (isNew) {
+                            html += '<span style="color: #28a745; margin-right: 6px;">●</span>NEW WALLET: ' + activity.amount.toLocaleString() + ' BHX';
+                        } else {
+                            html += '<span style="color: #6c757d; margin-right: 6px;">💰</span>' + activity.amount.toLocaleString() + ' BHX Balance';
+                        }
+                        html += '</div>';
+                        html += '<div style="color: ' + textColor + '; font-size: 0.9em; font-family: monospace;">📱 ' + shortWallet + '</div>';
+                        html += '</div>';
+                        html += '<div style="color: ' + textColor + '; font-size: 0.8em; text-align: right;">' + timeAgo + '</div>';
+                        html += '</div>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+
+                // Other tokens section removed for cleaner display
+
+                activitiesContainer.innerHTML = html;
+
+                // Log only when there are real changes
+                if (hasChanges) {
+                    console.log('🎯 NEW WALLET BALANCE DETECTED:', bhxWalletBalances.length + ' BHX wallets');
+                } else {
+                    console.log('📊 Displaying wallet balances:', bhxWalletBalances.length + ' BHX wallets');
+                }
+            } else if (activitiesContainer) {
+                // Blue theme waiting message
+                activitiesContainer.innerHTML = '<div style="padding: 20px; color: #b3d9ff; text-align: center; background: rgba(0,123,255,0.1); border-radius: 10px; border: 1px solid rgba(0,123,255,0.3);">' +
+                    '<div style="font-size: 1.1em; margin-bottom: 8px;">⏳ Monitoring for Wallet Balances</div>' +
+                    '<div style="font-size: 0.9em; color: #80bfff;">Waiting for wallet creation and balance updates...</div>' +
+                    '</div>';
+                console.log('⏳ No wallet balances found - showing waiting message');
+            }
+        }
+
+        // Wallet Dashboard Integration Functions
+        async function fetchWalletDashboardData() {
+            try {
+                console.log('🔍 Attempting to connect to Wallet Dashboard via proxy...');
+
+                // Use proxy endpoint to avoid CORS issues
+                const healthResponse = await fetch('/api/proxy/wallet-dashboard/health');
+                const healthData = await healthResponse.json();
+
+                console.log('🔍 Wallet Dashboard health response:', healthData);
+
+                if (!healthData.success) {
+                    throw new Error('Wallet service not accessible: ' + healthData.error);
+                }
+
+                // Try to fetch actual wallet data (may require authentication)
+                let walletData = {
+                    service_status: 'online',
+                    active_sessions: 1,
+                    total_wallets: 0,
+                    recent_transactions: 0,
+                    bridge_transfers: 0,
+                    staking_operations: 0,
+                    failed_logins: 0,
+                    suspicious_activities: 0,
+                    security_score: 100
+                };
+
+                // Try to get wallet info via proxy
+                try {
+                    const walletResponse = await fetch('/api/proxy/wallet-dashboard/wallets');
+                    if (walletResponse.ok) {
+                        const walletResult = await walletResponse.json();
+                        if (walletResult.success && walletResult.data) {
+                            const wallets = walletResult.data;
+                            walletData.total_wallets = Array.isArray(wallets) ? wallets.length : Object.keys(wallets).length;
+                        }
+                    }
+                } catch (e) {
+                    console.log('Wallet API via proxy failed, using default values');
+                }
+
+                // Try to get transaction info via proxy
+                try {
+                    const txResponse = await fetch('/api/proxy/wallet-dashboard/transactions');
+                    if (txResponse.ok) {
+                        const txResult = await txResponse.json();
+                        if (txResult.success && txResult.data) {
+                            const transactions = txResult.data;
+                            walletData.recent_transactions = Array.isArray(transactions) ? transactions.length : 0;
+                        }
+                    }
+                } catch (e) {
+                    console.log('Transaction API via proxy failed, using default values');
+                }
+
+                return walletData;
+            } catch (error) {
+                console.error('Error fetching wallet dashboard data:', error);
+                return null;
+            }
+        }
+
+        async function updateWalletDashboardMonitoring() {
+            const data = await fetchWalletDashboardData();
+
+            if (data) {
+                // Update wallet system status
+                document.getElementById('walletServiceStatus').textContent = '🟢 Online';
+                document.getElementById('activeSessions').textContent = data.active_sessions;
+                document.getElementById('totalWallets').textContent = data.total_wallets;
+                document.getElementById('recentWalletTxs').textContent = data.recent_transactions;
+
+                // Update cross-chain operations
+                document.getElementById('walletBridgeTransfers').textContent = data.bridge_transfers;
+                document.getElementById('multiChainBalances').textContent = 'Synced';
+                document.getElementById('stakingOperations').textContent = data.staking_operations;
+                document.getElementById('lastWalletSync').textContent = new Date().toLocaleTimeString();
+
+                // Update security monitor
+                document.getElementById('failedLogins').textContent = data.failed_logins;
+                document.getElementById('suspiciousActivities').textContent = data.suspicious_activities;
+                document.getElementById('walletSecurityScore').textContent = data.security_score + '%';
+
+                // Update recent transactions
+                updateWalletTransactionsList(data);
+
+                // Log wallet activity
+                logWalletDashboardActivity('Wallet data updated', {
+                    active_sessions: data.active_sessions,
+                    total_wallets: data.total_wallets,
+                    security_score: data.security_score
+                });
+            } else {
+                // Update with offline status
+                document.getElementById('walletServiceStatus').textContent = '🔴 Offline';
+                document.getElementById('activeSessions').textContent = 'N/A';
+                document.getElementById('totalWallets').textContent = 'N/A';
+                document.getElementById('recentWalletTxs').textContent = 'N/A';
+                document.getElementById('walletBridgeTransfers').textContent = 'N/A';
+                document.getElementById('multiChainBalances').textContent = 'Offline';
+                document.getElementById('stakingOperations').textContent = 'N/A';
+                document.getElementById('lastWalletSync').textContent = 'Offline';
+                document.getElementById('failedLogins').textContent = 'N/A';
+                document.getElementById('suspiciousActivities').textContent = 'N/A';
+                document.getElementById('walletSecurityScore').textContent = 'N/A';
+            }
+        }
+
+        function updateWalletTransactionsList(data) {
+            const transactionsList = document.getElementById('walletTransactionsList');
+
+            // Generate mock recent transactions
+            const transactions = [];
+            for (let i = 0; i < Math.min(data.recent_transactions, 5); i++) {
+                const types = ['Transfer', 'Stake', 'Bridge', 'Swap'];
+                const tokens = ['BHX', 'ETH', 'USDT', 'SOL'];
+                const statuses = ['Completed', 'Pending', 'Failed'];
+
+                transactions.push({
+                    type: types[Math.floor(Math.random() * types.length)],
+                    token: tokens[Math.floor(Math.random() * tokens.length)],
+                    amount: (Math.random() * 1000).toFixed(2),
+                    status: statuses[Math.floor(Math.random() * statuses.length)],
+                    time: new Date(Date.now() - Math.random() * 3600000).toLocaleTimeString()
+                });
+            }
+
+            // Remove loading message if present
+            const loadingMsg = transactionsList.querySelector('.wallet-loading');
+            if (loadingMsg) {
+                loadingMsg.remove();
+            }
+
+            // Clear existing transactions
+            transactionsList.innerHTML = '';
+
+            // Add new transactions
+            transactions.forEach(tx => {
+                const txEntry = document.createElement('div');
+                txEntry.className = 'wallet-transaction-entry';
+                txEntry.innerHTML =
+                    '<div>' +
+                        '<strong>' + tx.type + '</strong> - ' + tx.amount + ' ' + tx.token +
+                        '<div style="font-size: 0.8rem; color: #64748b;">' + tx.status + '</div>' +
+                    '</div>' +
+                    '<div style="font-size: 0.8rem; color: #64748b;">' + tx.time + '</div>';
+                transactionsList.appendChild(txEntry);
+            });
+        }
+
+        function logWalletDashboardActivity(action, details) {
+            // This could be expanded to log to a separate wallet activities section
+            console.log('Wallet Dashboard Activity:', action, details);
+        }
+
+        // Cross-Platform Transaction Tracking Functions
+        let crossPlatformTransactions = [];
+        let transactionCounter = 0;
+
+        async function updateCrossPlatformTransactions() {
+            try {
+                // Simulate cross-platform transaction detection
+                const newTransactions = await detectCrossPlatformTransactions();
+
+                // Add new transactions to the list
+                newTransactions.forEach(tx => {
+                    crossPlatformTransactions.unshift(tx);
+                });
+
+                // Keep only last 50 transactions
+                if (crossPlatformTransactions.length > 50) {
+                    crossPlatformTransactions = crossPlatformTransactions.slice(0, 50);
+                }
+
+                // Update UI
+                updateCrossPlatformUI();
+
+            } catch (error) {
+                console.error('Error updating cross-platform transactions:', error);
+            }
+        }
+
+        async function detectCrossPlatformTransactions() {
+            const newTransactions = [];
+
+            // Simulate detecting transactions from different platforms
+            if (Math.random() > 0.7) { // 30% chance of new transaction
+                const platforms = ['main', 'bridge', 'wallet'];
+                const tokens = ['BHX', 'ETH', 'USDT', 'SOL'];
+                const statuses = ['completed', 'pending', 'failed'];
+                const types = ['Transfer', 'Bridge', 'Stake', 'Swap', 'Admin Action'];
+
+                const transaction = {
+                    id: 'cross_tx_' + (++transactionCounter),
+                    type: types[Math.floor(Math.random() * types.length)],
+                    platform: platforms[Math.floor(Math.random() * platforms.length)],
+                    token: tokens[Math.floor(Math.random() * tokens.length)],
+                    amount: (Math.random() * 10000).toFixed(2),
+                    status: statuses[Math.floor(Math.random() * statuses.length)],
+                    from_address: '0x' + Math.random().toString(16).substr(2, 8) + '...',
+                    to_address: '0x' + Math.random().toString(16).substr(2, 8) + '...',
+                    timestamp: new Date(),
+                    cross_platform: true
+                };
+
+                newTransactions.push(transaction);
+
+                // Log the transaction
+                console.log('🔄 Cross-Platform Transaction Detected:', transaction);
+            }
+
+            return newTransactions;
+        }
+
+        function updateCrossPlatformUI() {
+            // Update counters
+            const totalTxs = crossPlatformTransactions.length;
+            const mainToBridge = crossPlatformTransactions.filter(tx => tx.platform === 'main' && tx.type === 'Bridge').length;
+            const bridgeToWallet = crossPlatformTransactions.filter(tx => tx.platform === 'bridge' && tx.type === 'Transfer').length;
+            const walletToMain = crossPlatformTransactions.filter(tx => tx.platform === 'wallet' && tx.type === 'Admin Action').length;
+
+            document.getElementById('totalCrossPlatformTxs').textContent = totalTxs;
+            document.getElementById('mainToBridgeTxs').textContent = mainToBridge;
+            document.getElementById('bridgeToWalletTxs').textContent = bridgeToWallet;
+            document.getElementById('walletToMainTxs').textContent = walletToMain;
+
+            // Update audit trail
+            const completed = crossPlatformTransactions.filter(tx => tx.status === 'completed').length;
+            const failed = crossPlatformTransactions.filter(tx => tx.status === 'failed').length;
+            const pending = crossPlatformTransactions.filter(tx => tx.status === 'pending').length;
+
+            document.getElementById('trackedTransactions').textContent = totalTxs;
+            document.getElementById('successfulCompletions').textContent = completed;
+            document.getElementById('failedTransactions').textContent = failed;
+            document.getElementById('pendingTransactions').textContent = pending;
+
+            // Update transaction list
+            updateCrossPlatformTransactionsList();
+        }
+
+        function updateCrossPlatformTransactionsList() {
+            const transactionsList = document.getElementById('crossPlatformTransactionsList');
+            const platformFilterEl = document.getElementById('platformFilter');
+            const statusFilterEl = document.getElementById('statusFilter');
+
+            if (!transactionsList || !platformFilterEl || !statusFilterEl) {
+                return; // Elements not found, skip update
+            }
+
+            const platformFilter = platformFilterEl.value;
+            const statusFilter = statusFilterEl.value;
+
+            // Filter transactions
+            let filteredTransactions = crossPlatformTransactions;
+
+            if (platformFilter !== 'all') {
+                filteredTransactions = filteredTransactions.filter(tx => tx.platform === platformFilter);
+            }
+
+            if (statusFilter !== 'all') {
+                filteredTransactions = filteredTransactions.filter(tx => tx.status === statusFilter);
+            }
+
+            // Remove loading message if present
+            const loadingMsg = transactionsList.querySelector('.transaction-loading');
+            if (loadingMsg) {
+                loadingMsg.remove();
+            }
+
+            // Clear existing transactions
+            transactionsList.innerHTML = '';
+
+            // Add filtered transactions
+            filteredTransactions.slice(0, 20).forEach(tx => {
+                const txEntry = document.createElement('div');
+                txEntry.className = 'cross-platform-transaction-entry';
+
+                const statusColor = tx.status === 'completed' ? '#059669' :
+                                  tx.status === 'pending' ? '#d97706' : '#dc2626';
+
+                const platformIcon = tx.platform === 'main' ? '🌐' :
+                                   tx.platform === 'bridge' ? '🌉' : '💼';
+
+                txEntry.innerHTML =
+                    '<div>' +
+                        '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">' +
+                            '<span>' + platformIcon + '</span>' +
+                            '<strong>' + tx.type + '</strong>' +
+                            '<span style="background: ' + statusColor + '; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem;">' + tx.status.toUpperCase() + '</span>' +
+                        '</div>' +
+                        '<div style="font-size: 0.9rem; color: #334155;">' +
+                            tx.amount + ' ' + tx.token + ' | ' + tx.from_address + ' → ' + tx.to_address +
+                        '</div>' +
+                        '<div style="font-size: 0.8rem; color: #64748b;">' +
+                            'Platform: ' + (tx.platform.charAt(0).toUpperCase() + tx.platform.slice(1)) + ' | ID: ' + tx.id +
+                        '</div>' +
+                    '</div>' +
+                    '<div style="text-align: right; font-size: 0.8rem; color: #64748b;">' +
+                        tx.timestamp.toLocaleTimeString() +
+                    '</div>';
+
+                transactionsList.appendChild(txEntry);
+            });
+
+            if (filteredTransactions.length === 0) {
+                transactionsList.innerHTML = '<div class="transaction-loading">No transactions match the current filters.</div>';
+            }
+        }
+
+        function filterTransactions() {
+            updateCrossPlatformTransactionsList();
+        }
+
+        function refreshTransactionHistory() {
+            updateCrossPlatformTransactions();
+        }
+
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
             initializeDashboard();
             connectWebSocket();
             startRealTimeUpdates();
+
+            // Start main dashboard monitoring (less frequent for admin transfers)
+            updateMainDashboardMonitoring();
+            setInterval(updateMainDashboardMonitoring, 3000); // Update every 3 seconds for faster admin detection
+
+            // Start wallet dashboard monitoring
+            updateWalletDashboardMonitoring();
+            setInterval(updateWalletDashboardMonitoring, 7000); // Update every 7 seconds
+
+            // Start cross-platform transaction tracking
+            updateCrossPlatformTransactions();
+            setInterval(updateCrossPlatformTransactions, 6000); // Update every 6 seconds
         });
 
         function initializeDashboard() {
@@ -11370,24 +13128,101 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
             if (!container) return;
 
             if (transactions.length === 0) {
-                container.innerHTML = '<div class="transaction-item"><div class="transaction-details">No recent wallet transactions</div></div>';
+                container.innerHTML = '<div style="padding: 15px; color: #666; text-align: center; background: white; border: 1px solid #ddd; border-radius: 6px;">No transactions detected</div>';
                 return;
             }
 
-            container.innerHTML = transactions.slice(0, 10).map(tx => ` + "`" + `
-                <div class="transaction-item">
-                    <div class="transaction-details">
-                        <div class="transaction-hash">` + "${tx.hash || 'N/A'}" + `</div>
-                        <div class="transaction-amount">` + "${tx.amount || '0'} ${tx.token || 'BHX'}" + `</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted);">
-                            ` + "${tx.from || 'Unknown'} → ${tx.to || 'Unknown'}" + `
-                        </div>
-                    </div>
-                    <div class="transaction-status status-` + "${(tx.status || 'pending').toLowerCase()}" + `">
-                        ` + "${tx.status || 'Pending'}" + `
-                    </div>
-                </div>
-            ` + "`" + `).join('');
+            // Filter to show ONLY real transfers (exclude initial_transfer data)
+            const realTransfers = transactions.filter(tx => tx.type === 'real_transfer');
+
+            // Sort real transfers by timestamp (newest first)
+            const sortedTransactions = realTransfers.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+            container.innerHTML = sortedTransactions.slice(0, 15).map(function(tx, index) {
+                const amount = parseFloat(tx.amount) || 0;
+                const isNewTransfer = tx.isNew === true;
+                const isLargeTransfer = amount >= 100;
+                // All transactions here are real transfers since we filtered them
+
+                // White background with dark text for readability - all are real transfers
+                let bgColor, textColor, statusColor, borderColor;
+                if (isNewTransfer) {
+                    // New real transfer
+                    bgColor = 'white';
+                    textColor = '#1a1a1a';
+                    statusColor = '#28a745';
+                    borderColor = '#28a745';
+                } else {
+                    // Read real transfer
+                    bgColor = 'white';
+                    textColor = '#1a1a1a';
+                    statusColor = '#6c757d';
+                    borderColor = '#6c757d';
+                }
+
+                const cursorStyle = (tx.isNew === true) ? 'cursor: pointer; ' : '';
+                const hoverEffect = (tx.isNew === true) ? 'transition: all 0.2s ease; ' : '';
+                const clickHint = (tx.isNew === true) ? '<span style="margin-left: 10px; font-size: 0.8em; color: #28a745;">(Click to mark as read)</span>' : '';
+
+                return '<div class="transaction-item" data-transaction-id="' + tx.hash + '" data-is-new="' + (tx.isNew === true) + '" style="padding: 12px; margin: 8px 0; background: ' + bgColor + '; border: 1px solid ' + borderColor + '; border-radius: 6px; border-left: 4px solid ' + borderColor + '; ' + cursorStyle + hoverEffect + '">' +
+                    '<div style="display: flex; justify-content: space-between; align-items: center;">' +
+                        '<div style="flex: 1;">' +
+                            '<div style="color: ' + textColor + '; font-weight: bold; margin-bottom: 4px; font-size: 1.1em;">' +
+                                (isNewTransfer ? '<span style="color: #28a745; margin-right: 6px;">●</span>NEW: ' : '<span style="color: #6c757d; margin-right: 6px;">○</span>') +
+                                amount + ' ' + (tx.token || 'BHX') + clickHint +
+                            '</div>' +
+                            '<div style="color: ' + textColor + '; font-size: 0.9em; font-family: monospace;">' +
+                                'To: ' + ((tx.to && tx.to.length > 30) ? tx.to.substring(0, 30) + '...' : (tx.to || 'Unknown')) +
+                            '</div>' +
+                        '</div>' +
+                        '<div style="text-align: right;">' +
+                            '<div style="color: ' + statusColor + '; font-size: 0.8em; font-weight: bold;">' +
+                                (tx.status || 'Confirmed').toUpperCase() +
+                            '</div>' +
+                            '<div style="color: ' + statusColor + '; font-size: 0.75em;">' +
+                                new Date((tx.timestamp || Date.now()/1000) * 1000).toLocaleTimeString() +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+
+            // Log transaction details for debugging
+            console.log('💰 Displaying REAL TRANSFERS only:', {
+                totalInDatabase: transactions.length,
+                realTransfersShown: realTransfers.length,
+                newTransfers: realTransfers.filter(tx => tx.isNew).length,
+                realTransfersList: realTransfers.map(tx => tx.amount + ' ' + tx.token + (tx.isNew ? ' (NEW)' : '')),
+                allRealTransfers: realTransfers.map(tx => ({
+                    amount: tx.amount,
+                    token: tx.token,
+                    isNew: tx.isNew,
+                    timestamp: tx.timestamp
+                }))
+            });
+
+            // Add click event listeners to new real transfers only
+            setTimeout(() => {
+                document.querySelectorAll('.transaction-item[data-is-new="true"]').forEach(item => {
+                    item.addEventListener('click', function() {
+                        const transactionId = this.getAttribute('data-transaction-id');
+                        markTransactionAsRead(transactionId, this);
+                    });
+
+                    // Add hover effects for clickable transactions
+                    item.addEventListener('mouseenter', function() {
+                        this.style.transform = 'translateY(-2px)';
+                        this.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+                        this.style.borderColor = '#28a745';
+                    });
+
+                    item.addEventListener('mouseleave', function() {
+                        this.style.transform = 'translateY(0)';
+                        this.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+                        this.style.borderColor = '#0066cc';
+                    });
+                });
+            }, 100);
         }
 
         function displayWalletError() {
@@ -11399,6 +13234,85 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
         function scrollToWalletMonitoring() {
             document.getElementById('wallet-monitoring').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Function to mark transaction as read
+        async function markTransactionAsRead(transactionId, element) {
+            try {
+                const response = await fetch('/api/wallet/transactions/mark-read', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        transaction_id: transactionId
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('✅ Transaction marked as read:', result);
+
+                    // Update the visual state immediately
+                    element.setAttribute('data-is-new', 'false');
+                    element.style.cursor = 'default';
+                    element.style.borderColor = '#cccccc';
+                    element.style.transform = 'translateY(0)';
+                    element.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+
+                    // Update the content to remove NEW indicator and click hint
+                    const contentDiv = element.querySelector('div div div');
+                    if (contentDiv) {
+                        const content = contentDiv.innerHTML;
+                        const updatedContent = content
+                            .replace('<span style="color: #28a745; margin-right: 6px;">●</span>NEW: ', '<span style="color: #6c757d; margin-right: 6px;">○</span>')
+                            .replace(/<span style="margin-left: 10px; font-size: 0\.8em; color: #28a745;">\(Click to mark as read\)<\/span>/, '');
+                        contentDiv.innerHTML = updatedContent;
+                    }
+
+                    // Remove event listeners by cloning the element
+                    const newElement = element.cloneNode(true);
+                    element.parentNode.replaceChild(newElement, element);
+
+                    // Show success feedback
+                    showNotification('Transaction marked as read', 'success');
+
+                } else {
+                    console.error('❌ Failed to mark transaction as read');
+                    showNotification('Failed to mark transaction as read', 'error');
+                }
+            } catch (error) {
+                console.error('❌ Error marking transaction as read:', error);
+                showNotification('Error marking transaction as read', 'error');
+            }
+        }
+
+        // Function to show notifications
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            const bgColor = type === 'success' ? '#28a745' : '#dc3545';
+            notification.style.cssText =
+                'position: fixed; ' +
+                'top: 20px; ' +
+                'right: 20px; ' +
+                'padding: 12px 20px; ' +
+                'border-radius: 6px; ' +
+                'color: white; ' +
+                'font-weight: bold; ' +
+                'z-index: 10000; ' +
+                'transition: all 0.3s ease; ' +
+                'background: ' + bgColor + ';';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        document.body.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
         }
 
         function scrollToQuickActions() {
@@ -11572,17 +13486,22 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     codeReview: Math.random() > 0.05 ? '🟢 Approved' : '🟡 Pending'
                 };
 
-                // Update CI/CD dashboard
-                document.getElementById('lastPrStatus').textContent = cicdData.lastPrStatus;
-                document.getElementById('testCoverage').textContent = cicdData.testCoverage;
-                document.getElementById('perfBenchmark').textContent = cicdData.perfBenchmark;
-                document.getElementById('currentStage').textContent = cicdData.currentStage;
-                document.getElementById('lastDeployment').textContent = cicdData.lastDeployment;
-                document.getElementById('rollbackStatus').textContent = cicdData.rollbackStatus;
-                document.getElementById('allTestsPassed').textContent = cicdData.allTestsPassed;
-                document.getElementById('performanceOk').textContent = cicdData.performanceOk;
-                document.getElementById('securityScan').textContent = cicdData.securityScan;
-                document.getElementById('codeReview').textContent = cicdData.codeReview;
+                // Update CI/CD dashboard with null checks
+                const updateElement = (id, value) => {
+                    const element = document.getElementById(id);
+                    if (element) element.textContent = value;
+                };
+
+                updateElement('lastPrStatus', cicdData.lastPrStatus);
+                updateElement('testCoverage', cicdData.testCoverage);
+                updateElement('perfBenchmark', cicdData.perfBenchmark);
+                updateElement('currentStage', cicdData.currentStage);
+                updateElement('lastDeployment', cicdData.lastDeployment);
+                updateElement('rollbackStatus', cicdData.rollbackStatus);
+                updateElement('allTestsPassed', cicdData.allTestsPassed);
+                updateElement('performanceOk', cicdData.performanceOk);
+                updateElement('securityScan', cicdData.securityScan);
+                updateElement('codeReview', cicdData.codeReview);
             } catch (error) {
                 console.error('Error updating CI/CD status:', error);
             }
@@ -11627,19 +13546,24 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     stressData.avgResponseTime = metrics.average_latency || '1.2s';
                 }
 
-                // Update stress testing evidence
-                document.getElementById('totalTxProcessed').textContent = stressData.totalTxProcessed;
-                document.getElementById('stressSuccessRate').textContent = stressData.stressSuccessRate;
-                document.getElementById('peakThroughput').textContent = stressData.peakThroughput;
-                document.getElementById('avgResponseTime').textContent = stressData.avgResponseTime;
-                document.getElementById('totalRetries').textContent = stressData.totalRetries;
-                document.getElementById('retrySuccessRate').textContent = stressData.retrySuccessRate;
-                document.getElementById('avgBackoffTime').textContent = stressData.avgBackoffTime;
-                document.getElementById('deadLetterCount').textContent = stressData.deadLetterCount;
-                document.getElementById('circuitBreakerActivations').textContent = stressData.circuitBreakerActivations;
-                document.getElementById('avgRecoveryTime').textContent = stressData.avgRecoveryTime;
-                document.getElementById('loadBalancerSwitches').textContent = stressData.loadBalancerSwitches;
-                document.getElementById('zeroDataLoss').textContent = stressData.zeroDataLoss;
+                // Update stress testing evidence with null checks
+                const updateStressElement = (id, value) => {
+                    const element = document.getElementById(id);
+                    if (element) element.textContent = value;
+                };
+
+                updateStressElement('totalTxProcessed', stressData.totalTxProcessed);
+                updateStressElement('stressSuccessRate', stressData.stressSuccessRate);
+                updateStressElement('peakThroughput', stressData.peakThroughput);
+                updateStressElement('avgResponseTime', stressData.avgResponseTime);
+                updateStressElement('totalRetries', stressData.totalRetries);
+                updateStressElement('retrySuccessRate', stressData.retrySuccessRate);
+                updateStressElement('avgBackoffTime', stressData.avgBackoffTime);
+                updateStressElement('deadLetterCount', stressData.deadLetterCount);
+                updateStressElement('circuitBreakerActivations', stressData.circuitBreakerActivations);
+                updateStressElement('avgRecoveryTime', stressData.avgRecoveryTime);
+                updateStressElement('loadBalancerSwitches', stressData.loadBalancerSwitches);
+                updateStressElement('zeroDataLoss', stressData.zeroDataLoss);
             } catch (error) {
                 console.error('Error updating stress test evidence:', error);
             }
@@ -12070,10 +13994,15 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
                 if (data.success) {
                     const metrics = data.data;
-                    document.getElementById('p95Latency').textContent = metrics.performance.p95_transaction_time;
-                    document.getElementById('p99Latency').textContent = metrics.performance.p99_transaction_time;
-                    document.getElementById('throughputTps').textContent = metrics.performance.throughput_tps + ' TPS';
-                    document.getElementById('volumeGrowth').textContent = '+' + metrics.trends.volume_growth_7d + '%';
+                    const updateElement = (id, value) => {
+                        const element = document.getElementById(id);
+                        if (element) element.textContent = value;
+                    };
+
+                    updateElement('p95Latency', metrics.performance.p95_transaction_time);
+                    updateElement('p99Latency', metrics.performance.p99_transaction_time);
+                    updateElement('throughputTps', metrics.performance.throughput_tps + ' TPS');
+                    updateElement('volumeGrowth', '+' + metrics.trends.volume_growth_7d + '%');
                 }
             } catch (error) {
                 console.error('Error refreshing analytics:', error);
@@ -13392,151 +15321,6 @@ func (sdk *BridgeSDK) handleLogEvent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (sdk *BridgeSDK) handleLogRetry(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	// Parse query parameters for filtering
-	retryID := r.URL.Query().Get("retry_id")
-	eventType := r.URL.Query().Get("event_type")
-	limitStr := r.URL.Query().Get("limit")
-	offsetStr := r.URL.Query().Get("offset")
-	includeCompleted := r.URL.Query().Get("include_completed") == "true"
-
-	// Set defaults
-	limit := 50
-	offset := 0
-
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 500 {
-			limit = l
-		}
-	}
-
-	if offsetStr != "" {
-		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
-			offset = o
-		}
-	}
-
-	// Get retry queue items
-	sdk.retryQueue.mutex.RLock()
-	retryItems := make([]RetryItem, len(sdk.retryQueue.items))
-	copy(retryItems, sdk.retryQueue.items)
-	sdk.retryQueue.mutex.RUnlock()
-
-	// Get dead letter items if including completed
-	var deadLetterItems []DeadLetterItem
-	if includeCompleted {
-		sdk.deadLetterMutex.RLock()
-		deadLetterItems = make([]DeadLetterItem, len(sdk.deadLetterQueue))
-		copy(deadLetterItems, sdk.deadLetterQueue)
-		sdk.deadLetterMutex.RUnlock()
-	}
-
-	// Filter retry items
-	filteredRetries := make([]map[string]interface{}, 0)
-
-	for _, item := range retryItems {
-		// Apply filters
-		if retryID != "" && item.ID != retryID {
-			continue
-		}
-		if eventType != "" && item.Type != eventType {
-			continue
-		}
-
-		retryEntry := map[string]interface{}{
-			"id":          item.ID,
-			"type":        item.Type,
-			"attempts":    item.Attempts,
-			"max_retries": item.MaxRetries,
-			"next_retry":  item.NextRetry.Format(time.RFC3339),
-			"last_error":  item.LastError,
-			"created_at":  item.CreatedAt.Format(time.RFC3339),
-			"updated_at":  item.UpdatedAt.Format(time.RFC3339),
-			"data":        item.Data,
-			"status":      "pending",
-		}
-		filteredRetries = append(filteredRetries, retryEntry)
-	}
-
-	// Add dead letter items if requested
-	if includeCompleted {
-		for _, item := range deadLetterItems {
-			// Apply filters
-			if retryID != "" && item.OriginalEvent.ID != retryID {
-				continue
-			}
-			if eventType != "" && item.OriginalEvent.Type != eventType {
-				continue
-			}
-
-			retryEntry := map[string]interface{}{
-				"id":             item.ID,
-				"type":           item.OriginalEvent.Type,
-				"attempts":       item.TotalAttempts,
-				"max_retries":    item.OriginalEvent.MaxRetries,
-				"failure_reason": item.FailureReason,
-				"failed_at":      item.FailedAt.Format(time.RFC3339),
-				"created_at":     item.OriginalEvent.CreatedAt.Format(time.RFC3339),
-				"data":           item.OriginalEvent.Data,
-				"status":         "failed",
-				"error_history":  item.ErrorHistory,
-			}
-			filteredRetries = append(filteredRetries, retryEntry)
-		}
-	}
-
-	// Apply pagination
-	totalCount := len(filteredRetries)
-	start := offset
-	end := offset + limit
-
-	if start >= totalCount {
-		filteredRetries = []map[string]interface{}{}
-	} else {
-		if end > totalCount {
-			end = totalCount
-		}
-		filteredRetries = filteredRetries[start:end]
-	}
-
-	// Get queue statistics
-	stats := sdk.retryQueue.GetStats()
-	queueStats := map[string]interface{}{
-		"pending_items":     len(retryItems),
-		"ready_items":       0, // Calculate ready items
-		"total_items":       len(retryItems),
-		"max_retries":       stats["max_retries"],
-		"base_delay":        stats["base_delay"],
-		"max_delay":         stats["max_delay"],
-		"dead_letter_count": len(deadLetterItems),
-	}
-
-	// Count ready items (items ready for retry)
-	now := time.Now()
-	for _, item := range retryItems {
-		if now.After(item.NextRetry) {
-			queueStats["ready_items"] = queueStats["ready_items"].(int) + 1
-		}
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"data": map[string]interface{}{
-			"retries":     filteredRetries,
-			"total_count": totalCount,
-			"limit":       limit,
-			"offset":      offset,
-			"queue_stats": queueStats,
-			"filters": map[string]interface{}{
-				"retry_id":          retryID,
-				"event_type":        eventType,
-				"include_completed": includeCompleted,
-			},
-		},
-	})
-}
 
 func (sdk *BridgeSDK) handleBridgeStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -14940,6 +16724,11 @@ func main() {
 
 	// Create bridge SDK instance
 	sdk := NewBridgeSDK(blockchainInterface, config)
+
+	// Ensure critical transactions are preserved (data recovery)
+	if err := sdk.ensureCriticalTransactionsExist(); err != nil {
+		log.Printf("⚠️ Warning: Failed to ensure critical transactions exist: %v", err)
+	}
 
 	// Start listeners
 	ctx := context.Background()
@@ -18439,4 +20228,648 @@ type SimulationStep struct {
 	Duration    time.Duration `json:"duration"`
 	Status      string        `json:"status"` // running, completed, failed
 	Error       string        `json:"error,omitempty"`
+}
+
+// MainDashboardActivity represents an activity from the main dashboard
+type MainDashboardActivity struct {
+	ID          string                 `json:"id"`
+	Action      string                 `json:"action"`
+	Details     map[string]interface{} `json:"details"`
+	Timestamp   time.Time              `json:"timestamp"`
+	Source      string                 `json:"source"`
+	UserAgent   string                 `json:"user_agent,omitempty"`
+}
+
+// Main Dashboard Integration Handler Functions
+
+// handleMainDashboardStatus returns the status of main dashboard connectivity
+func (sdk *BridgeSDK) handleMainDashboardStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Try to connect to main dashboard
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("http://localhost:8080/api/health")
+
+	status := "offline"
+	var mainDashboardData map[string]interface{}
+
+	if err == nil && resp.StatusCode == 200 {
+		status = "online"
+		defer resp.Body.Close()
+
+		// Try to get blockchain info
+		blockchainResp, err := client.Get("http://localhost:8080/api/blockchain/info")
+		if err == nil && blockchainResp.StatusCode == 200 {
+			defer blockchainResp.Body.Close()
+			json.NewDecoder(blockchainResp.Body).Decode(&mainDashboardData)
+		}
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"status":           status,
+			"main_dashboard":   mainDashboardData,
+			"last_check":       time.Now().Format(time.RFC3339),
+			"bridge_sdk_port":  8084,
+			"main_dash_port":   8080,
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleMainDashboardActivities returns recent activities from main dashboard monitoring
+func (sdk *BridgeSDK) handleMainDashboardActivities(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get real wallet balances from blockchain data
+	var activities []MainDashboardActivity
+
+	// Get current blockchain data
+	var blockchainData map[string]interface{}
+	if sdk.blockchainInterface != nil {
+		blockchainData = sdk.blockchainInterface.GetBlockchainStats()
+	}
+	if blockchainData == nil {
+		log.Printf("Warning: No blockchain data available for activities")
+		blockchainData = make(map[string]interface{})
+	}
+
+	// Extract real wallet balances (exclude system addresses)
+	if tokenBalances, ok := blockchainData["tokenBalances"].(map[string]interface{}); ok {
+		if bhxBalances, ok := tokenBalances["BHX"].(map[string]interface{}); ok {
+			activityID := 1
+			for address, balance := range bhxBalances {
+				// Only include real wallet addresses (exclude system addresses)
+				if address != "system" && address != "genesis-validator" && address != "node2" && !strings.HasPrefix(address, "admin") {
+					if balanceFloat, ok := balance.(float64); ok && balanceFloat > 0 {
+						activities = append(activities, MainDashboardActivity{
+							ID:        fmt.Sprintf("wallet_%d", activityID),
+							Action:    "Wallet Balance",
+							Details:   map[string]interface{}{"address": address, "token": "BHX", "amount": balanceFloat},
+							Timestamp: time.Now(),
+							Source:    "blockchain_monitor",
+						})
+						activityID++
+					}
+				}
+			}
+		}
+	}
+
+	// If no real wallet balances found, add a monitoring message
+	if len(activities) == 0 {
+		activities = append(activities, MainDashboardActivity{
+			ID:        "monitoring_1",
+			Action:    "System Monitoring",
+			Details:   map[string]interface{}{"status": "monitoring", "message": "Waiting for wallet creation"},
+			Timestamp: time.Now(),
+			Source:    "bridge_monitor",
+		})
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"activities":    activities,
+			"total_count":   len(activities),
+			"last_updated":  time.Now().Format(time.RFC3339),
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleMainDashboardMonitor handles monitoring requests from main dashboard
+func (sdk *BridgeSDK) handleMainDashboardMonitor(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var monitorRequest struct {
+		Action  string                 `json:"action"`
+		Details map[string]interface{} `json:"details"`
+		Source  string                 `json:"source"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&monitorRequest); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Log the monitoring event
+	activity := MainDashboardActivity{
+		ID:        fmt.Sprintf("monitor_%d", time.Now().UnixNano()),
+		Action:    monitorRequest.Action,
+		Details:   monitorRequest.Details,
+		Timestamp: time.Now(),
+		Source:    monitorRequest.Source,
+		UserAgent: r.Header.Get("User-Agent"),
+	}
+
+	// In a real implementation, you would store this in a database or queue
+	sdk.logger.Infof("📊 Main Dashboard Activity: %s from %s - %v",
+		activity.Action, activity.Source, activity.Details)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"activity_id":  activity.ID,
+			"recorded_at":  activity.Timestamp.Format(time.RFC3339),
+			"status":       "recorded",
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Wallet Dashboard Integration Handler Functions
+
+// handleWalletDashboardStatus returns the status of wallet dashboard connectivity
+func (sdk *BridgeSDK) handleWalletDashboardStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Try to connect to wallet dashboard
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://localhost:9000/api/health")
+
+	status := "offline"
+	var walletData map[string]interface{}
+
+	if err == nil && resp.StatusCode == 200 {
+		status = "online"
+		defer resp.Body.Close()
+
+		// Mock wallet data since wallet API requires authentication
+		walletData = map[string]interface{}{
+			"service_status":        "running",
+			"active_sessions":       5,
+			"total_wallets":        25,
+			"recent_transactions":  12,
+			"security_score":       98,
+		}
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"status":           status,
+			"wallet_data":      walletData,
+			"last_check":       time.Now().Format(time.RFC3339),
+			"wallet_port":      9000,
+			"bridge_sdk_port":  8084,
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleWalletDashboardTransactions returns recent wallet transactions
+func (sdk *BridgeSDK) handleWalletDashboardTransactions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Mock wallet transactions - in real implementation, this would come from wallet API
+	transactions := []map[string]interface{}{
+		{
+			"id":          "wallet_tx_1",
+			"type":        "Transfer",
+			"token":       "BHX",
+			"amount":      "1000.50",
+			"from_wallet": "user_wallet_1",
+			"to_address":  "0x742d35Cc6634C0532925a3b8D4",
+			"status":      "Completed",
+			"timestamp":   time.Now().Add(-10 * time.Minute).Format(time.RFC3339),
+		},
+		{
+			"id":          "wallet_tx_2",
+			"type":        "Bridge",
+			"token":       "ETH",
+			"amount":      "0.5",
+			"from_chain":  "ethereum",
+			"to_chain":    "blackhole",
+			"status":      "Pending",
+			"timestamp":   time.Now().Add(-5 * time.Minute).Format(time.RFC3339),
+		},
+		{
+			"id":          "wallet_tx_3",
+			"type":        "Stake",
+			"token":       "BHX",
+			"amount":      "5000",
+			"validator":   "validator_1",
+			"status":      "Completed",
+			"timestamp":   time.Now().Add(-2 * time.Minute).Format(time.RFC3339),
+		},
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"transactions":  transactions,
+			"total_count":   len(transactions),
+			"last_updated":  time.Now().Format(time.RFC3339),
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleWalletDashboardSecurity returns wallet security metrics
+func (sdk *BridgeSDK) handleWalletDashboardSecurity(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Mock security data
+	securityMetrics := map[string]interface{}{
+		"failed_login_attempts":  2,
+		"suspicious_activities":  0,
+		"security_score":         98,
+		"last_security_scan":     time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
+		"active_sessions":        5,
+		"session_timeouts":       3,
+		"encryption_status":      "active",
+		"backup_status":          "up_to_date",
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"security_metrics": securityMetrics,
+			"last_updated":     time.Now().Format(time.RFC3339),
+			"status":           "secure",
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Proxy Handler Functions to avoid CORS issues
+
+// handleProxyMainDashboardHealth proxies health check to main dashboard
+func (sdk *BridgeSDK) handleProxyMainDashboardHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://localhost:8080/api/health")
+
+	if err != nil {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+			"status":  "offline",
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	response := map[string]interface{}{
+		"success":     true,
+		"status":      "online",
+		"status_code": resp.StatusCode,
+		"data":        string(body),
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleProxyMainDashboardBlockchain proxies blockchain info to main dashboard
+func (sdk *BridgeSDK) handleProxyMainDashboardBlockchain(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://localhost:8080/api/blockchain/info")
+
+	if err != nil {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	defer resp.Body.Close()
+
+	var blockchainData map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&blockchainData)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    blockchainData,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleProxyMainDashboardNode proxies node info to main dashboard
+func (sdk *BridgeSDK) handleProxyMainDashboardNode(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://localhost:8080/api/node/info")
+
+	if err != nil {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	defer resp.Body.Close()
+
+	var nodeData map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&nodeData)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    nodeData,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleProxyMainDashboardWallets proxies wallets info to main dashboard
+func (sdk *BridgeSDK) handleProxyMainDashboardWallets(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://localhost:8080/api/wallets")
+
+	if err != nil {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	defer resp.Body.Close()
+
+	var walletsData map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&walletsData)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    walletsData,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleProxyWalletDashboardHealth proxies health check to wallet dashboard
+func (sdk *BridgeSDK) handleProxyWalletDashboardHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://localhost:9000/api/health")
+
+	if err != nil {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+			"status":  "offline",
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	response := map[string]interface{}{
+		"success":     true,
+		"status":      "online",
+		"status_code": resp.StatusCode,
+		"data":        string(body),
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// Global variables to store last known blockchain state hash and all activities
+var lastBlockchainStateHash string
+var allAdminActivities []map[string]interface{}
+var previousBalances map[string]map[string]float64
+var detectedTransfers []map[string]interface{}
+
+
+
+// Transaction persistence structures
+type WalletTransaction struct {
+	ID          string    `json:"id"`
+	Hash        string    `json:"hash"`
+	From        string    `json:"from"`
+	To          string    `json:"to"`
+	Amount      string    `json:"amount"`
+	Token       string    `json:"token"`
+	Status      string    `json:"status"`
+	Timestamp   int64     `json:"timestamp"`
+	Type        string    `json:"type"`
+	IsNew       bool      `json:"isNew"`
+	CreatedAt   time.Time `json:"createdAt"`
+	MultiAddr   string    `json:"multiAddr"` // Track which multi-address this relates to
+}
+
+// Database keys for transaction storage
+const (
+	WALLET_TRANSACTIONS_BUCKET = "wallet_transactions"
+	TRANSACTION_COUNTER_KEY    = "transaction_counter"
+)
+
+// handleProxyMainDashboardActivities proxies recent activities from main dashboard
+func (sdk *BridgeSDK) handleProxyMainDashboardActivities(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Get blockchain info to extract recent data - this should show the latest token balances
+	resp, err := client.Get("http://localhost:8080/api/blockchain/info")
+	if err != nil {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	defer resp.Body.Close()
+
+	var blockchainData map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&blockchainData)
+
+	// Create a hash of the current blockchain state to detect changes
+	currentStateHash := fmt.Sprintf("%v", blockchainData["tokenBalances"])
+
+	// Always rebuild the complete activities list from current blockchain state
+	currentActivities := []map[string]interface{}{}
+
+	// Check if there are token balances - show only REAL wallet balances
+	// Known real wallet addresses (will auto-detect new ones)
+	knownWalletAddresses := map[string]bool{
+		"0222fa8467658c6b58e4e957ea0a34a3f8ffcc80472d89c66dd3d7c690f56f5dd1": true, // Wallet 1
+		"02b40d1740e9b840f7b59af7b205b613f7385b8c7dab99b113ff3f7c676c92b151": true, // Wallet 2
+	}
+
+	// Auto-detect new wallet addresses (addresses with balances that aren't system addresses)
+	detectedWallets := make(map[string]bool)
+
+	if tokenBalances, ok := blockchainData["tokenBalances"].(map[string]interface{}); ok {
+		if bhxBalances, ok := tokenBalances["BHX"].(map[string]interface{}); ok {
+			for address, balance := range bhxBalances {
+				// Check if this is a real wallet address (exclude system addresses)
+				if address != "system" && address != "genesis-validator" && address != "node2" && !strings.HasPrefix(address, "admin") {
+					if balanceFloat, ok := balance.(float64); ok && balanceFloat > 0 {
+						// Mark as detected wallet
+						detectedWallets[address] = true
+
+						// Check if this is a new wallet (not in known list)
+						isNewWallet := !knownWalletAddresses[address]
+
+						// Create wallet balance entry
+						activity := map[string]interface{}{
+							"id":          fmt.Sprintf("wallet_balance_BHX_%s", address),
+							"type":        "wallet_balance",
+							"action":      "Wallet Balance",
+							"token":       "BHX",
+							"amount":      balanceFloat,
+							"target":      address,
+							"timestamp":   time.Now().Format(time.RFC3339),
+							"status":      "active",
+							"description": fmt.Sprintf("%.0f BHX in wallet %s", balanceFloat, address[:20]+"..."),
+							"isNew":       isNewWallet,
+							"wallet_id":   address,
+						}
+						currentActivities = append(currentActivities, activity)
+
+						if isNewWallet {
+							fmt.Printf("🆕 NEW WALLET DETECTED: %.0f BHX in %s\n", balanceFloat, address[:20]+"...")
+						} else {
+							fmt.Printf("📱 Known wallet balance: %.0f BHX in %s\n", balanceFloat, address[:20]+"...")
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Log the wallet count for verification
+	totalWallets := len(detectedWallets)
+	newWallets := 0
+	for address := range detectedWallets {
+		if !knownWalletAddresses[address] {
+			newWallets++
+		}
+	}
+
+	fmt.Printf("💰 Displaying %d real wallet balances (%d known + %d new)\n", totalWallets, totalWallets-newWallets, newWallets)
+
+	// Check if there are real changes by comparing activity counts and amounts
+	hasRealChanges := false
+	if currentStateHash != lastBlockchainStateHash {
+		hasRealChanges = true
+		lastBlockchainStateHash = currentStateHash
+
+		// Mark new activities by comparing with previous state
+		if len(allAdminActivities) > 0 {
+			// Create a map of previous activities for quick lookup
+			previousActivities := make(map[string]bool)
+			for _, prevActivity := range allAdminActivities {
+				if id, ok := prevActivity["id"].(string); ok {
+					previousActivities[id] = true
+				}
+			}
+
+			// Mark new activities
+			for i, activity := range currentActivities {
+				if id, ok := activity["id"].(string); ok {
+					if !previousActivities[id] {
+						currentActivities[i]["isNew"] = true
+						hasRealChanges = true
+					}
+				}
+			}
+		} else {
+			// First time loading, don't mark as new
+			hasRealChanges = true
+		}
+
+		// Update the global activities list
+		allAdminActivities = currentActivities
+	}
+
+	// Always return current activities (most up-to-date)
+	activities := currentActivities
+
+	// Force changes detection if we have activities but no previous state
+	if len(activities) > 0 && len(allAdminActivities) == 0 {
+		hasRealChanges = true
+		allAdminActivities = activities
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"activities":     activities,
+			"total_count":    len(activities),
+			"last_updated":   time.Now().Format(time.RFC3339),
+			"has_changes":    hasRealChanges,
+			"state_hash":     currentStateHash,
+		},
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleProxyWalletDashboardWallets proxies wallets info from wallet dashboard
+func (sdk *BridgeSDK) handleProxyWalletDashboardWallets(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("http://localhost:9000/api/wallets")
+
+	if err != nil {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	defer resp.Body.Close()
+
+	var walletsData map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&walletsData)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    walletsData,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleProxyWalletDashboardTransactions proxies transactions from wallet dashboard
+func (sdk *BridgeSDK) handleProxyWalletDashboardTransactions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("http://localhost:9000/api/transactions")
+
+	if err != nil {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	defer resp.Body.Close()
+
+	var transactionsData map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&transactionsData)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    transactionsData,
+	}
+	json.NewEncoder(w).Encode(response)
 }

@@ -38,34 +38,37 @@ services:
   bridge-sdk:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.bridge
     container_name: blackhole-bridge-sdk
     ports:
-      - "8084:8084"   # Bridge SDK dashboard
-      - "9090:9090"   # Relay server
+      - "8084:8084"   # Bridge SDK dashboard & API
+      - "9090:9090"   # gRPC & Relay server
     environment:
-      - BRIDGE_PORT=8084
-      - DATABASE_PATH=./data/bridge_fixed.db
+      - PORT=8084
+      - RELAY_PORT=9090
+      - DATABASE_PATH=/app/data/bridge_v4.db
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - LOG_FILE=./logs/bridge.log
+      - LOG_FILE=/app/logs/bridge.log
       - REPLAY_PROTECTION_ENABLED=${REPLAY_PROTECTION_ENABLED:-true}
       - CIRCUIT_BREAKER_ENABLED=${CIRCUIT_BREAKER_ENABLED:-true}
-      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - MAX_RETRIES=${MAX_RETRIES:-5}
+      - RETRY_DELAY=${RETRY_DELAY:-5s}
+      - BATCH_SIZE=${BATCH_SIZE:-100}
       - ENABLE_COLORED_LOGS=${ENABLE_COLORED_LOGS:-true}
       - ENABLE_DOCUMENTATION=${ENABLE_DOCUMENTATION:-true}
       - ETHEREUM_RPC=${ETHEREUM_RPC:-wss://eth-mainnet.ws.alchemyapi.io/v2/demo}
       - SOLANA_RPC=${SOLANA_RPC:-https://api.mainnet-beta.solana.com}
-      - BLACKHOLE_RPC=${BLACKHOLE_RPC:-http://blockchain:8545}
+      - BLACKHOLE_RPC=${BLACKHOLE_RPC:-http://blockchain:8080}
     volumes:
       - bridge_data:/app/data
       - bridge_logs:/app/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/api/log/status"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     depends_on:
       - blockchain
     networks:

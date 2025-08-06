@@ -95,3 +95,58 @@ Edit the `.env` file to customize:
 - 4GB RAM minimum (2GB per service)
 - Ports 8080, 8084, 8545, 9090, 30303 available
 - Go 1.24.3+ (handled automatically in containers)
+
+## API Endpoints
+
+Once running, you can access:
+
+- **Bridge Dashboard**: http://localhost:8084
+- **Blockchain API**: http://localhost:8080 (blockchain node)
+- **Bridge API**: http://localhost:8084/api/
+- **WebSocket**: ws://localhost:8084/ws
+- **gRPC Service**: localhost:9090
+
+### Core API Endpoints
+
+- `GET /api/log/status` - Comprehensive system status and health
+- `GET /api/log/retry` - Retry queue information and statistics
+- `GET /api/wallet/transactions` - Wallet transaction history
+- `GET /api/main-dashboard/activities` - Admin dashboard activities
+- `POST /api/test/retry-demo` - Test retry mechanism demonstration
+- `POST /api/bridge/transfer` - Initiate cross-chain transfer
+- `WebSocket /ws` - Real-time event streaming
+
+### New Logging & Monitoring Endpoints
+
+- `GET /api/log/status` - System health, uptime, performance metrics
+- `GET /api/log/retry` - Active retry items, dead letter queue, success rates
+- `POST /api/test/retry-demo` - Simulate failed events for retry testing
+
+### API Testing Examples
+
+```bash
+# Check system status
+curl http://localhost:8084/api/log/status
+
+# Check retry queue
+curl http://localhost:8084/api/log/retry
+
+# Test retry demo
+curl -X POST http://localhost:8084/api/test/retry-demo \
+  -H "Content-Type: application/json" \
+  -d '{"event_type":"ethereum_event","failure_count":3,"test_mode":"retry"}'
+
+# Get wallet transactions
+curl http://localhost:8084/api/wallet/transactions
+```
+
+## gRPC Schema
+
+The bridge includes comprehensive gRPC API schema at `bridge-sdk/api-schema.proto` with:
+- Transaction processing methods
+- Wallet operations
+- Retry mechanisms
+- System monitoring
+- Real-time event streaming
+
+See `bridge-api.md` for complete API documentation.
