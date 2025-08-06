@@ -1,0 +1,340 @@
+syntax = "proto3";
+
+package blackhole.bridge.v1;
+
+option go_package = "github.com/blackhole/bridge-sdk/api/v1";
+
+// BlackHole Bridge Service - Comprehensive gRPC API Schema
+service BridgeService {
+  // Transaction Processing
+  rpc ProcessTransaction(ProcessTransactionRequest) returns (ProcessTransactionResponse);
+  rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
+  rpc GetTransactionStatus(GetTransactionStatusRequest) returns (GetTransactionStatusResponse);
+  
+  // Wallet Operations
+  rpc GetWalletTransactions(GetWalletTransactionsRequest) returns (GetWalletTransactionsResponse);
+  rpc GetWalletBalance(GetWalletBalanceRequest) returns (GetWalletBalanceResponse);
+  rpc MonitorWallet(MonitorWalletRequest) returns (stream WalletEvent);
+  
+  // Bridge Operations
+  rpc RelayToChain(RelayToChainRequest) returns (RelayToChainResponse);
+  rpc GetBridgeStats(GetBridgeStatsRequest) returns (GetBridgeStatsResponse);
+  rpc GetChainStatus(GetChainStatusRequest) returns (GetChainStatusResponse);
+  
+  // Retry Mechanisms
+  rpc GetRetryQueue(GetRetryQueueRequest) returns (GetRetryQueueResponse);
+  rpc RetryFailedTransaction(RetryFailedTransactionRequest) returns (RetryFailedTransactionResponse);
+  rpc GetDeadLetterQueue(GetDeadLetterQueueRequest) returns (GetDeadLetterQueueResponse);
+  
+  // System Monitoring
+  rpc GetSystemStatus(GetSystemStatusRequest) returns (GetSystemStatusResponse);
+  rpc GetPerformanceMetrics(GetPerformanceMetricsRequest) returns (GetPerformanceMetricsResponse);
+  rpc StreamEvents(StreamEventsRequest) returns (stream BridgeEvent);
+  
+  // Admin Operations
+  rpc GetAdminActivities(GetAdminActivitiesRequest) returns (GetAdminActivitiesResponse);
+  rpc ManageCircuitBreaker(ManageCircuitBreakerRequest) returns (ManageCircuitBreakerResponse);
+  rpc GetReplayProtection(GetReplayProtectionRequest) returns (GetReplayProtectionResponse);
+}
+
+// Transaction Messages
+message Transaction {
+  string id = 1;
+  string hash = 2;
+  string source_chain = 3;
+  string dest_chain = 4;
+  string source_address = 5;
+  string dest_address = 6;
+  string amount = 7;
+  string token_symbol = 8;
+  TransactionStatus status = 9;
+  int64 created_at = 10;
+  int64 completed_at = 11;
+  int32 confirmations = 12;
+  string processing_time = 13;
+  uint64 block_number = 14;
+  string gas_used = 15;
+  string gas_price = 16;
+  int32 retry_count = 17;
+  repeated string compliance_checks = 18;
+}
+
+enum TransactionStatus {
+  TRANSACTION_STATUS_UNSPECIFIED = 0;
+  TRANSACTION_STATUS_PENDING = 1;
+  TRANSACTION_STATUS_PROCESSING = 2;
+  TRANSACTION_STATUS_COMPLETED = 3;
+  TRANSACTION_STATUS_FAILED = 4;
+  TRANSACTION_STATUS_CANCELLED = 5;
+}
+
+message ProcessTransactionRequest {
+  string source_chain = 1;
+  string dest_chain = 2;
+  string source_address = 3;
+  string dest_address = 4;
+  string amount = 5;
+  string token_symbol = 6;
+  TransactionPriority priority = 7;
+  int32 confirmations = 8;
+  int32 timeout_seconds = 9;
+}
+
+enum TransactionPriority {
+  TRANSACTION_PRIORITY_UNSPECIFIED = 0;
+  TRANSACTION_PRIORITY_LOW = 1;
+  TRANSACTION_PRIORITY_NORMAL = 2;
+  TRANSACTION_PRIORITY_HIGH = 3;
+  TRANSACTION_PRIORITY_URGENT = 4;
+}
+
+message ProcessTransactionResponse {
+  bool success = 1;
+  string message = 2;
+  Transaction transaction = 3;
+  string tracking_id = 4;
+  int64 estimated_completion = 5;
+}
+
+message GetTransactionRequest {
+  string transaction_id = 1;
+}
+
+message GetTransactionResponse {
+  bool success = 1;
+  Transaction transaction = 2;
+  string message = 3;
+}
+
+message ListTransactionsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  TransactionStatus status_filter = 3;
+  string chain_filter = 4;
+  int64 start_time = 5;
+  int64 end_time = 6;
+}
+
+message ListTransactionsResponse {
+  repeated Transaction transactions = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Wallet Messages
+message WalletTransaction {
+  string id = 1;
+  string hash = 2;
+  string from = 3;
+  string to = 4;
+  string amount = 5;
+  string token = 6;
+  string status = 7;
+  int64 timestamp = 8;
+  string type = 9;
+  bool is_new = 10;
+  int64 created_at = 11;
+  string multi_addr = 12;
+}
+
+message GetWalletTransactionsRequest {
+  string wallet_address = 1;
+  int32 limit = 2;
+  int64 since_timestamp = 3;
+  string token_filter = 4;
+}
+
+message GetWalletTransactionsResponse {
+  bool success = 1;
+  repeated WalletTransaction transactions = 2;
+  int32 total_count = 3;
+  int32 new_transfers = 4;
+  string source = 5;
+}
+
+message WalletBalance {
+  string address = 1;
+  string token = 2;
+  string balance = 3;
+  int64 last_updated = 4;
+}
+
+message GetWalletBalanceRequest {
+  string wallet_address = 1;
+  string token_symbol = 2;
+}
+
+message GetWalletBalanceResponse {
+  bool success = 1;
+  repeated WalletBalance balances = 2;
+  string message = 3;
+}
+
+// Bridge Operation Messages
+message RelayToChainRequest {
+  Transaction transaction = 1;
+  string target_chain = 2;
+  bool force_relay = 3;
+}
+
+message RelayToChainResponse {
+  bool success = 1;
+  string message = 2;
+  string relay_transaction_id = 3;
+  int64 estimated_completion = 4;
+}
+
+message BridgeStats {
+  int32 total_transactions = 1;
+  int32 pending_transactions = 2;
+  int32 completed_transactions = 3;
+  int32 failed_transactions = 4;
+  string total_volume = 5;
+  double success_rate = 6;
+  double average_processing_time = 7;
+  map<string, ChainStats> chain_stats = 8;
+}
+
+message ChainStats {
+  int32 transactions = 1;
+  string volume = 2;
+  double avg_confirmation_time = 3;
+  bool is_healthy = 4;
+}
+
+message GetBridgeStatsRequest {
+  int64 start_time = 1;
+  int64 end_time = 2;
+}
+
+message GetBridgeStatsResponse {
+  bool success = 1;
+  BridgeStats stats = 2;
+  int64 last_updated = 3;
+}
+
+// Retry Mechanism Messages
+message RetryItem {
+  string id = 1;
+  string type = 2;
+  map<string, string> data = 3;
+  int32 attempts = 4;
+  int32 max_attempts = 5;
+  int64 next_retry = 6;
+  int64 created_at = 7;
+  string last_error = 8;
+  RetryStatus status = 9;
+}
+
+enum RetryStatus {
+  RETRY_STATUS_UNSPECIFIED = 0;
+  RETRY_STATUS_PENDING = 1;
+  RETRY_STATUS_PROCESSING = 2;
+  RETRY_STATUS_SUCCESS = 3;
+  RETRY_STATUS_FAILED = 4;
+  RETRY_STATUS_DEAD_LETTER = 5;
+}
+
+message GetRetryQueueRequest {
+  int32 limit = 1;
+  RetryStatus status_filter = 2;
+}
+
+message GetRetryQueueResponse {
+  bool success = 1;
+  repeated RetryItem items = 2;
+  RetryQueueStats stats = 3;
+}
+
+message RetryQueueStats {
+  int32 total_items = 1;
+  int32 pending_items = 2;
+  int32 processing_items = 3;
+  int32 failed_items = 4;
+  int32 dead_letter_items = 5;
+  double success_rate = 6;
+}
+
+// System Monitoring Messages
+message SystemStatus {
+  bool bridge_healthy = 1;
+  bool database_connected = 2;
+  map<string, bool> listeners_active = 3;
+  int64 uptime_seconds = 4;
+  string version = 5;
+  PerformanceMetrics performance = 6;
+}
+
+message PerformanceMetrics {
+  double cpu_usage = 1;
+  double memory_usage = 2;
+  int32 active_connections = 3;
+  double events_per_second = 4;
+  double average_response_time = 5;
+  int32 error_count = 6;
+}
+
+message GetSystemStatusRequest {}
+
+message GetSystemStatusResponse {
+  bool success = 1;
+  SystemStatus status = 2;
+  int64 timestamp = 3;
+}
+
+// Event Streaming Messages
+message BridgeEvent {
+  string id = 1;
+  string type = 2;
+  string source = 3;
+  map<string, string> data = 4;
+  int64 timestamp = 5;
+  EventSeverity severity = 6;
+}
+
+enum EventSeverity {
+  EVENT_SEVERITY_UNSPECIFIED = 0;
+  EVENT_SEVERITY_INFO = 1;
+  EVENT_SEVERITY_WARNING = 2;
+  EVENT_SEVERITY_ERROR = 3;
+  EVENT_SEVERITY_CRITICAL = 4;
+}
+
+message StreamEventsRequest {
+  repeated string event_types = 1;
+  EventSeverity min_severity = 2;
+}
+
+message WalletEvent {
+  string wallet_address = 1;
+  string event_type = 2;
+  WalletTransaction transaction = 3;
+  int64 timestamp = 4;
+}
+
+message MonitorWalletRequest {
+  string wallet_address = 1;
+  repeated string event_types = 2;
+}
+
+// Admin Operation Messages
+message AdminActivity {
+  string id = 1;
+  string action = 2;
+  map<string, string> details = 3;
+  int64 timestamp = 4;
+  string source = 5;
+}
+
+message GetAdminActivitiesRequest {
+  int32 limit = 1;
+  int64 since_timestamp = 2;
+}
+
+message GetAdminActivitiesResponse {
+  bool success = 1;
+  repeated AdminActivity activities = 2;
+  int32 total_count = 3;
+  int64 last_updated = 4;
+}

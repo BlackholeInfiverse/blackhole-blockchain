@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Connectivity Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>BlackHole API Connectivity Test</h1>
+    
+    <button onclick="testMainDashboard()">Test Main Dashboard (Port 8080)</button>
+    <button onclick="testWalletDashboard()">Test Wallet Dashboard (Port 9000)</button>
+    <button onclick="testBridgeDashboard()">Test Bridge Dashboard (Port 8084)</button>
+    
+    <div id="results"></div>
+
+    <script>
+        function addResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            results.appendChild(div);
+        }
+
+        async function testMainDashboard() {
+            addResult('Testing Main Dashboard connectivity...', 'info');
+            
+            try {
+                // Test health endpoint
+                const healthResponse = await fetch('http://localhost:8080/api/health');
+                if (healthResponse.ok) {
+                    const healthData = await healthResponse.text();
+                    addResult(`✅ Main Dashboard Health: ${healthData}`, 'success');
+                } else {
+                    addResult(`❌ Main Dashboard Health failed: ${healthResponse.status}`, 'error');
+                }
+
+                // Test blockchain info
+                const blockchainResponse = await fetch('http://localhost:8080/api/blockchain/info');
+                if (blockchainResponse.ok) {
+                    const blockchainData = await blockchainResponse.json();
+                    addResult(`✅ Blockchain Info: ${JSON.stringify(blockchainData, null, 2)}`, 'success');
+                } else {
+                    addResult(`❌ Blockchain Info failed: ${blockchainResponse.status}`, 'error');
+                }
+
+                // Test node info
+                const nodeResponse = await fetch('http://localhost:8080/api/node/info');
+                if (nodeResponse.ok) {
+                    const nodeData = await nodeResponse.json();
+                    addResult(`✅ Node Info: ${JSON.stringify(nodeData, null, 2)}`, 'success');
+                } else {
+                    addResult(`❌ Node Info failed: ${nodeResponse.status}`, 'error');
+                }
+
+                // Test wallets
+                const walletsResponse = await fetch('http://localhost:8080/api/wallets');
+                if (walletsResponse.ok) {
+                    const walletsData = await walletsResponse.json();
+                    addResult(`✅ Wallets: ${JSON.stringify(walletsData, null, 2)}`, 'success');
+                } else {
+                    addResult(`❌ Wallets failed: ${walletsResponse.status}`, 'error');
+                }
+
+            } catch (error) {
+                addResult(`❌ Main Dashboard Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testWalletDashboard() {
+            addResult('Testing Wallet Dashboard connectivity...', 'info');
+            
+            try {
+                const healthResponse = await fetch('http://localhost:9000/api/health');
+                if (healthResponse.ok) {
+                    const healthData = await healthResponse.text();
+                    addResult(`✅ Wallet Dashboard Health: ${healthData}`, 'success');
+                } else {
+                    addResult(`❌ Wallet Dashboard Health failed: ${healthResponse.status}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Wallet Dashboard Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testBridgeDashboard() {
+            addResult('Testing Bridge Dashboard connectivity...', 'info');
+            
+            try {
+                const healthResponse = await fetch('http://localhost:8084/api/health');
+                if (healthResponse.ok) {
+                    const healthData = await healthResponse.json();
+                    addResult(`✅ Bridge Dashboard Health: ${JSON.stringify(healthData)}`, 'success');
+                } else {
+                    addResult(`❌ Bridge Dashboard Health failed: ${healthResponse.status}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Bridge Dashboard Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-run tests on page load
+        window.onload = function() {
+            addResult('Starting API connectivity tests...', 'info');
+            setTimeout(() => testMainDashboard(), 1000);
+            setTimeout(() => testWalletDashboard(), 2000);
+            setTimeout(() => testBridgeDashboard(), 3000);
+        };
+    </script>
+</body>
+</html>

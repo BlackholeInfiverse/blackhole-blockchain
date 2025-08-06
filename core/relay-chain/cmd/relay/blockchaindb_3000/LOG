@@ -387,3 +387,174 @@
 14:37:56.474370 version@stat F·[3] S·4KiB[4KiB] Sc·[0.75]
 14:37:56.478525 db@janitor F·5 G·0
 14:37:56.478525 db@open done T·6.2521ms
+=============== Aug 2, 2025 (IST) ===============
+10:43:18.683892 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+10:43:18.696060 version@stat F·[3] S·4KiB[4KiB] Sc·[0.75]
+10:43:18.696060 db@open opening
+10:43:18.696060 journal@recovery F·1
+10:43:18.696573 journal@recovery recovering @85
+10:43:18.704326 memdb@flush created L0@87 N·6 S·738B "acc..dd1,v62":"acc..151,v59"
+10:43:18.704840 version@stat F·[4] S·5KiB[5KiB] Sc·[1.00]
+10:43:18.708524 db@janitor F·6 G·0
+10:43:18.708524 db@open done T·12.4642ms
+10:43:18.708524 table@compaction L0·4 -> L1·0 S·5KiB Q·64
+10:43:18.728490 table@build created L1@90 N·23 S·2KiB "acc..dd1,v62":"tok..BHX,v26"
+10:43:18.728490 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+10:43:18.729114 table@compaction committed F-3 S-3KiB Ke·0 D·37 T·16.9418ms
+10:43:18.729114 table@remove removed @84
+10:43:18.729114 table@remove removed @37
+10:43:18.729643 table@remove removed @34
+=============== Aug 2, 2025 (IST) ===============
+11:41:58.328808 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:41:58.341394 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+11:41:58.341394 db@open opening
+11:41:58.341394 journal@recovery F·1
+11:41:58.341906 journal@recovery recovering @88
+11:41:58.342492 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+11:41:58.346227 db@janitor F·4 G·1
+11:41:58.346227 db@janitor removing table-87
+11:41:58.346760 db@open done T·5.366ms
+=============== Aug 2, 2025 (IST) ===============
+11:51:57.775319 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:51:57.775834 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+11:51:57.775834 db@open opening
+11:51:57.776351 journal@recovery F·1
+11:51:57.776351 journal@recovery recovering @91
+11:51:57.777909 memdb@flush created L0@93 N·6 S·828B "acc..dd1,v65":"tok..BHX,v70"
+11:51:57.778430 version@stat F·[1 1] S·2KiB[828B 2KiB] Sc·[0.25 0.00]
+11:51:57.782625 db@janitor F·4 G·0
+11:51:57.782625 db@open done T·6.7912ms
+=============== Aug 2, 2025 (IST) ===============
+11:55:41.177655 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:55:41.178690 version@stat F·[1 1] S·2KiB[828B 2KiB] Sc·[0.25 0.00]
+11:55:41.178690 db@open opening
+11:55:41.178690 journal@recovery F·1
+11:55:41.178690 journal@recovery recovering @94
+11:55:41.179209 version@stat F·[1 1] S·2KiB[828B 2KiB] Sc·[0.25 0.00]
+11:55:41.183886 db@janitor F·4 G·0
+11:55:41.183886 db@open done T·5.1962ms
+=============== Aug 4, 2025 (IST) ===============
+11:38:28.883597 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:38:28.895615 version@stat F·[1 1] S·2KiB[828B 2KiB] Sc·[0.25 0.00]
+11:38:28.896136 db@open opening
+11:38:28.896136 journal@recovery F·1
+11:38:28.896136 journal@recovery recovering @96
+11:38:28.904250 memdb@flush created L0@98 N·57 S·3KiB "acc..5dd,v82":"tok..BHX,v79"
+11:38:28.904250 version@stat F·[2 1] S·6KiB[4KiB 2KiB] Sc·[0.50 0.00]
+11:38:28.908454 db@janitor F·5 G·0
+11:38:28.908454 db@open done T·12.3178ms
+=============== Aug 4, 2025 (IST) ===============
+14:34:16.986154 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+14:34:16.998699 version@stat F·[2 1] S·6KiB[4KiB 2KiB] Sc·[0.50 0.00]
+14:34:16.998699 db@open opening
+14:34:16.998699 journal@recovery F·1
+14:34:16.999259 journal@recovery recovering @99
+14:34:17.007310 memdb@flush created L0@101 N·2 S·620B "acc..dd1,v130":"acc..151,v131"
+14:34:17.007870 version@stat F·[3 1] S·6KiB[4KiB 2KiB] Sc·[0.75 0.00]
+14:34:17.011564 db@janitor F·6 G·0
+14:34:17.011564 db@open done T·12.8642ms
+=============== Aug 5, 2025 (IST) ===============
+09:28:33.833943 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+09:28:33.846130 version@stat F·[3 1] S·6KiB[4KiB 2KiB] Sc·[0.75 0.00]
+09:28:33.846130 db@open opening
+09:28:33.846130 journal@recovery F·1
+09:28:33.846682 journal@recovery recovering @102
+09:28:33.855683 memdb@flush created L0@104 N·13 S·990B "acc..dd1,v144":"tok..BHX,v138"
+09:28:33.855683 version@stat F·[4 1] S·7KiB[5KiB 2KiB] Sc·[1.00 0.00]
+09:28:33.859874 db@janitor F·7 G·0
+09:28:33.859874 db@open done T·13.7436ms
+09:28:33.860408 table@compaction L0·4 -> L1·1 S·7KiB Q·146
+09:28:33.886202 table@build created L1@107 N·26 S·2KiB "acc..5dd,v82":"tok..BHX,v26"
+09:28:33.886202 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+09:28:33.886202 table@compaction committed F-4 S-5KiB Ke·0 D·75 T·23.1979ms
+09:28:33.886732 table@remove removed @101
+09:28:33.886732 table@remove removed @98
+09:28:33.887259 table@remove removed @93
+09:28:33.887259 table@remove removed @90
+=============== Aug 5, 2025 (IST) ===============
+13:47:09.473326 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+13:47:09.480626 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+13:47:09.480626 db@open opening
+13:47:09.480626 journal@recovery F·1
+13:47:09.481152 journal@recovery recovering @105
+13:47:09.484281 memdb@flush created L0@108 N·10 S·931B "acc..dd1,v155":"tok..BHX,v152"
+13:47:09.484281 version@stat F·[1 1] S·3KiB[931B 2KiB] Sc·[0.25 0.00]
+13:47:09.489002 db@janitor F·5 G·1
+13:47:09.489002 db@janitor removing table-104
+13:47:09.489002 db@open done T·8.3765ms
+=============== Aug 5, 2025 (IST) ===============
+14:27:07.560129 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+14:27:07.560646 version@stat F·[1 1] S·3KiB[931B 2KiB] Sc·[0.25 0.00]
+14:27:07.560646 db@open opening
+14:27:07.561158 journal@recovery F·1
+14:27:07.561158 journal@recovery recovering @109
+14:27:07.562753 memdb@flush created L0@111 N·4 S·582B "acc..dd1,v160":"tok..BHX,v161"
+14:27:07.563281 version@stat F·[2 1] S·3KiB[1KiB 2KiB] Sc·[0.50 0.00]
+14:27:07.566961 db@janitor F·5 G·0
+14:27:07.566961 db@open done T·5.8034ms
+=============== Aug 5, 2025 (IST) ===============
+15:03:46.462988 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+15:03:46.464551 version@stat F·[2 1] S·3KiB[1KiB 2KiB] Sc·[0.50 0.00]
+15:03:46.464551 db@open opening
+15:03:46.464551 journal@recovery F·1
+15:03:46.464551 journal@recovery recovering @112
+15:03:46.541372 memdb@flush created L0@114 N·8 S·752B "acc..151,v169":"tok..BHX,v166"
+15:03:46.541891 version@stat F·[3 1] S·4KiB[2KiB 2KiB] Sc·[0.75 0.00]
+15:03:46.546077 db@janitor F·6 G·0
+15:03:46.546077 db@open done T·81.5265ms
+=============== Aug 6, 2025 (IST) ===============
+09:35:14.935054 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+09:35:14.949279 version@stat F·[3 1] S·4KiB[2KiB 2KiB] Sc·[0.75 0.00]
+09:35:14.949279 db@open opening
+09:35:14.949279 journal@recovery F·1
+09:35:14.949859 journal@recovery recovering @115
+09:35:14.957594 memdb@flush created L0@117 N·8 S·896B "acc..dd1,v178":"tok..BHX,v177"
+09:35:14.958127 version@stat F·[4 1] S·5KiB[3KiB 2KiB] Sc·[1.00 0.00]
+09:35:14.961815 db@janitor F·7 G·0
+09:35:14.961815 db@open done T·12.5358ms
+09:35:14.961815 table@compaction L0·4 -> L1·1 S·5KiB Q·180
+09:35:14.990817 table@build created L1@120 N·26 S·2KiB "acc..5dd,v82":"tok..BHX,v26"
+09:35:14.990817 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+09:35:14.990817 table@compaction committed F-4 S-3KiB Ke·0 D·30 T·29.0018ms
+09:35:14.991343 table@remove removed @114
+09:35:14.991343 table@remove removed @111
+09:35:14.991870 table@remove removed @108
+09:35:14.991870 table@remove removed @107
+=============== Aug 6, 2025 (IST) ===============
+09:40:43.760781 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+09:40:43.761813 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+09:40:43.761813 db@open opening
+09:40:43.761813 journal@recovery F·1
+09:40:43.761813 journal@recovery recovering @118
+09:40:43.762853 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+09:40:43.767038 db@janitor F·4 G·1
+09:40:43.767038 db@janitor removing table-117
+09:40:43.767562 db@open done T·5.7491ms
+=============== Aug 6, 2025 (IST) ===============
+10:07:55.112987 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+10:07:55.120393 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+10:07:55.120393 db@open opening
+10:07:55.120393 journal@recovery F·1
+10:07:55.120916 journal@recovery recovering @121
+10:07:55.121441 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+10:07:55.126159 db@janitor F·3 G·0
+10:07:55.126159 db@open done T·5.7663ms
+=============== Aug 6, 2025 (IST) ===============
+10:09:48.155828 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+10:09:48.156868 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+10:09:48.156868 db@open opening
+10:09:48.156868 journal@recovery F·1
+10:09:48.157384 journal@recovery recovering @123
+10:09:48.157905 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+10:09:48.200475 db@janitor F·3 G·0
+10:09:48.200475 db@open done T·43.6071ms
+=============== Aug 6, 2025 (IST) ===============
+12:23:44.225379 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:23:44.233756 version@stat F·[0 1] S·2KiB[0B 2KiB] Sc·[0.00 0.00]
+12:23:44.233756 db@open opening
+12:23:44.233756 journal@recovery F·1
+12:23:44.234272 journal@recovery recovering @125
+12:23:44.240546 memdb@flush created L0@127 N·13 S·1KiB "acc..dd1,v181":"tok..BHX,v185"
+12:23:44.241073 version@stat F·[1 1] S·3KiB[1KiB 2KiB] Sc·[0.25 0.00]
+12:23:44.245279 db@janitor F·4 G·0
+12:23:44.245279 db@open done T·11.5224ms
