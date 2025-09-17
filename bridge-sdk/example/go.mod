@@ -1,4 +1,4 @@
-module github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk
+module github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk/example
 
 go 1.24.2
 
@@ -6,6 +6,9 @@ toolchain go1.24.4
 
 // Replace directive to use local core blockchain module
 replace github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain => ../../core/relay-chain
+
+// Replace directive to use local bridge-sdk core module
+replace github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk/core => ../core
 
 require (
 	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-00010101000000-000000000000

@@ -1,4 +1,4 @@
-module github.com/Shivam-Patel-G/blackhole-blockchain
+module github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk
 
 go 1.24.2
 
