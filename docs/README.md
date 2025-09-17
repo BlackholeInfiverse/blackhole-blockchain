@@ -1,3 +1,4 @@
+.
 # 📚 Blackhole Blockchain Documentation
 
 Welcome to the comprehensive documentation for the Blackhole Blockchain project. This directory contains all technical documentation, guides, and resources.
