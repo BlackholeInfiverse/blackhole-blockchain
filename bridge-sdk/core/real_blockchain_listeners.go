@@ -5,6 +5,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"time"
 	
+	"fmt"
+	"strconv"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
 	"github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk"
 )
@@ -59,8 +61,7 @@ func (rbl *RealBlockchainListener) StartEthereumListener(ctx context.Context) er
 				// Process bridge transaction
 				rbl.processBridgeTransaction(tx)
 			}
-		}()
-
+		}
 	return nil
 }
 
@@ -100,7 +101,8 @@ func (rbl *RealBlockchainListener) StartSolanaListener(ctx context.Context) erro
 				// Process bridge transaction
 				rbl.processBridgeTransaction(tx)
 			}
-		}()
+		}
+	}() // ✅ properly closed the goroutine
 
 	return nil
 }
@@ -108,8 +110,6 @@ func (rbl *RealBlockchainListener) StartSolanaListener(ctx context.Context) erro
 // convertEthereumEventToBridgeTx converts an Ethereum event to a bridge transaction
 func (rbl *RealBlockchainListener) convertEthereumEventToBridgeTx(event chain.BlockchainEvent) (*Transaction, error) {
 	// Implementation details for Ethereum event conversion
-	// This would parse the specific Ethereum event format
-	// and create a corresponding bridge transaction
 	return &Transaction{
 		ID:            fmt.Sprintf("eth_%d", time.Now().Unix()),
 		Hash:          event.Hash,
