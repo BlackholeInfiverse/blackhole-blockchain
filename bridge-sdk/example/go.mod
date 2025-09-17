@@ -1,8 +1,8 @@
 module github.com/Shivam-Patel-G/blackhole-blockchain
 
-go 1.21
+go 1.24.2
 
-toolchain go1.21.0
+toolchain go1.24.4
 
 // Replace directive to use local core blockchain module
 replace github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain => ../../core/relay-chain

@@ -1,0 +1,28 @@
+Shivam – 4-Day Production Sprint
+Day 1 – Containerization & CI/CD
+• Dockerize blockchain node (Dockerfile + docker-compose).
+• Add environment variables for flexible configs (ports, peers, db paths).
+• Setup GitHub Actions pipeline:
+◦ Lint + format checks.
+◦ Unit tests auto-run on push.
+◦ Build & publish Docker image to GitHub Packages.
+•
+• MVPD: Blockchain node builds & runs inside Docker; CI pipeline runs successfully.
+Day 2 – Cloud Testnet Deployment
+• Spin up VM (Yotta/On-Prem device).
+• Deploy Dockerized node on VM.
+• Expose RPC endpoints securely (TLS + firewall).
+• Document connection steps for external users.
+• MVPD: Live testnet node is running + connectable externally via RPC.
+Day 3 – Monitoring & Alerts
+• Integrate Prometheus for metrics (block height, peer count, tx latency).
+• Add Grafana dashboards for live monitoring.
+• Setup alert rules (Slack/Email) for downtime or consensus failure.
+• MVPD: Monitoring dashboard shows live blockchain metrics.
+Day 4 – End-to-End Testing & Docs
+• Test token + coin transfers between wallets.
+• Validate block confirmations + ledger integrity.
+• Write step-by-step production deployment docs (for others to replicate).
+• Push final report + demo video (screen recording of live transactions).
+• MVPD: A transaction flows on live testnet, visible in monitoring dashboard, with docs +
+demo.

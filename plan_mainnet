@@ -1,0 +1,123 @@
+
+What the whitepaper commits to
+•  Architecture: Relay chain + parachains, PoS validators with incentives/slashing, cross‑chain interoperability.
+•  User promise: Free (or subsidized) small transactions via relayers and a fee‑subsidy pool; OTC focus with authentication, multisig, escrow, optional ZK; built‑in AMM DEX; token/asset management; staking and governance; bridge to other chains.
+•  Scale/security: Parachains for specialization, potential sharding, L2/rollups later, layered auth, KYC/AML where required.
+•  Sustainability: Inflationary rewards to fund validators and fee subsidies; DAO governance.
+
+What tokenomics.txt commits to
+•  Distribution (by percent of total supply): 10% Private Sale, 20% Public Sale, 15% Dev Fund, 10% Staking Rewards, 15% Team/Advisors (locked), 15% Ecosystem Incentives, 15% Reserve.
+•  Supply: Max supply cap; deflationary levers (fee burn ~0.1%, buybacks).
+•  Incentives: Staking & yield farming, LP rewards, referral/community incentives.
+•  Governance: Token‑holder voting; move toward DAO.
+•  “Bridge to a future coin”/migration capability.
+
+Current code reality to align
+•  Core chain, DEX, wallet service, and bridge SDK are present and already work locally; you can start validators, run DEX tests, and expose HTTP/RPC.
+•  The deployed BHX EVM token (bridge-facing) has MAX_SUPPLY 1B and bridgeMint/bridgeBurn for cross‑chain sync. It currently doesn’t implement on‑chain vesting/lockups, fee burn, or buybacks; those need to be added around the token or as separate contracts/policies and reflected on the BlackHole native ledger.
+•  “Free tx” model isn’t wired yet: you need a relayer/meta‑tx path and a subsidy treasury on the chain; bridge-sdk has safety features you can reuse for relayer ops.
+
+End‑product roadmap (phases, deliverables, and how it becomes usable for everyone)
+
+Phase 0 — Spec lock and alignment (1 week)
+•  Supply and distribution
+•  Lock TOTAL_SUPPLY and initial circulating supply across BlackHole native and wrapped BHX on EVM chains.
+•  Publish the 10/20/15/10/15/15/15 allocations with addresses, vesting schedules (Team/Advisors lock/linear release), cliff periods, and a public spreadsheet/JSON.
+•  Economics
+•  Define annual inflation rate for native chain staking rewards and the portion routed to the fee‑subsidy pool (whitepaper “free usage”).
+•  Define fee policy: small tx subsidized; large tx charged; fee burn rate target ~0.1% as in tokenomics (native chain fee → burn + treasury split).
+•  Governance
+•  Minimal on‑chain governance processes (proposal types, quorum, veto, upgrade path); publish a governance constitution draft.
+
+Phase 1 — Private devnet and hardening (1–2 weeks)
+•  Multi‑node devnet (3–5 nodes) with fixed bootnodes, shared genesis, and repeatable docker-compose bring‑up.
+•  DEX parity: close the remaining get_quote test; unit‑test AMM math (x*y=k), fee accrual, price impact.
+•  OTC building blocks: add and test multisig and escrow modules in core/relay-chain (align with whitepaper).
+•  Meta‑transactions (gasless)
+•  Introduce a relayer service with allow‑list and caps; on‑chain meta‑tx verification (EIP‑2771‑like or native signature envelope).
+•  Subsidy treasury account that pays relayer receipts; metering + abuse prevention.
+
+Phase 2 — Public testnet (3–5 weeks)
+This is the “usable by everyone” milestone for developers.
+•  Network
+•  4–7 validator nodes (geo‑distributed), 2+ public RPC endpoints, published bootnodes, health/status page.
+•  Faucet with per‑IP/day limits.
+•  Explorer compatible with your RPC (Blockscout if you expose EVM‑like JSON‑RPC, or a custom explorer hitting core/relay-chain/api).
+•  Developer surface
+•  Stable, versioned API: finalize JSON‑RPC (and/or gRPC) routes; document in an /api reference.
+•  SDKs: TypeScript + Go SDKs that wrap wallet ops, DEX ops (create pair, add liquidity, swap), and bridge intents.
+•  Starter templates: minimal app that connects, requests faucet funds, makes a signed (meta) transaction, and performs a swap.
+•  Bridge (testnet)
+•  Run bridge-sdk against Sepolia and Amoy with circuit breakers + replay protection on; test BHX wrapping flows and finalize address mapping between native BHX and wrapped BHX.
+•  Wallet & DEX UI
+•  Wallet web UI default mode enabled; basic DEX UI to create pools and swap on testnet.
+•  Docs
+•  “Run a node”, “Connect via RPC”, “Get test tokens”, “Build your first app”, “Use DEX/Bridge”, “Governance”.
+
+Phase 3 — Tokenomics execution (2–4 weeks, overlaps with Phase 2)
+•  Distribution contracts
+•  Vesting contracts for Team/Advisors; lockups and cliff logic on the native chain (and mirrored for wrapped BHX where needed).
+•  Ecosystem Incentives and Reserve managed by multisig/DAO treasury.
+•  Deflationary levers
+•  Fee burn implementation on the native chain; buyback policy and off‑chain governance trigger; reporting.
+•  Staking and yields
+•  Staking module parameters (APR bands, unbonding); liquidity mining campaigns for DEX pools (BHX‑stable, BHX‑ETH).
+
+Phase 4 — Security, SRE, and governance (3–6 weeks)
+•  Security
+•  Threat model documented (relayer abuse, bridge replay, P2P floods, consensus halt).
+•  External audits: consensus, DEX math, relayer, bridge critical paths.
+•  SRE
+•  Metrics and dashboards (block time, orphan rate, peers, mempool size, API errors), alerting, snapshots/restore, upgrade playbooks.
+•  Governance
+•  Launch v1 governance process (forum + on‑chain proposals), and run a testnet upgrade proposal end‑to‑end.
+
+Phase 5 — Mainnet launch (timed by audit results)
+•  Genesis & validators
+•  Publish mainnet genesis, bootnodes, minimum validator requirements, staking docs.
+•  Infra
+•  Mainnet RPCs, explorer, status page, public snapshots; faucet disabled or restricted.
+•  Tokenomics go‑live
+•  Enforce vesting and fee policies; start inflation/staking rewards and fee‑subsidy.
+•  Bridge
+•  Enable EVM bridge (Ethereum/Polygon) for BHX; strict monitoring with circuit breakers.
+•  Listings
+•  Provide exchanges with chain params, confirmation depth, RPCs, explorer links, and contact procedures.
+
+Phase 6 — Growth & ecosystem (ongoing)
+•  Ecosystem grants, hackathons, and partner integrations.
+•  L2/rollups or sharding if needed (as whitepaper suggests), once base layer stabilizes.
+•  Optional KYC/AML hooks for regulated OTC flows (as whitepaper allows).
+
+Where the whitepaper/tokenomics meet the code (implementation map)
+•  Free usage model
+•  Add a relayer + meta‑tx path and fee‑subsidy treasury on the native chain; throttle and monitor. Bridge‑SDK safety patterns (circuit breakers, replay protection) can be reused in relayer service architecture.
+•  PoS + inflation and fee burns
+•  In core/relay-chain/consensus and token modules, parameterize annual inflation and split (staking rewards vs. subsidy treasury). Implement fee burn percentage at execution layer.
+•  OTC features
+•  Implement escrow and multisig modules; optional ZK hooks later; KYC hooks as pluggable verification service for OTC sized flows.
+•  DEX
+•  Finish quote path; verify fee accrual, price impact, constant‑product invariants; LP accounting correctness; add pool creation constraints and pair registry.
+•  Bridge
+•  Keep circuit breakers on by default; finalize address mapping and wrapped BHX mint/burn authority (your BHXToken already has authorizedBridges).
+•  Governance
+•  Start with multisig treasury; move to a minimal DAO with proposal types (spend, parameter change, upgrade), token‑weighted voting; later extend to para‑chain governance if you split functionality.
+
+Usability “for everyone” (what users/devs actually get)
+•  End users
+•  Wallet that auto‑connects to public RPC, faucet on testnet, gasless small transfers, simple DEX UI to swap, bridge UI to move assets.
+•  Developers
+•  Stable RPC/gRPC endpoints, public docs, TS/Go SDKs, code samples, testnet faucet, explorer, and a working local devnet.
+•  Node operators
+•  Signed binaries and Docker images, bootnodes, snapshots, monitoring dashboards, and upgrade playbooks.
+•  Exchanges/integrators
+•  Chain params, confirmation rules, RPCs, explorer, SLA’d status page, incident runbooks.
+
+Immediate next steps I can implement for you
+•  Create a reproducible 3‑node local network script and docs, including bootnodes and a shared genesis.
+•  Add a relayer/meta‑tx prototype and a fee‑subsidy treasury account on the native chain.
+•  Close the DEX get_quote test and add invariant tests for x*y=k and fee flows.
+•  Draft token distribution/vesting contracts and a migration plan aligning tokenomics.txt with BHX on EVM and native BHX.
+•  Stand up a docs skeleton (landing, Run a Node, RPC, SDK, DEX, Bridge, Faucet).
+
+If you want, say “start with devnet + relayer” (or pick another item), and I’ll implement it in this repo.
