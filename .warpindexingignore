@@ -1,0 +1,60 @@
+# Warp Indexing Ignore File
+# This file tells Warp to ignore large directories that don't need indexing
+
+# Node.js dependencies
+node_modules/
+*/node_modules/
+
+# Build and cache directories
+cache/
+*/cache/
+build/
+*/build/
+dist/
+*/dist/
+.next/
+.cache/
+
+# Log directories
+logs/
+*/logs/
+token_logs_*/
+blockchain_logs/
+*/blockchain_logs/
+
+# Database files
+*.db
+*.sqlite
+*.leveldb
+blockchaindb_*/
+data/
+*/data/
+
+# Precompiled binaries
+prebuilds/
+*/prebuilds/
+
+# Git directory (already ignored by default)
+.git/
+
+# IDE specific
+.vscode/
+.idea/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Compiled output
+*.wasm
+*.bin
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp

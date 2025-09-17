@@ -111,7 +111,8 @@ func (s *APIServer) Start() {
 
 	fmt.Printf("🌐 API Server starting on port %d\n", s.port)
 	fmt.Printf("🌐 Open http://localhost:%d in your browser\n", s.port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", s.port), nil))
+	addr := fmt.Sprintf("0.0.0.0:%d", s.port)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
 func (s *APIServer) enableCORS(handler http.HandlerFunc) http.HandlerFunc {
