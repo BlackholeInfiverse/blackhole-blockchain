@@ -1,4 +1,4 @@
-module github.com/Shivam-Patel-G/blackhole-blockchain
+module github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk/example
 
 go 1.24.2
 
@@ -6,6 +6,9 @@ toolchain go1.24.4
 
 // Replace directive to use local core blockchain module
 replace github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain => ../../core/relay-chain
+
+// Replace directive to use local bridge-sdk core module
+replace github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk/core => ../core
 
 require (
 	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-00010101000000-000000000000
@@ -28,10 +31,11 @@ require (
 	github.com/elastic/gosigar v0.14.3 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
+	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
+	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20250208200701-d0013a598941 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -101,7 +105,7 @@ require (
 	github.com/quic-go/webtransport-go v0.8.1-0.20241018022711-4ac2c9250e66 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
-	github.com/syndtr/goleveldb v1.0.0 // indirect
+	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	go.uber.org/dig v1.18.0 // indirect
 	go.uber.org/fx v1.23.0 // indirect
