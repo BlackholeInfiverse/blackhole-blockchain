@@ -172,148 +172,172 @@ func (sdk *BridgeSDK) AddEvent(eventType, chain, txHash string, data map[string]
 func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 	sdk.logger.Info("🔗 Starting Ethereum listener...")
 
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
+	// Check if we should use real blockchain listeners
+	if sdk.useRealBlockchainListeners {
+		// Use real blockchain listener
+		realListener := core.NewRealBlockchainListener(sdk)
+		return realListener.StartEthereumListener(ctx)
+	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			sdk.logger.Info("🛑 Ethereum listener stopped")
-			return nil
-		case <-ticker.C:
-			// Check circuit breaker
-			if breaker := sdk.circuitBreakers["ethereum_listener"]; breaker != nil && !breaker.canExecute() {
-				sdk.logger.Warn("⚡ Ethereum listener circuit breaker is open")
-				continue
-			}
+	// Otherwise use mock listener (default for development)
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
 
-			// Simulate processing Ethereum transactions
-			if rand.Float32() < 0.3 { // 30% chance of new transaction
-				tx := &Transaction{
-					ID:            fmt.Sprintf("eth_%d", time.Now().Unix()),
-					Hash:          fmt.Sprintf("0x%x", rand.Uint64()),
-					SourceChain:   "ethereum",
-					DestChain:     "solana",
-					SourceAddress: "0x742d35Cc6634C0532925a3b8D4C9db96590c6C87",
-					DestAddress:   "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
-					TokenSymbol:   "USDC",
-					Amount:        fmt.Sprintf("%.6f", rand.Float64()*1000),
-					Fee:           "0.005",
-					Status:        "pending",
-					CreatedAt:     time.Now(),
-					Confirmations: 0,
-					BlockNumber:   uint64(18500000 + rand.Intn(1000)),
+		for {
+			select {
+			case <-ctx.Done():
+				sdk.logger.Info("🛑 Ethereum listener stopped")
+				return
+			case <-ticker.C:
+				// Check circuit breaker
+				if breaker := sdk.circuitBreakers["ethereum_listener"]; breaker != nil && !breaker.canExecute() {
+					sdk.logger.Warn("⚡ Ethereum listener circuit breaker is open")
+					continue
 				}
 
-				// Check replay protection
-				if sdk.replayProtection.enabled {
-					hash := sdk.GenerateEventHash(tx)
-					if sdk.IsReplayAttack(hash) {
-						sdk.logger.Warnf("🚫 Replay attack detected for transaction %s", tx.ID)
-						sdk.IncrementBlockedReplays()
-						continue
+				// Simulate processing Ethereum transactions
+				if rand.Float32() < 0.3 { // 30% chance of new transaction
+					tx := &Transaction{
+						ID:            fmt.Sprintf("eth_%d", time.Now().Unix()),
+						Hash:          fmt.Sprintf("0x%x", rand.Uint64()),
+						SourceChain:   "ethereum",
+						DestChain:     "solana",
+						SourceAddress: "0x742d35Cc6634C0532925a3b8D4C9db96590c6C87",
+						DestAddress:   "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+						TokenSymbol:   "USDC",
+						Amount:        fmt.Sprintf("%.6f", rand.Float64()*1000),
+						Fee:           "0.005",
+						Status:        "pending",
+						CreatedAt:     time.Now(),
+						Confirmations: 0,
+						BlockNumber:   uint64(18500000 + rand.Intn(1000)),
 					}
-					if err := sdk.MarkAsProcessed(hash); err != nil {
-						sdk.logger.Errorf("Failed to mark transaction as processed: %v", err)
+
+					// Check replay protection
+					if sdk.replayProtection.enabled {
+						hash := sdk.GenerateEventHash(tx)
+						if sdk.IsReplayAttack(hash) {
+							sdk.logger.Warnf("🚫 Replay attack detected for transaction %s", tx.ID)
+							sdk.IncrementBlockedReplays()
+							continue
+						}
+						if err := sdk.MarkAsProcessed(hash); err != nil {
+							sdk.logger.Errorf("Failed to mark transaction as processed: %v", err)
+						}
 					}
+
+					sdk.SaveTransaction(tx)
+					sdk.AddEvent("transfer", "ethereum", tx.Hash, map[string]interface{}{
+						"amount": tx.Amount,
+						"token":  tx.TokenSymbol,
+					})
+
+					sdk.logger.Infof("📥 New Ethereum transaction: %s (%s %s)", tx.ID, tx.Amount, tx.TokenSymbol)
+
+					// Simulate processing completion
+					go func(transaction *Transaction) {
+						time.Sleep(time.Duration(5+rand.Intn(10)) * time.Second)
+						transaction.Status = "completed"
+						now := time.Now()
+						transaction.CompletedAt = &now
+						transaction.Confirmations = 12 + rand.Intn(10)
+						transaction.ProcessingTime = fmt.Sprintf("%.1fs", time.Since(transaction.CreatedAt).Seconds())
+						sdk.SaveTransaction(transaction)
+						sdk.logger.Infof("✅ Ethereum transaction completed: %s", transaction.ID)
+					}(tx)
 				}
-
-				sdk.SaveTransaction(tx)
-				sdk.AddEvent("transfer", "ethereum", tx.Hash, map[string]interface{}{
-					"amount": tx.Amount,
-					"token":  tx.TokenSymbol,
-				})
-
-				sdk.logger.Infof("📥 New Ethereum transaction: %s (%s %s)", tx.ID, tx.Amount, tx.TokenSymbol)
-
-				// Simulate processing completion
-				go func(transaction *Transaction) {
-					time.Sleep(time.Duration(5+rand.Intn(10)) * time.Second)
-					transaction.Status = "completed"
-					now := time.Now()
-					transaction.CompletedAt = &now
-					transaction.Confirmations = 12 + rand.Intn(10)
-					transaction.ProcessingTime = fmt.Sprintf("%.1fs", time.Since(transaction.CreatedAt).Seconds())
-					sdk.SaveTransaction(transaction)
-					sdk.logger.Infof("✅ Ethereum transaction completed: %s", transaction.ID)
-				}(tx)
 			}
 		}
-	}
+	}()
+
+	return nil
 }
 
 // StartSolanaListener starts the Solana blockchain listener
 func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 	sdk.logger.Info("🔗 Starting Solana listener...")
 
-	ticker := time.NewTicker(8 * time.Second)
-	defer ticker.Stop()
+	// Check if we should use real blockchain listeners
+	if sdk.useRealBlockchainListeners {
+		// Use real blockchain listener
+		realListener := core.NewRealBlockchainListener(sdk)
+		return realListener.StartSolanaListener(ctx)
+	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			sdk.logger.Info("🛑 Solana listener stopped")
-			return nil
-		case <-ticker.C:
-			// Check circuit breaker
-			if breaker := sdk.circuitBreakers["solana_listener"]; breaker != nil && !breaker.canExecute() {
-				sdk.logger.Warn("⚡ Solana listener circuit breaker is open")
-				continue
-			}
+	// Otherwise use mock listener (default for development)
+	go func() {
+		ticker := time.NewTicker(8 * time.Second)
+		defer ticker.Stop()
 
-			// Simulate processing Solana transactions
-			if rand.Float32() < 0.25 { // 25% chance of new transaction
-				tx := &Transaction{
-					ID:            fmt.Sprintf("sol_%d", time.Now().Unix()),
-					Hash:          generateSolanaSignature(),
-					SourceChain:   "solana",
-					DestChain:     "ethereum",
-					SourceAddress: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
-					DestAddress:   "0x742d35Cc6634C0532925a3b8D4C9db96590c6C87",
-					TokenSymbol:   "SOL",
-					Amount:        fmt.Sprintf("%.9f", rand.Float64()*10),
-					Fee:           "0.000005",
-					Status:        "pending",
-					CreatedAt:     time.Now(),
-					Confirmations: 0,
-					BlockNumber:   uint64(200000000 + rand.Intn(10000)),
+		for {
+			select {
+			case <-ctx.Done():
+				sdk.logger.Info("🛑 Solana listener stopped")
+				return
+			case <-ticker.C:
+				// Check circuit breaker
+				if breaker := sdk.circuitBreakers["solana_listener"]; breaker != nil && !breaker.canExecute() {
+					sdk.logger.Warn("⚡ Solana listener circuit breaker is open")
+					continue
 				}
 
-				// Check replay protection
-				if sdk.replayProtection.enabled {
-					hash := sdk.GenerateEventHash(tx)
-					if sdk.IsReplayAttack(hash) {
-						sdk.logger.Warnf("🚫 Replay attack detected for transaction %s", tx.ID)
-						sdk.IncrementBlockedReplays()
-						continue
+				// Simulate processing Solana transactions
+				if rand.Float32() < 0.25 { // 25% chance of new transaction
+					tx := &Transaction{
+						ID:            fmt.Sprintf("sol_%d", time.Now().Unix()),
+						Hash:          generateSolanaSignature(),
+						SourceChain:   "solana",
+						DestChain:     "ethereum",
+						SourceAddress: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+						DestAddress:   "0x742d35Cc6634C0532925a3b8D4C9db96590c6C87",
+						TokenSymbol:   "SOL",
+						Amount:        fmt.Sprintf("%.9f", rand.Float64()*10),
+						Fee:           "0.000005",
+						Status:        "pending",
+						CreatedAt:     time.Now(),
+						Confirmations: 0,
+						BlockNumber:   uint64(200000000 + rand.Intn(10000)),
 					}
-					if err := sdk.MarkAsProcessed(hash); err != nil {
-						sdk.logger.Errorf("Failed to mark transaction as processed: %v", err)
+
+					// Check replay protection
+					if sdk.replayProtection.enabled {
+						hash := sdk.GenerateEventHash(tx)
+						if sdk.IsReplayAttack(hash) {
+							sdk.logger.Warnf("🚫 Replay attack detected for transaction %s", tx.ID)
+							sdk.IncrementBlockedReplays()
+							continue
+						}
+						if err := sdk.MarkAsProcessed(hash); err != nil {
+							sdk.logger.Errorf("Failed to mark transaction as processed: %v", err)
+						}
 					}
+
+					sdk.SaveTransaction(tx)
+					sdk.AddEvent("transfer", "solana", tx.Hash, map[string]interface{}{
+						"amount": tx.Amount,
+						"token":  tx.TokenSymbol,
+					})
+
+					sdk.logger.Infof("📥 New Solana transaction: %s (%s %s)", tx.ID, tx.Amount, tx.TokenSymbol)
+
+					// Simulate processing completion
+					go func(transaction *Transaction) {
+						time.Sleep(time.Duration(3+rand.Intn(7)) * time.Second)
+						transaction.Status = "completed"
+						now := time.Now()
+						transaction.CompletedAt = &now
+						transaction.Confirmations = 32 + rand.Intn(20)
+						transaction.ProcessingTime = fmt.Sprintf("%.1fs", time.Since(transaction.CreatedAt).Seconds())
+						sdk.SaveTransaction(transaction)
+						sdk.logger.Infof("✅ Solana transaction completed: %s", transaction.ID)
+					}(tx)
 				}
-
-				sdk.SaveTransaction(tx)
-				sdk.AddEvent("transfer", "solana", tx.Hash, map[string]interface{}{
-					"amount": tx.Amount,
-					"token":  tx.TokenSymbol,
-				})
-
-				sdk.logger.Infof("📥 New Solana transaction: %s (%s %s)", tx.ID, tx.Amount, tx.TokenSymbol)
-
-				// Simulate processing completion
-				go func(transaction *Transaction) {
-					time.Sleep(time.Duration(3+rand.Intn(7)) * time.Second)
-					transaction.Status = "completed"
-					now := time.Now()
-					transaction.CompletedAt = &now
-					transaction.Confirmations = 32 + rand.Intn(20)
-					transaction.ProcessingTime = fmt.Sprintf("%.1fs", time.Since(transaction.CreatedAt).Seconds())
-					sdk.SaveTransaction(transaction)
-					sdk.logger.Infof("✅ Solana transaction completed: %s", transaction.ID)
-				}(tx)
 			}
 		}
-	}
+	}()
+
+	return nil
 }
 
 func generateSolanaSignature() string {
