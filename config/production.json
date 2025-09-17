@@ -1,0 +1,21 @@
+{
+  "node_port": 4001,
+  "p2p_port": 4002,
+  "dashboard_port": 8080,
+  "api_port": 8081,
+  "data_path": "./data",
+  "log_path": "./logs",
+  "config_path": "./config",
+  "max_peers": 100,
+  "block_time": 6,
+  "max_txs_per_block": 2000,
+  "enable_tls": true,
+  "tls_cert_path": "./certs/server.crt",
+  "tls_key_path": "./certs/server.key",
+  "enable_metrics": true,
+  "metrics_port": 9090,
+  "log_level": "INFO",
+  "initial_supply": 10000000,
+  "inflation_rate": 7.0,
+  "target_staking_ratio": 67.0
+}

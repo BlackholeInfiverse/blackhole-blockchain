@@ -311,10 +311,80 @@ func main() {
 	config.NodePort = *nodePort
 	config.DashboardPort = *dashboard
 	
-	// TODO: Load from config file if provided
+	// Load from config file if provided
 	if *configFile != "" {
 		log.Printf("📄 Loading configuration from %s", *configFile)
-		// Implement config file loading
+		
+		// Read config file
+		configData, err := os.ReadFile(*configFile)
+		if err != nil {
+			log.Fatalf("❌ Failed to read config file: %v", err)
+		}
+		
+		// Parse JSON config
+		var fileConfig ProductionConfig
+		if err := json.Unmarshal(configData, &fileConfig); err != nil {
+			log.Fatalf("❌ Failed to parse config file: %v", err)
+		}
+		
+		// Override default config with file values (only for non-zero/empty values)
+		if fileConfig.NodePort != 0 {
+			config.NodePort = fileConfig.NodePort
+		}
+		if fileConfig.P2PPort != 0 {
+			config.P2PPort = fileConfig.P2PPort
+		}
+		if fileConfig.DashboardPort != 0 {
+			config.DashboardPort = fileConfig.DashboardPort
+		}
+		if fileConfig.APIPort != 0 {
+			config.APIPort = fileConfig.APIPort
+		}
+		if fileConfig.DataPath != "" {
+			config.DataPath = fileConfig.DataPath
+		}
+		if fileConfig.LogPath != "" {
+			config.LogPath = fileConfig.LogPath
+		}
+		if fileConfig.ConfigPath != "" {
+			config.ConfigPath = fileConfig.ConfigPath
+		}
+		if fileConfig.MaxPeers != 0 {
+			config.MaxPeers = fileConfig.MaxPeers
+		}
+		if fileConfig.BlockTime != 0 {
+			config.BlockTime = fileConfig.BlockTime
+		}
+		if fileConfig.MaxTxsPerBlock != 0 {
+			config.MaxTxsPerBlock = fileConfig.MaxTxsPerBlock
+		}
+		if fileConfig.MetricsPort != 0 {
+			config.MetricsPort = fileConfig.MetricsPort
+		}
+		if fileConfig.LogLevel != "" {
+			config.LogLevel = fileConfig.LogLevel
+		}
+		if fileConfig.InitialSupply != 0 {
+			config.InitialSupply = fileConfig.InitialSupply
+		}
+		if fileConfig.InflationRate != 0 {
+			config.InflationRate = fileConfig.InflationRate
+		}
+		if fileConfig.TargetStaking != 0 {
+			config.TargetStaking = fileConfig.TargetStaking
+		}
+		
+		// Security settings
+		config.EnableTLS = fileConfig.EnableTLS
+		if fileConfig.TLSCertPath != "" {
+			config.TLSCertPath = fileConfig.TLSCertPath
+		}
+		if fileConfig.TLSKeyPath != "" {
+			config.TLSKeyPath = fileConfig.TLSKeyPath
+		}
+		
+		// Monitoring settings
+		config.EnableMetrics = fileConfig.EnableMetrics
 	}
 	
 	// Create production node

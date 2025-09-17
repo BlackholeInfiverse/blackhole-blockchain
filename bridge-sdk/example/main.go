@@ -31,6 +31,7 @@ import (
 
 	// BlackHole blockchain imports
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
+	"github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk/core"
 )
 
 // BlackHoleBlockchainInterface represents the interface to the real blockchain
@@ -771,7 +772,7 @@ type BridgeSDK struct {
 	performanceMonitor  *PerformanceMonitor
 	loadTester          *LoadTester
 	chaosTester         *ChaosTester
-
+ 	useRealBlockchainListeners bool
 	// Enhanced dashboard fields
 	mu               sync.RWMutex
 	loadTestRunning  bool
@@ -1729,7 +1730,14 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 	sdk.logger.Info("🔗 Starting Ethereum listener...")
 
-	// Simulate Ethereum events with realistic data
+	// Check if we should use real blockchain listeners
+	if sdk.useRealBlockchainListeners {
+		// Use real blockchain listener
+		realListener := core.NewRealBlockchainListener(sdk)
+		return realListener.StartEthereumListener(ctx)
+	}
+
+	// Otherwise use mock listener (default for development)
 	go func() {
 		ticker := time.NewTicker(8 * time.Second)
 		defer ticker.Stop()
@@ -1737,77 +1745,27 @@ func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 		for {
 			select {
 			case <-ctx.Done():
-				sdk.logger.Info("🛑 Ethereum listener stopped")
 				return
 			case <-ticker.C:
-				// Generate realistic Ethereum transaction with enhanced token data
-				destChain := []string{"solana", "blackhole"}[rand.Intn(2)]
-				token := getRandomToken("ethereum")
+				// Create a mock transaction
 				tx := &Transaction{
-					ID:            fmt.Sprintf("eth_%d", time.Now().Unix()),
-					Hash:          fmt.Sprintf("0x%x", rand.Uint64()),
+					ID:            fmt.Sprintf("mock-eth-%d", time.Now().UnixNano()),
+					Hash:          "0xmockhash",
 					SourceChain:   "ethereum",
-					DestChain:     destChain,
-					SourceAddress: fmt.Sprintf("0x%x", rand.Uint64()),
-					DestAddress:   generateRandomAddress(destChain),
-					TokenSymbol:   token.Symbol,
-					Amount:        generateRealisticAmount(token),
-					Fee:           fmt.Sprintf("%.6f", rand.Float64()*0.01),
+					DestChain:     "blackhole",
+					SourceAddress: "0xmocksender",
+					DestAddress:   "0xmockreceiver",
+					TokenSymbol:   "ETH",
+					Amount:        "1.5",
 					Status:        "pending",
 					CreatedAt:     time.Now(),
-					Confirmations: 0,
-					BlockNumber:   uint64(18500000 + rand.Intn(1000)),
-					GasUsed:       uint64(21000 + rand.Intn(50000)),
-					GasPrice:      fmt.Sprintf("%d", 20000000000+rand.Int63n(10000000000)),
 				}
 
-				// Check replay protection
-				if sdk.replayProtection.enabled {
-					hash := sdk.generateEventHash(tx)
-					if sdk.replayProtection.isProcessed(hash) {
-						sdk.logger.Warnf("🚫 Replay attack detected for transaction %s", tx.ID)
-						sdk.incrementBlockedReplays()
-						continue
-					}
-					if err := sdk.replayProtection.markProcessed(hash); err != nil {
-						sdk.logger.Errorf("Failed to mark transaction as processed: %v", err)
-					}
+				sdk.logger.Infof("📨 Mock Ethereum transaction detected: %s", tx.ID)
+				// Process through bridge
+				if err := sdk.blockchainInterface.ProcessBridgeTransaction(tx); err != nil {
+					sdk.logger.Errorf("❌ Failed to process mock Ethereum transaction: %v", err)
 				}
-
-				sdk.saveTransaction(tx)
-
-				// Simulate occasional failures for retry testing (10% failure rate)
-				if rand.Float64() < 0.1 {
-					sdk.logger.Warnf("⚠️ Simulated Ethereum event processing failure for %s", tx.ID)
-					sdk.addToRetryQueue("ethereum_event", map[string]interface{}{
-						"transaction_id": tx.ID,
-						"amount":         tx.Amount,
-						"token":          tx.TokenSymbol,
-						"from":           tx.SourceAddress,
-						"to":             tx.DestAddress,
-						"hash":           tx.Hash,
-					}, fmt.Errorf("simulated ethereum processing failure"))
-				} else {
-					sdk.addEvent("transfer", "ethereum", tx.Hash, map[string]interface{}{
-						"amount": tx.Amount,
-						"token":  tx.TokenSymbol,
-						"from":   tx.SourceAddress,
-						"to":     tx.DestAddress,
-					})
-					sdk.logger.Infof("💰 Ethereum transaction detected: %s (%s %s)", tx.ID, tx.Amount, tx.TokenSymbol)
-				}
-
-				// Simulate processing delay and completion
-				go func(transaction *Transaction) {
-					time.Sleep(time.Duration(5+rand.Intn(10)) * time.Second)
-					transaction.Status = "completed"
-					now := time.Now()
-					transaction.CompletedAt = &now
-					transaction.Confirmations = 12 + rand.Intn(10)
-					transaction.ProcessingTime = fmt.Sprintf("%.1fs", time.Since(transaction.CreatedAt).Seconds())
-					sdk.saveTransaction(transaction)
-					sdk.logger.Infof("✅ Ethereum transaction completed: %s", transaction.ID)
-				}(tx)
 			}
 		}
 	}()
@@ -1819,47 +1777,46 @@ func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 	sdk.logger.Info("🔗 Starting Solana listener...")
 
-	// Simulate Solana events with realistic data
+	// Check if we should use real blockchain listeners
+	if sdk.useRealBlockchainListeners {
+		// Use real blockchain listener
+		realListener := core.NewRealBlockchainListener(sdk)
+		return realListener.StartSolanaListener(ctx)
+	}
+
+	// Otherwise use mock listener (default for development)
 	go func() {
-		ticker := time.NewTicker(12 * time.Second)
+		ticker := time.NewTicker(6 * time.Second)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
-				sdk.logger.Info("🛑 Solana listener stopped")
 				return
 			case <-ticker.C:
-				// Generate realistic Solana transaction with enhanced token data
-				destChain := []string{"ethereum", "blackhole"}[rand.Intn(2)]
-				token := getRandomToken("solana")
+				// Create a mock transaction
 				tx := &Transaction{
-					ID:            fmt.Sprintf("sol_%d", time.Now().Unix()),
-					Hash:          generateSolanaSignature(),
+					ID:            fmt.Sprintf("mock-sol-%d", time.Now().UnixNano()),
+					Hash:          "0xmockhashsol",
 					SourceChain:   "solana",
-					DestChain:     destChain,
-					SourceAddress: generateSolanaAddress(),
-					DestAddress:   generateRandomAddress(destChain),
-					TokenSymbol:   token.Symbol,
-					Amount:        generateRealisticAmount(token),
-					Fee:           fmt.Sprintf("%.6f", rand.Float64()*0.001),
+					DestChain:     "blackhole",
+					SourceAddress: "mocksolana123",
+					DestAddress:   "mockblackhole456",
+					TokenSymbol:   "SOL",
+					Amount:        "45",
 					Status:        "pending",
 					CreatedAt:     time.Now(),
-					Confirmations: 0,
-					BlockNumber:   uint64(200000000 + rand.Intn(1000)),
 				}
 
-				// Check replay protection
-				if sdk.replayProtection.enabled {
-					hash := sdk.generateEventHash(tx)
-					if sdk.replayProtection.isProcessed(hash) {
-						sdk.logger.Warnf("🚫 Replay attack detected for transaction %s", tx.ID)
-						sdk.incrementBlockedReplays()
-						continue
-					}
-					if err := sdk.replayProtection.markProcessed(hash); err != nil {
-						sdk.logger.Errorf("Failed to mark transaction as processed: %v", err)
-					}
+				// Replay protection
+				hash := tx.Hash
+				if sdk.replayProtection.isProcessed(hash) {
+					sdk.logger.Warnf("🚫 Replay attack detected for transaction %s", tx.ID)
+					sdk.incrementBlockedReplays()
+					continue
+				}
+				if err := sdk.replayProtection.markProcessed(hash); err != nil {
+					sdk.logger.Errorf("Failed to mark transaction as processed: %v", err)
 				}
 
 				sdk.saveTransaction(tx)
@@ -1889,6 +1846,7 @@ func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 
 	return nil
 }
+
 
 // Retry Queue Methods
 func (rq *RetryQueue) AddItem(itemType string, data map[string]interface{}) string {
@@ -1990,7 +1948,7 @@ func (rq *RetryQueue) GetStats() map[string]interface{} {
 	}
 }
 
-// Panic Recovery Methods
+// Retry Queue Methods
 func (pr *PanicRecovery) RecoverFromPanic(component string) {
 	if r := recover(); r != nil {
 		stack := make([]byte, 4096)
