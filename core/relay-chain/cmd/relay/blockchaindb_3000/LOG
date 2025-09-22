@@ -14,3 +14,22 @@
 10:33:03.587401 version@stat F·[1] S·1KiB[1KiB] Sc·[0.25]
 10:33:03.591581 db@janitor F·3 G·0
 10:33:03.592105 db@open done T·14.3447ms
+=============== Sep 22, 2025 (IST) ===============
+11:27:50.627916 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:27:50.628440 version@stat F·[1] S·1KiB[1KiB] Sc·[0.25]
+11:27:50.628440 db@open opening
+11:27:50.628440 journal@recovery F·1
+11:27:50.628975 journal@recovery recovering @3
+11:27:50.629520 version@stat F·[1] S·1KiB[1KiB] Sc·[0.25]
+11:27:50.634205 db@janitor F·3 G·0
+11:27:50.634205 db@open done T·5.7643ms
+=============== Sep 22, 2025 (IST) ===============
+12:13:50.292293 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+12:13:50.292826 version@stat F·[1] S·1KiB[1KiB] Sc·[0.25]
+12:13:50.293360 db@open opening
+12:13:50.293360 journal@recovery F·1
+12:13:50.293360 journal@recovery recovering @5
+12:13:50.311230 memdb@flush created L0@7 N·3 S·607B "acc..dd1,v13":"acc..211,v15"
+12:13:50.311746 version@stat F·[2] S·1KiB[1KiB] Sc·[0.50]
+12:13:50.359203 db@janitor F·4 G·0
+12:13:50.359203 db@open done T·65.8432ms
