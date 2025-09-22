@@ -1,0 +1,32 @@
+version: '3.3'
+
+services:
+  bridge:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - LOG_LEVEL=info
+      - DATABASE_PATH=/data/bridge.db
+    volumes:
+      - ./data:/data
+    networks:
+      - bridge-net
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: bridge_logs
+      POSTGRES_USER: bridge
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bridge-net
+
+networks:
+  bridge-net:
+
+volumes:
+  postgres_data:

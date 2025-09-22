@@ -250,6 +250,18 @@ curl -X POST http://localhost:8084/relay \
 }
 ```
 
+**Duplicate Example** (409):
+If eventHash matches processed, returns:
+```json
+{
+  "success": false,
+  "error": {
+    "code": "DUPLICATE_EVENT",
+    "message": "Event already processed"
+  }
+}
+```
+
 ## ⚠️ Error & Monitoring Endpoints
 
 ### GET /errors
@@ -542,6 +554,7 @@ ws.onmessage = function(event) {
 |------|-------------|
 | 200 | Success |
 | 400 | Bad Request - Invalid parameters |
+| 409 | Conflict - Duplicate event or replay attack |
 | 404 | Not Found - Resource not found |
 | 500 | Internal Server Error |
 | 503 | Service Unavailable - Circuit breaker open |
@@ -576,6 +589,26 @@ X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1701432000
 ```
+
+## 📝 Policies
+
+### Dedupe Policy
+- Key: eventHash = SHA256(source_chain:dest_chain:from:to:token:amount)
+- Stored in BoltDB with TTL 24h.
+- Duplicate requests return 409 Conflict.
+- Replay protection across channels using pubKey + nonce.
+
+### Retry Semantics
+- Exponential backoff: delay = attempts² * 1s (configurable).
+- Max attempts: 5.
+- Dead-letter queue: Failed items appended to retry-dlq.jsonl.
+- Retry every 30s; monitored in /log/retry.
+
+### SLO Targets
+- p99 end-to-end latency < 5s.
+- Success rate > 99%.
+- DLQ < 1% of total events.
+- Circuit breaker opens on DLQ > threshold (100).
 
 ## 📚 SDK Integration
 

@@ -85,6 +85,14 @@ func (rq *RetryQueue) processItems(processor func(RetryItem) error) {
 				// Update retry info
 				item.Attempts++
 				if item.Attempts >= item.MaxAttempts {
+					// Export to DLQ file
+					dlqFile := "retry-dlq.jsonl"
+					f, err := os.OpenFile(dlqFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+					if err == nil {
+						defer f.Close()
+						data, _ := json.Marshal(item)
+						f.WriteString(string(data) + "\n")
+					}
 					// Remove failed item
 					rq.items = append(rq.items[:i], rq.items[i+1:]...)
 				} else {
