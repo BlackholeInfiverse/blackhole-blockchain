@@ -1,0 +1,86 @@
+version: '3.8'
+
+networks:
+  blackhole-testnet:
+    driver: bridge
+
+services:
+  # Node 1 - Bootstrap Node
+  node1:
+    image: golang:1.24.3-alpine
+    container_name: blackhole-node1
+    working_dir: /app
+    command: >
+      sh -c "
+        apk add --no-cache git gcc musl-dev &&
+        cd core/relay-chain &&
+        go build -o blockchain ./cmd/relay/main.go &&
+        echo 'Starting Node 1...' &&
+        ./blockchain 3001
+      "
+    ports:
+      - "8080:8080"   # API port
+      - "3001:3001"   # P2P port
+    environment:
+      - DOCKER_MODE=true
+    volumes:
+      - .:/app
+    networks:
+      - blackhole-testnet
+    restart: unless-stopped
+
+  # Node 2 - Connected to Node 1  
+  node2:
+    image: golang:1.24.3-alpine
+    container_name: blackhole-node2
+    working_dir: /app
+    command: >
+      sh -c "
+        apk add --no-cache git gcc musl-dev &&
+        cd core/relay-chain &&
+        go build -o blockchain ./cmd/relay/main.go &&
+        echo 'Waiting for Node 1...' &&
+        sleep 30 &&
+        echo 'Starting Node 2...' &&
+        ./blockchain 3002
+      "
+    ports:
+      - "8081:8080"   # API port
+      - "3002:3002"   # P2P port
+    environment:
+      - DOCKER_MODE=true
+    volumes:
+      - .:/app
+    networks:
+      - blackhole-testnet
+    depends_on:
+      - node1
+    restart: unless-stopped
+
+  # Node 3 - Connected to Node 1
+  node3:
+    image: golang:1.24.3-alpine
+    container_name: blackhole-node3
+    working_dir: /app
+    command: >
+      sh -c "
+        apk add --no-cache git gcc musl-dev &&
+        cd core/relay-chain &&
+        go build -o blockchain ./cmd/relay/main.go &&
+        echo 'Waiting for Node 1...' &&
+        sleep 35 &&
+        echo 'Starting Node 3...' &&
+        ./blockchain 3003
+      "
+    ports:
+      - "8082:8080"   # API port
+      - "3003:3003"   # P2P port
+    environment:
+      - DOCKER_MODE=true
+    volumes:
+      - .:/app
+    networks:
+      - blackhole-testnet
+    depends_on:
+      - node1
+    restart: unless-stopped

@@ -1,0 +1,156 @@
+{
+  "chain_id": "blackhole-testnet-1",
+  "network_name": "BlackHole Testnet",
+  "genesis_time": "2025-09-27T08:15:00Z",
+  "consensus": {
+    "type": "pos",
+    "block_time": "3s",
+    "max_validators": 50,
+    "min_validator_stake": "10000000000000000000000",
+    "voting_power_window": 100,
+    "slash_fraction_double_sign": 0.05,
+    "slash_fraction_downtime": 0.0001,
+    "signed_blocks_window": 10000,
+    "min_signed_per_window": 0.5,
+    "downtime_jail_duration": "600s",
+    "unbonding_time": "1814400s"
+  },
+  "economics": {
+    "native_token": {
+      "symbol": "tBHX",
+      "name": "Testnet BlackHole",
+      "decimals": 18,
+      "max_supply": "1000000000000000000000000000",
+      "initial_supply": "100000000000000000000000000"
+    },
+    "staking": {
+      "min_validator_stake": "10000000000000000000000",
+      "annual_inflation": {
+        "year_1": 0.10,
+        "year_2": 0.08,
+        "year_3": 0.06,
+        "year_4": 0.05,
+        "year_5": 0.04,
+        "year_6_plus": 0.03
+      },
+      "unbonding_period": "21d",
+      "slashing": {
+        "downtime": 0.0001,
+        "double_sign": 0.05,
+        "malicious": 1.0
+      }
+    },
+    "fees": {
+      "small_tx_limit": "1000000000000000000",
+      "medium_tx_fee": 0.0001,
+      "large_tx_fee": 0.0005,
+      "dex_trading_fee": 0.003,
+      "bridge_fee": 0.001,
+      "burn_rate": 0.001
+    }
+  },
+  "governance": {
+    "proposal_deposit": "1000000000000000000000",
+    "voting_period": "7d",
+    "quorum": 0.33,
+    "pass_threshold": 0.5,
+    "veto_threshold": 0.334,
+    "max_deposit_period": "2d"
+  },
+  "accounts": [
+    {
+      "address": "tbhx1faucet000000000000000000000000000",
+      "balance": "50000000000000000000000000",
+      "sequence": 0,
+      "account_type": "faucet"
+    },
+    {
+      "address": "tbhx1validator1000000000000000000000000",
+      "balance": "15000000000000000000000000",
+      "sequence": 0,
+      "account_type": "validator"
+    },
+    {
+      "address": "tbhx1validator2000000000000000000000000",
+      "balance": "15000000000000000000000000",
+      "sequence": 0,
+      "account_type": "validator"
+    },
+    {
+      "address": "tbhx1validator3000000000000000000000000",
+      "balance": "15000000000000000000000000",
+      "sequence": 0,
+      "account_type": "validator"
+    },
+    {
+      "address": "tbhx1treasury000000000000000000000000000",
+      "balance": "5000000000000000000000000",
+      "sequence": 0,
+      "account_type": "treasury"
+    }
+  ],
+  "validators": [
+    {
+      "address": "tbhx1validator1000000000000000000000000",
+      "pub_key": "testnet_validator1_pubkey_placeholder",
+      "voting_power": 10000000,
+      "name": "Testnet-Validator-1",
+      "website": "https://testnet-validator1.blackhole.network",
+      "details": "Primary testnet validator node",
+      "commission_rate": 0.05,
+      "max_commission_rate": 0.10,
+      "max_commission_change_rate": 0.01
+    },
+    {
+      "address": "tbhx1validator2000000000000000000000000",
+      "pub_key": "testnet_validator2_pubkey_placeholder",
+      "voting_power": 10000000,
+      "name": "Testnet-Validator-2", 
+      "website": "https://testnet-validator2.blackhole.network",
+      "details": "Secondary testnet validator node",
+      "commission_rate": 0.05,
+      "max_commission_rate": 0.10,
+      "max_commission_change_rate": 0.01
+    },
+    {
+      "address": "tbhx1validator3000000000000000000000000",
+      "pub_key": "testnet_validator3_pubkey_placeholder",
+      "voting_power": 10000000,
+      "name": "Testnet-Validator-3",
+      "website": "https://testnet-validator3.blackhole.network", 
+      "details": "Tertiary testnet validator node",
+      "commission_rate": 0.05,
+      "max_commission_rate": 0.10,
+      "max_commission_change_rate": 0.01
+    }
+  ],
+  "app_state": {
+    "dex": {
+      "trading_pairs": [],
+      "fee_rate": 0.003,
+      "min_liquidity": "1000000000000000000"
+    },
+    "bridge": {
+      "supported_chains": ["ethereum", "solana", "polygon"],
+      "bridge_fee": 0.001,
+      "min_bridge_amount": "1000000000000000000"
+    },
+    "otc": {
+      "min_order_amount": "100000000000000000",
+      "max_price_deviation": 0.1
+    },
+    "relayer": {
+      "subsidy_treasury": "tbhx1treasury000000000000000000000000000",
+      "min_relayer_fee": "1000000000000000",
+      "max_queue_size": 1000
+    }
+  },
+  "testnet_config": {
+    "faucet_enabled": true,
+    "faucet_amount": "1000000000000000000000",
+    "faucet_rate_limit": "1h",
+    "explorer_enabled": true,
+    "debug_mode": false,
+    "fast_consensus": true
+  }
+}

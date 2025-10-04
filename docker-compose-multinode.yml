@@ -1,0 +1,99 @@
+version: '3.8'
+
+networks:
+  blackhole-testnet:
+    driver: bridge
+    name: blackhole-testnet
+
+volumes:
+  node1-data:
+    driver: local
+  node2-data:
+    driver: local
+  node3-data:
+    driver: local
+
+services:
+  # Node 1 - Bootstrap Node
+  node1:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node1
+    command: ["./blockchain", "3001"]
+    ports:
+      - "8080:8080"   # API port
+      - "3001:3001"   # P2P port
+    environment:
+      - DOCKER_MODE=true
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    volumes:
+      - node1-data:/app/data
+    networks:
+      - blackhole-testnet
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Node 2 - Connected to Node 1
+  node2:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node2
+    command: ["sh", "-c", "sleep 30 && ./blockchain 3002 /ip4/node1/tcp/3001/p2p/$$(cat /tmp/node1_peer_id)"]
+    ports:
+      - "8081:8080"   # API port
+      - "3002:3002"   # P2P port
+    environment:
+      - DOCKER_MODE=true
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    volumes:
+      - node2-data:/app/data
+    networks:
+      - blackhole-testnet
+    depends_on:
+      node1:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  # Node 3 - Connected to Node 1
+  node3:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node3
+    command: ["sh", "-c", "sleep 35 && ./blockchain 3003 /ip4/node1/tcp/3001/p2p/$$(cat /tmp/node1_peer_id)"]
+    ports:
+      - "8082:8080"   # API port
+      - "3003:3003"   # P2P port
+    environment:
+      - DOCKER_MODE=true
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    volumes:
+      - node3-data:/app/data
+    networks:
+      - blackhole-testnet
+    depends_on:
+      node1:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 45s

@@ -4,6 +4,7 @@ go 1.24.2
 
 require (
 	github.com/libp2p/go-libp2p v0.41.1
+	github.com/libp2p/go-libp2p-pubsub v0.15.0
 	github.com/multiformats/go-multiaddr v0.15.0
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.19.0
@@ -16,7 +17,9 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/libp2p/go-yamux/v5 v5.0.0 // indirect
+	github.com/libp2p/zeroconf/v2 v2.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
 	github.com/pion/dtls/v2 v2.2.12 // indirect

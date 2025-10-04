@@ -10,18 +10,26 @@ async function main() {
     console.log("📝 Deploying with account:", deployer.address);
     console.log("💰 Account balance:", ethers.utils.formatEther(await deployer.getBalance()), "ETH");
     
-    // Deployment parameters
-    const INITIAL_SUPPLY = ethers.utils.parseEther("10000000"); // 10M BHX for initial liquidity
+    // Deployment parameters (aligned with tokenomics spec)
+    const INITIAL_CIRCULATING_SUPPLY = ethers.utils.parseEther("350000000"); // 350M BHX initial circulating
     const MAX_SUPPLY = ethers.utils.parseEther("1000000000");   // 1B BHX max supply
     
+    // For testnet, use smaller amount for testing
+    const isTestnet = ["sepolia", "amoy", "mumbai", "localhost"].includes(network.name);
+    const DEPLOY_AMOUNT = isTestnet ? ethers.utils.parseEther("10000000") : INITIAL_CIRCULATING_SUPPLY;
+    
     console.log("📊 Token Parameters:");
-    console.log("   Initial Supply:", ethers.utils.formatEther(INITIAL_SUPPLY), "BHX");
+    console.log("   Deploy Amount:", ethers.utils.formatEther(DEPLOY_AMOUNT), "BHX");
     console.log("   Maximum Supply:", ethers.utils.formatEther(MAX_SUPPLY), "BHX");
+    console.log("   Network Type:", isTestnet ? "Testnet" : "Mainnet");
+    if (!isTestnet) {
+        console.log("   Full Circulating Supply:", ethers.utils.formatEther(INITIAL_CIRCULATING_SUPPLY), "BHX");
+    }
     
     // Deploy BHX Token
     console.log("\n⏳ Deploying BHX Token...");
     const BHXToken = await ethers.getContractFactory("BHXToken");
-    const bhxToken = await BHXToken.deploy(INITIAL_SUPPLY);
+    const bhxToken = await BHXToken.deploy(DEPLOY_AMOUNT);
     await bhxToken.deployed();
     
     console.log("✅ BHX Token deployed to:", bhxToken.address);

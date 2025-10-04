@@ -82,7 +82,11 @@ func (em *EscrowManager) CreateEscrow(sender, receiver, arbitrator, tokenSymbol 
 	}
 
 	// Generate unique ID
-	escrowID := fmt.Sprintf("escrow_%d_%s", time.Now().UnixNano(), sender[:8])
+	senderSuffix := sender
+	if len(sender) > 8 {
+		senderSuffix = sender[:8]
+	}
+	escrowID := fmt.Sprintf("escrow_%d_%s", time.Now().UnixNano(), senderSuffix)
 
 	// Check if token exists
 	token, exists := em.Blockchain.TokenRegistry[tokenSymbol]

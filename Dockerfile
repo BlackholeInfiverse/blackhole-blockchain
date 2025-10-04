@@ -31,14 +31,6 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
     -o blockchain \
     ./cmd/relay/main.go
 
-# Build the bridge binary
-WORKDIR /app/bridge-sdk/example
-RUN CGO_ENABLED=1 GOOS=linux go build \
-    -a -installsuffix cgo \
-    -ldflags="-w -s" \
-    -o bridge-sdk \
-    main.go
-
 # Final runtime stage
 FROM alpine:latest
 
@@ -57,8 +49,6 @@ RUN mkdir -p data logs config media \
 
 # Copy binaries from builder
 COPY --from=builder /app/core/relay-chain/blockchain ./
-COPY --from=builder /app/bridge-sdk/example/bridge-sdk ./
-COPY --from=builder /app/bridge-sdk/media ./media
 
 # Copy environment file
 COPY docker/.env* ./

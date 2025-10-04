@@ -242,6 +242,50 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
             </div>
 
             <div class="card">
+                <h3>🌐 P2P Network Information</h3>
+                <div id="network-info" style="margin-bottom: 15px;">
+                    <div id="network-status">Loading...</div>
+                </div>
+                <h4>Secure P2P Node</h4>
+                <div id="secure-p2p-info" style="margin-bottom: 15px;">
+                    <div class="form-group" style="margin-bottom: 5px;">
+                        <label>Peer ID:</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="text" id="secure-peer-id" readonly style="font-family: monospace; font-size: 12px; flex: 1;" placeholder="Loading...">
+                            <button class="btn" onclick="copyToClipboard('secure-peer-id')" style="background: #17a2b8; padding: 5px 10px;">
+                                📋 Copy
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 5px;">
+                        <label>Main Address:</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="text" id="secure-main-addr" readonly style="font-family: monospace; font-size: 11px; flex: 1;" placeholder="Loading...">
+                            <button class="btn" onclick="copyToClipboard('secure-main-addr')" style="background: #17a2b8; padding: 5px 10px;">
+                                📋 Copy
+                            </button>
+                        </div>
+                    </div>
+                    <div id="secure-peer-stats"></div>
+                </div>
+                <h4>Legacy P2P Node</h4>
+                <div id="legacy-p2p-info" style="margin-bottom: 15px;">
+                    <div class="form-group" style="margin-bottom: 5px;">
+                        <label>Peer ID:</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="text" id="legacy-peer-id" readonly style="font-family: monospace; font-size: 12px; flex: 1;" placeholder="Loading...">
+                            <button class="btn" onclick="copyToClipboard('legacy-peer-id')" style="background: #17a2b8; padding: 5px 10px;">
+                                📋 Copy
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn" onclick="refreshNodeInfo()" style="background: #28a745; margin-top: 10px;">
+                    🔄 Refresh Network Info
+                </button>
+            </div>
+
+            <div class="card">
                 <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15,3V7.59L7.59,15H4V17H7.59L15,9.59V15H17V9.59L9.59,2H15V3M17,17V21H15V17H17Z"/></svg> Bridge Status</h3>
                 <div class="stats" id="bridge-stats">
                     <div class="stat">
@@ -303,11 +347,81 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
                 const data = await response.json();
                 updateUI(data);
 
-                // Also fetch bridge status
+                // Also fetch node info and bridge status
+                fetchNodeInfo();
                 fetchBridgeStatus();
             } catch (error) {
                 console.error('Error fetching blockchain info:', error);
             }
+        }
+
+        async function fetchNodeInfo() {
+            try {
+                const response = await fetch('/api/node/info');
+                const data = await response.json();
+                updateNodeInfoUI(data);
+            } catch (error) {
+                console.error('Error fetching node info:', error);
+                document.getElementById('network-status').textContent = 'Error loading network info';
+            }
+        }
+
+        function updateNodeInfoUI(data) {
+            // Update network status
+            const networkInfo = data.network_info;
+            document.getElementById('network-status').innerHTML = 
+                '<strong>' + networkInfo.name + '</strong> (' + networkInfo.network_id + ')<br>' +
+                'Version: ' + networkInfo.version + ' | Chain ID: ' + networkInfo.chain_id;
+
+            // Update secure P2P info
+            if (data.secure_p2p && data.secure_p2p.status === 'active') {
+                document.getElementById('secure-peer-id').value = data.secure_p2p.peer_id;
+                const mainAddr = data.secure_p2p.addresses && data.secure_p2p.addresses.length > 0 
+                    ? data.secure_p2p.addresses[0] : 'No addresses available';
+                document.getElementById('secure-main-addr').value = mainAddr;
+                
+                document.getElementById('secure-peer-stats').innerHTML = 
+                    '<small>Connected peers: <strong>' + data.secure_p2p.connected_peers + '</strong> | ' +
+                    'Features: ' + data.secure_p2p.features.join(', ') + '</small>';
+            } else {
+                document.getElementById('secure-peer-id').value = 'Not available';
+                document.getElementById('secure-main-addr').value = 'Not available';
+                document.getElementById('secure-peer-stats').innerHTML = '<small>Secure P2P node not active</small>';
+            }
+
+            // Update legacy P2P info
+            if (data.legacy_p2p && data.legacy_p2p.status === 'active') {
+                document.getElementById('legacy-peer-id').value = data.legacy_p2p.peer_id;
+            } else {
+                document.getElementById('legacy-peer-id').value = 'Not available';
+            }
+        }
+
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            element.select();
+            element.setSelectionRange(0, 99999); // For mobile devices
+            
+            try {
+                document.execCommand('copy');
+                // Show temporary success feedback
+                const button = element.nextElementSibling;
+                const originalText = button.textContent;
+                button.textContent = '✓ Copied!';
+                button.style.background = '#28a745';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = '#17a2b8';
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                alert('Failed to copy to clipboard. Please select and copy manually.');
+            }
+        }
+
+        function refreshNodeInfo() {
+            fetchNodeInfo();
         }
 
         async function fetchBridgeStatus(retryCount = 0) {
@@ -632,23 +746,71 @@ func (s *APIServer) getWallets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *APIServer) getNodeInfo(w http.ResponseWriter, r *http.Request) {
-	// Get P2P node information
-	p2pNode := s.blockchain.P2PNode
-	if p2pNode == nil {
-		http.Error(w, "P2P node not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	// Build multiaddresses
-	addresses := make([]string, 0)
-	for _, addr := range p2pNode.Host.Addrs() {
-		fullAddr := fmt.Sprintf("%s/p2p/%s", addr.String(), p2pNode.Host.ID().String())
-		addresses = append(addresses, fullAddr)
-	}
-
 	nodeInfo := map[string]interface{}{
-		"peer_id":   p2pNode.Host.ID().String(),
-		"addresses": addresses,
+		"network_info": map[string]interface{}{
+			"network_id": "blackhole-mainnet",
+			"chain_id":   "blackhole-1",
+			"name":       "BlackHole Blockchain",
+			"version":    "1.0.0",
+		},
+	}
+
+	// Get legacy P2P node information
+	if s.blockchain.P2PNode != nil {
+		legacyAddresses := make([]string, 0)
+		for _, addr := range s.blockchain.P2PNode.Host.Addrs() {
+			fullAddr := fmt.Sprintf("%s/p2p/%s", addr.String(), s.blockchain.P2PNode.Host.ID().String())
+			legacyAddresses = append(legacyAddresses, fullAddr)
+		}
+		nodeInfo["legacy_p2p"] = map[string]interface{}{
+			"peer_id":   s.blockchain.P2PNode.Host.ID().String(),
+			"addresses": legacyAddresses,
+			"status":    "active",
+		}
+	} else {
+		nodeInfo["legacy_p2p"] = map[string]interface{}{
+			"status": "not_available",
+		}
+	}
+
+	// Get secure P2P node information
+	if s.blockchain.SecureP2PNode != nil {
+		secureAddresses := make([]string, 0)
+		for _, addr := range s.blockchain.SecureP2PNode.Host.Addrs() {
+			fullAddr := fmt.Sprintf("%s/p2p/%s", addr.String(), s.blockchain.SecureP2PNode.Host.ID().String())
+			secureAddresses = append(secureAddresses, fullAddr)
+		}
+		nodeInfo["secure_p2p"] = map[string]interface{}{
+			"peer_id":        s.blockchain.SecureP2PNode.Host.ID().String(),
+			"addresses":      secureAddresses,
+			"connected_peers": len(s.blockchain.SecureP2PNode.GetConnectedPeers()),
+			"status":         "active",
+			"features": []string{
+				"ed25519_signing",
+				"message_verification",
+				"pub_sub_gossip",
+				"mdns_discovery",
+			},
+		}
+	} else {
+		nodeInfo["secure_p2p"] = map[string]interface{}{
+			"status": "not_available",
+		}
+	}
+
+	// Get network discovery information
+	if s.blockchain.DiscoveryService != nil {
+		availableNetworks := s.blockchain.DiscoveryService.GetAvailableNetworks()
+		nodeInfo["network_discovery"] = map[string]interface{}{
+			"status":            "active",
+			"discovered_networks": len(availableNetworks),
+			"listen_port":       8888,
+			"networks":          availableNetworks,
+		}
+	} else {
+		nodeInfo["network_discovery"] = map[string]interface{}{
+			"status": "not_available",
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

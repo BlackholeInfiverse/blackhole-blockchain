@@ -1,0 +1,97 @@
+{
+  "chain_id": "blackhole-devnet-1",
+  "genesis_time": "2025-09-27T12:16:50Z",
+  "consensus": {
+    "type": "pos",
+    "block_time": "3s",
+    "max_validators": 100
+  },
+  "economics": {
+    "native_token": {
+      "symbol": "BHX",
+      "name": "BlackHole",
+      "decimals": 18,
+      "max_supply": "1000000000000000000000000000",
+      "initial_supply": "350000000000000000000000000"
+    },
+    "staking": {
+      "min_validator_stake": "100000000000000000000000",
+      "annual_inflation": {
+        "year_1": 0.08,
+        "year_2": 0.07,
+        "year_3": 0.06,
+        "year_4": 0.05,
+        "year_5": 0.04,
+        "year_6_plus": 0.03
+      },
+      "unbonding_period": "21d",
+      "slashing": {
+        "downtime": 0.0001,
+        "double_sign": 0.05,
+        "malicious": 1.0
+      }
+    },
+    "fees": {
+      "small_tx_limit": "100000000000000000000",
+      "medium_tx_fee": 0.0001,
+      "large_tx_fee": 0.0005,
+      "dex_trading_fee": 0.003,
+      "bridge_fee": 0.001,
+      "burn_rate": 0.001
+    }
+  },
+  "governance": {
+    "proposal_deposit": "10000000000000000000000",
+    "voting_period": "7d",
+    "quorum": 0.4,
+    "pass_threshold": 0.5,
+    "veto_threshold": 0.334
+  },
+  "accounts": [
+    {
+      "address": "bhx1validator1address000000000000000",
+      "balance": "150000000000000000000000",
+      "sequence": 0
+    },
+    {
+      "address": "bhx1validator2address000000000000000",
+      "balance": "150000000000000000000000",
+      "sequence": 0
+    },
+    {
+      "address": "bhx1validator3address000000000000000",
+      "balance": "150000000000000000000000",
+      "sequence": 0
+    },
+    {
+      "address": "bhx1treasury00000000000000000000000",
+      "balance": "150000000000000000000000000",
+      "sequence": 0
+    },
+    {
+      "address": "bhx1ecosystem000000000000000000000000",
+      "balance": "150000000000000000000000000",
+      "sequence": 0
+    }
+  ],
+  "validators": [
+    {
+      "address": "bhx1validator1address000000000000000",
+      "pub_key": "validator1_pubkey_placeholder",
+      "voting_power": 1,
+      "name": "Validator-1"
+    },
+    {
+      "address": "bhx1validator2address000000000000000",
+      "pub_key": "validator2_pubkey_placeholder",
+      "voting_power": 1,
+      "name": "Validator-2"
+    },
+    {
+      "address": "bhx1validator3address000000000000000",
+      "pub_key": "validator3_pubkey_placeholder",
+      "voting_power": 1,
+      "name": "Validator-3"
+    }
+  ]
+}

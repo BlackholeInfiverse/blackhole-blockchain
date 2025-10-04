@@ -1,0 +1,145 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: wallet-postgres
+    environment:
+      POSTGRES_DB: blackhole_wallet
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: blackhole_secure_pass
+      POSTGRES_INITDB_ARGS: --encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wallet-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: wallet-redis
+    command: redis-server --appendonly yes --requirepass blackhole_redis_pass
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - wallet-network
+
+  wallet-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: wallet-service
+    environment:
+      # Database Configuration
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: blackhole_wallet
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: blackhole_secure_pass
+      POSTGRES_SSL_MODE: disable
+      
+      # Redis Configuration
+      REDIS_ADDRESS: redis:6379
+      REDIS_PASSWORD: blackhole_redis_pass
+      REDIS_DB: 0
+      
+      # BadgerDB Configuration
+      BADGER_PATH: /app/data/badger
+      BADGER_IN_MEMORY: false
+      BADGER_ENCRYPTION: true
+      BADGER_ENCRYPTION_KEY: YourSuperSecure32ByteEncryptionKey12
+      
+      # Application Configuration
+      APP_ENV: development
+      APP_PORT: 9000
+      
+      # Blockchain Configuration
+      BLOCKCHAIN_PEER_ADDRESS: /ip4/host.docker.internal/tcp/3001/p2p/12D3KooWG2bB2VkvB79iDHUQuq4qaubD7whpv516mUbNHJmRXJZM
+      BLOCKCHAIN_API_ENDPOINTS: http://host.docker.internal:8081,http://host.docker.internal:8082,http://host.docker.internal:8083,http://host.docker.internal:8084,http://host.docker.internal:8085
+      
+      # Security
+      JWT_SECRET: your-super-secret-jwt-key-for-development
+      SESSION_SECRET: your-super-secret-session-key-for-dev
+      ENCRYPTION_KEY: your-master-encryption-key-for-development
+      
+      # Logging
+      LOG_LEVEL: debug
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - wallet-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Database admin interface
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: wallet-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@blackhole.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - wallet-network
+    profiles:
+      - admin
+
+  # Optional: Redis admin interface
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: wallet-redis-commander
+    environment:
+      REDIS_HOSTS: "local:redis:6379:0:blackhole_redis_pass"
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - wallet-network
+    profiles:
+      - admin
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  wallet-network:
+    driver: bridge
+    external: false

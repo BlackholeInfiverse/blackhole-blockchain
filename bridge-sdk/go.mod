@@ -7,8 +7,7 @@ toolchain go1.24.4
 require github.com/ethereum/go-ethereum v1.14.12
 
 require (
-	github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk v0.0.0-20250812104124-230f597f26ca
-	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250619043033-c8a59a60e299
+	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/sirupsen/logrus v1.9.3
 	go.etcd.io/bbolt v1.4.1

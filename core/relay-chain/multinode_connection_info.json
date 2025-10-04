@@ -1,0 +1,9 @@
+﻿{
+    "node1_api":  "http://localhost:8080",
+    "node3_api":  "http://localhost:8082",
+    "node2_api":  "http://localhost:8081",
+    "node3_process_id":  16860,
+    "node2_process_id":  20340,
+    "node1_multiaddr":  "/ip4/127.0.0.1/tcp/3001/p2p/12D3KooWG2bB2VkvB79iDHUQuq4qaubD7whpv516mUbNHJmRXJZM",
+    "node1_process_id":  20280
+}

@@ -46,8 +46,11 @@ func main() {
 	// Create a node ID based on port for logging
 	nodeID := fmt.Sprintf("node_%d", port)
 
-	fmt.Println("🚀 Your peer multiaddr:")
-	fmt.Printf("   /ip4/127.0.0.1/tcp/%d/p2p/%s\n", port, bc.P2PNode.Host.ID())
+	fmt.Println("🚀 Your peer multiaddrs:")
+	fmt.Printf("   Legacy P2P: /ip4/127.0.0.1/tcp/%d/p2p/%s\n", port, bc.P2PNode.Host.ID())
+	if bc.SecureP2PNode != nil && bc.SecureP2PNode.Host != nil {
+		fmt.Printf("   Secure P2P: /ip4/127.0.0.1/tcp/%d/p2p/%s\n", port+1, bc.SecureP2PNode.Host.ID())
+	}
 
 	if len(os.Args) > 2 {
 		for _, addr := range os.Args[2:] {
@@ -182,6 +185,9 @@ func main() {
 
 	// Start API server for UI on available port
 	apiServer := api.NewAPIServer(bc, bridgeInstance, availablePort)
+
+	// Start network announcements for wallet discovery (after API port is determined)
+	go bc.StartNetworkAnnouncements(availablePort)
 
 	go apiServer.Start()
 

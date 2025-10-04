@@ -19,8 +19,20 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  */
 contract BHXToken is ERC20, ERC20Burnable, Pausable, Ownable {
     
-    // Maximum supply: 1 billion BHX
+    // Maximum supply: 1 billion BHX (as per tokenomics spec)
     uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
+    
+    // Initial circulating supply: 350 million BHX (35%)
+    uint256 public constant INITIAL_CIRCULATING_SUPPLY = 350_000_000 * 10**18;
+    
+    // Distribution allocations (as per tokenomics)
+    uint256 public constant PRIVATE_SALE_ALLOCATION = 100_000_000 * 10**18; // 10%
+    uint256 public constant PUBLIC_SALE_ALLOCATION = 200_000_000 * 10**18;  // 20%
+    uint256 public constant DEV_FUND_ALLOCATION = 150_000_000 * 10**18;      // 15%
+    uint256 public constant STAKING_REWARDS_ALLOCATION = 100_000_000 * 10**18; // 10%
+    uint256 public constant TEAM_ADVISORS_ALLOCATION = 150_000_000 * 10**18;   // 15%
+    uint256 public constant ECOSYSTEM_ALLOCATION = 150_000_000 * 10**18;       // 15%
+    uint256 public constant RESERVE_ALLOCATION = 150_000_000 * 10**18;         // 15%
     
     // Bridge contract address (will be set after bridge deployment)
     address public bridgeContract;
@@ -28,19 +40,27 @@ contract BHXToken is ERC20, ERC20Burnable, Pausable, Ownable {
     // Mapping to track bridge mints/burns
     mapping(address => bool) public authorizedBridges;
     
+    // Fee burn mechanism (0.1% of transaction fees as per tokenomics)
+    uint256 public constant FEE_BURN_RATE = 10; // 0.1% = 10/10000
+    uint256 public totalBurned;
+    
     // Events
     event BridgeContractUpdated(address indexed oldBridge, address indexed newBridge);
     event BridgeAuthorized(address indexed bridge, bool authorized);
     event TokensMinted(address indexed to, uint256 amount, string indexed blackholeAddress);
     event TokensBurned(address indexed from, uint256 amount, string indexed blackholeAddress);
+    event FeesBurned(uint256 amount, address indexed burner);
     
     /**
      * @dev Constructor
      * @param initialSupply Initial supply to mint to deployer (for initial liquidity)
+     * @notice Defaults to INITIAL_CIRCULATING_SUPPLY if 0 is passed
      */
     constructor(uint256 initialSupply) ERC20("BlackHole", "BHX") {
-        require(initialSupply <= MAX_SUPPLY, "Initial supply exceeds maximum");
-        _mint(msg.sender, initialSupply);
+        uint256 mintAmount = initialSupply == 0 ? INITIAL_CIRCULATING_SUPPLY : initialSupply;
+        require(mintAmount <= MAX_SUPPLY, "Initial supply exceeds maximum");
+        require(mintAmount <= INITIAL_CIRCULATING_SUPPLY, "Exceeds initial circulating supply");
+        _mint(msg.sender, mintAmount);
     }
     
     /**

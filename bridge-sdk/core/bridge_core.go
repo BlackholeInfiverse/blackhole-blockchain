@@ -174,9 +174,9 @@ func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 
 	// Check if we should use real blockchain listeners
 	if sdk.useRealBlockchainListeners {
-		// Use real blockchain listener
-		realListener := core.NewRealBlockchainListener(sdk)
-		return realListener.StartEthereumListener(ctx)
+		// Real blockchain listeners are currently disabled
+		sdk.logger.Warn("⚠️ Real blockchain listeners not yet implemented, using mock listener")
+		// Fall through to mock listener below
 	}
 
 	// Otherwise use mock listener (default for development)
@@ -260,9 +260,9 @@ func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 
 	// Check if we should use real blockchain listeners
 	if sdk.useRealBlockchainListeners {
-		// Use real blockchain listener
-		realListener := core.NewRealBlockchainListener(sdk)
-		return realListener.StartSolanaListener(ctx)
+		// Real blockchain listeners are currently disabled
+		sdk.logger.Warn("⚠️ Real blockchain listeners not yet implemented, using mock listener")
+		// Fall through to mock listener below
 	}
 
 	// Otherwise use mock listener (default for development)

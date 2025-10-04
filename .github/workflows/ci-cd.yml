@@ -1,0 +1,220 @@
+name: BlackHole Blockchain CI/CD
+
+on:
+  push:
+    branches: [ main, develop, testnet ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    name: Lint and Format Check
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Install golangci-lint
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.54.2
+        echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+    
+    - name: Run golangci-lint
+      run: |
+        golangci-lint run --timeout=5m ./...
+      working-directory: ./core
+    
+    - name: Check Go formatting
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "Go files are not formatted. Run: gofmt -s -w ."
+          gofmt -s -l .
+          exit 1
+        fi
+      working-directory: ./core
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    name: Unit Tests
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y sqlite3 libsqlite3-dev
+    
+    - name: Download dependencies
+      run: go mod download
+      working-directory: ./core
+    
+    - name: Run tests
+      run: |
+        go test -v -race -coverprofile=coverage.out ./...
+      working-directory: ./core
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./core/coverage.out
+        flags: unittests
+        name: codecov-umbrella
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    name: Integration Tests
+    needs: [lint-and-format, unit-tests]
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y sqlite3 libsqlite3-dev
+    
+    - name: Build blockchain node
+      run: |
+        go build -o blackhole-node ./cmd/relay/main.go
+      working-directory: ./core/relay-chain
+    
+    - name: Start test blockchain
+      run: |
+        ./blackhole-node &
+        sleep 10
+      working-directory: ./core/relay-chain
+    
+    - name: Run integration tests
+      run: |
+        go test -tags=integration -v ./tests/integration/...
+      working-directory: ./core
+
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  build-docker:
+    runs-on: ubuntu-latest
+    name: Build Docker Images
+    needs: [unit-tests, integration-tests]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy-testnet:
+    runs-on: ubuntu-latest
+    name: Deploy to Testnet
+    needs: [build-docker]
+    if: github.ref == 'refs/heads/testnet'
+    environment: testnet
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to testnet
+      run: |
+        echo "Deploying to testnet environment..."
+        # Add actual deployment scripts here
+    
+    - name: Health check
+      run: |
+        echo "Running health checks..."
+        # Add health check scripts here
+
+  deploy-mainnet:
+    runs-on: ubuntu-latest
+    name: Deploy to Mainnet
+    needs: [build-docker]
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to mainnet
+      run: |
+        echo "Deploying to mainnet environment..."
+        # Add actual deployment scripts here
+    
+    - name: Health check
+      run: |
+        echo "Running health checks..."
+        # Add health check scripts here
+
+  notify:
+    runs-on: ubuntu-latest
+    name: Notify Team
+    needs: [build-docker]
+    if: always()
+    steps:
+    - name: Notify Slack
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#blockchain-alerts'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}

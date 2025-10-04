@@ -1,0 +1,53 @@
+{
+  "node_id": "node1",
+  "chain_id": "blackhole-devnet-1",
+  "data_dir": "./data",
+  "log_level": "info",
+  "api": {
+    "enabled": true,
+    "port": 8081,
+    "cors_origins": ["*"]
+  },
+  "rpc": {
+    "enabled": true,
+    "port": 8546,
+    "cors_origins": ["*"]
+  },
+  "p2p": {
+    "port": 30304,
+    "max_peers": 50,
+    "discovery": true,
+    "bootnodes": [
+      "/ip4/127.0.0.1/tcp/30305/p2p/node2",
+      "/ip4/127.0.0.1/tcp/30306/p2p/node3"
+    ]
+  },
+  "grpc": {
+    "enabled": true,
+    "port": 9091
+  },
+  "consensus": {
+    "block_time": "3s",
+    "timeout_propose": "3s",
+    "timeout_prevote": "1s",
+    "timeout_precommit": "1s",
+    "timeout_commit": "1s"
+  },
+  "validator": {
+    "enabled": true,
+    "key": "validator1",
+    "stake": "150000000000000000000000"
+  },
+  "dex": {
+    "enabled": true,
+    "trading_fee": 0.003,
+    "min_liquidity": "1000000000000000000000",
+    "max_slippage": 0.5
+  },
+  "bridge": {
+    "enabled": true,
+    "circuit_breaker": true,
+    "replay_protection": true,
+    "max_daily_volume": "1000000000000000000000000"
+  }
+}

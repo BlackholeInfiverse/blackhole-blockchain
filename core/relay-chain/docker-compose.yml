@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # First blockchain node
+  node1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"    # P2P port
+      - "8081:8080"    # HTTP API port
+      - "8888:8888"    # Network discovery port
+    environment:
+      - DOCKER_MODE=true
+      - BLOCKCHAIN_DOCKER=true
+    command: ["./node", "3000"]
+    networks:
+      - blockchain-net
+    volumes:
+      - node1_data:/app/data
+    restart: unless-stopped
+
+  # Second blockchain node
+  node2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3001"    # P2P port (different internal port)
+      - "8082:8080"    # HTTP API port
+    environment:
+      - DOCKER_MODE=true
+      - BLOCKCHAIN_DOCKER=true
+    command: ["./node", "3001"]
+    networks:
+      - blockchain-net
+    volumes:
+      - node2_data:/app/data
+    restart: unless-stopped
+    depends_on:
+      - node1
+
+  # Third blockchain node
+  node3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3002"    # P2P port (different internal port)
+      - "8083:8080"    # HTTP API port
+    environment:
+      - DOCKER_MODE=true
+      - BLOCKCHAIN_DOCKER=true
+    command: ["./node", "3002"]
+    networks:
+      - blockchain-net
+    volumes:
+      - node3_data:/app/data
+    restart: unless-stopped
+    depends_on:
+      - node1
+      - node2
+
+networks:
+  blockchain-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  node1_data:
+  node2_data:
+  node3_data:

@@ -1,0 +1,207 @@
+version: '3.8'
+
+networks:
+  blackhole-testnet:
+    driver: bridge
+    name: blackhole-testnet
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  validator1-data:
+    driver: local
+  validator2-data:
+    driver: local
+  validator3-data:
+    driver: local
+  testnet-logs:
+    driver: local
+
+services:
+  # Validator Node 1 (Bootstrap Node)
+  validator1:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: blackhole-validator1
+    hostname: validator1
+    command: >
+      sh -c "
+      mkdir -p /app/data/validator1 &&
+      cp /app/testnet/genesis-testnet.json /app/data/validator1/genesis.json &&
+      ./blockchain --node-id=validator1 --port=8001 --api-port=8080 --data-dir=/app/data/validator1 --genesis=/app/data/validator1/genesis.json --validator --bootstrap
+      "
+    ports:
+      - "8080:8080"  # API
+      - "8001:8001"  # P2P
+    environment:
+      - NODE_ENV=testnet
+      - LOG_LEVEL=info
+      - NETWORK=blackhole-testnet-1
+      - VALIDATOR_NAME=Testnet-Validator-1
+      - BOOTSTRAP_NODE=true
+      - EXTERNAL_IP=172.20.0.10
+    volumes:
+      - validator1-data:/app/data
+      - testnet-logs:/app/logs
+      - ../testnet:/app/testnet:ro
+    networks:
+      blackhole-testnet:
+        ipv4_address: 172.20.0.10
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Validator Node 2
+  validator2:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: blackhole-validator2
+    hostname: validator2
+    command: >
+      sh -c "
+      mkdir -p /app/data/validator2 &&
+      cp /app/testnet/genesis-testnet.json /app/data/validator2/genesis.json &&
+      sleep 10 &&
+      ./blockchain --node-id=validator2 --port=8002 --api-port=8081 --data-dir=/app/data/validator2 --genesis=/app/data/validator2/genesis.json --validator --peer=172.20.0.10:8001
+      "
+    ports:
+      - "8081:8081"  # API
+      - "8002:8002"  # P2P
+    environment:
+      - NODE_ENV=testnet
+      - LOG_LEVEL=info
+      - NETWORK=blackhole-testnet-1
+      - VALIDATOR_NAME=Testnet-Validator-2
+      - BOOTSTRAP_PEER=172.20.0.10:8001
+      - EXTERNAL_IP=172.20.0.11
+    volumes:
+      - validator2-data:/app/data
+      - testnet-logs:/app/logs
+      - ../testnet:/app/testnet:ro
+    networks:
+      blackhole-testnet:
+        ipv4_address: 172.20.0.11
+    depends_on:
+      validator1:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Validator Node 3
+  validator3:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: blackhole-validator3
+    hostname: validator3
+    command: >
+      sh -c "
+      mkdir -p /app/data/validator3 &&
+      cp /app/testnet/genesis-testnet.json /app/data/validator3/genesis.json &&
+      sleep 15 &&
+      ./blockchain --node-id=validator3 --port=8003 --api-port=8082 --data-dir=/app/data/validator3 --genesis=/app/data/validator3/genesis.json --validator --peer=172.20.0.10:8001
+      "
+    ports:
+      - "8082:8082"  # API
+      - "8003:8003"  # P2P
+    environment:
+      - NODE_ENV=testnet
+      - LOG_LEVEL=info
+      - NETWORK=blackhole-testnet-1
+      - VALIDATOR_NAME=Testnet-Validator-3
+      - BOOTSTRAP_PEER=172.20.0.10:8001
+      - EXTERNAL_IP=172.20.0.12
+    volumes:
+      - validator3-data:/app/data
+      - testnet-logs:/app/logs
+      - ../testnet:/app/testnet:ro
+    networks:
+      blackhole-testnet:
+        ipv4_address: 172.20.0.12
+    depends_on:
+      validator1:
+        condition: service_healthy
+      validator2:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Testnet Faucet Service
+  faucet:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: blackhole-faucet
+    hostname: faucet
+    command: >
+      sh -c "
+      sleep 30 &&
+      ./blockchain --faucet --api-port=8083 --rpc-endpoint=http://172.20.0.10:8080 --faucet-amount=1000000000000000000000
+      "
+    ports:
+      - "8083:8083"  # Faucet API
+    environment:
+      - NODE_ENV=testnet
+      - LOG_LEVEL=info
+      - FAUCET_ENABLED=true
+      - FAUCET_AMOUNT=1000000000000000000000  # 1000 tBHX
+      - RATE_LIMIT=3600  # 1 hour
+    volumes:
+      - testnet-logs:/app/logs
+    networks:
+      blackhole-testnet:
+        ipv4_address: 172.20.0.20
+    depends_on:
+      validator1:
+        condition: service_healthy
+      validator2:
+        condition: service_healthy
+      validator3:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Testnet Explorer (Simple API)
+  explorer:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: blackhole-explorer
+    hostname: explorer
+    command: >
+      sh -c "
+      sleep 40 &&
+      ./blockchain --explorer --api-port=8084 --rpc-endpoint=http://172.20.0.10:8080
+      "
+    ports:
+      - "8084:8084"  # Explorer API
+    environment:
+      - NODE_ENV=testnet
+      - LOG_LEVEL=info
+      - EXPLORER_ENABLED=true
+    volumes:
+      - testnet-logs:/app/logs
+    networks:
+      blackhole-testnet:
+        ipv4_address: 172.20.0.21
+    depends_on:
+      validator1:
+        condition: service_healthy
+      validator2:
+        condition: service_healthy
+      validator3:
+        condition: service_healthy
+    restart: unless-stopped

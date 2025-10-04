@@ -122,7 +122,11 @@ func (msm *MultiSigManager) ProposeTransaction(walletID, proposer, to, tokenSymb
 	}
 
 	// Create pending transaction
-	txID := fmt.Sprintf("tx_%d_%s", time.Now().UnixNano(), proposer[:8])
+	proposerSuffix := proposer
+	if len(proposer) > 8 {
+		proposerSuffix = proposer[:8]
+	}
+	txID := fmt.Sprintf("tx_%d_%s", time.Now().UnixNano(), proposerSuffix)
 	pendingTx := &PendingTransaction{
 		ID:           txID,
 		WalletID:     walletID,

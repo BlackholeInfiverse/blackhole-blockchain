@@ -40,7 +40,9 @@ type Blockchain struct {
 	txPool             *TxPool
 	validatorManager   *ValidatorManager
 	TokenRegistry      map[string]*token.Token
-	P2PNode            *Node
+	P2PNode            *Node            // Legacy P2P node for backwards compatibility
+	SecureP2PNode      *SecureP2PNode   // New secure P2P node with signing and pub-sub
+	DiscoveryService   *NetworkDiscoveryService // Network discovery for wallet connectivity
 	GenesisTime        time.Time
 	TotalSupply        uint64
 	pendingBlocks      map[uint64]*Block
@@ -181,10 +183,29 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		genesis = createGenesisBlock()
 	}
 
-	// Initialize P2P node
-	node, err := NewNode(context.Background(), p2pPort)
+	// Initialize Secure P2P node with enhanced features
+	// In Docker environment, nodes should discover each other automatically
+	bootstrapPeers := []string{}
+	// For Docker networking, we'll use mDNS discovery instead of hardcoded bootstrap peers
+	
+	ctx := context.Background()
+	secureNode, err := NewSecureP2PNode(ctx, p2pPort, bootstrapPeers)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create secure P2P node: %v", err)
+	}
+	
+	// Initialize network discovery service
+	discoveryService := NewNetworkDiscoveryService(8888)
+	err = discoveryService.Start()
+	if err != nil {
+		log.Printf("⚠️ Failed to start network discovery service: %v", err)
+	}
+	
+	// Create legacy node for backwards compatibility (if needed)
+	legacyNode, err := NewNode(ctx, p2pPort+100) // Use different port to avoid conflicts
+	if err != nil {
+		log.Printf("⚠️ Failed to create legacy P2P node: %v", err)
+		legacyNode = nil // Continue without legacy node
 	}
 
 	// Initialize stake ledger
@@ -195,7 +216,9 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		Blocks:           []*Block{genesis},
 		PendingTxs:       make([]*Transaction, 0),
 		StakeLedger:      stakeLedger,
-		P2PNode:          node,
+		P2PNode:          legacyNode,        // Legacy P2P node (may be nil)
+		SecureP2PNode:    secureNode,        // New secure P2P node
+		DiscoveryService: discoveryService,  // Network discovery service
 		GenesisTime:      time.Now().UTC(),
 		TotalSupply:      1000000000,
 		BlockReward:      10,
@@ -206,6 +229,9 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		validatorManager: NewValidatorManager(stakeLedger),
 		TokenRegistry:    make(map[string]*token.Token),
 	}
+	
+	// Set blockchain reference in secure P2P node
+	secureNode.SetBlockchain(bc)
 
 	// Initialize slashing manager after TokenRegistry is created
 	bc.SlashingManager = NewSlashingManager(stakeLedger, bc.TokenRegistry)
@@ -617,18 +643,36 @@ func (bc *Blockchain) requestMissingBlocks(startIndex, endIndex uint64) {
 		Data:    data,
 		Version: ProtocolVersion,
 	}
+	
+	// For now, use legacy P2P for sync requests
+	// TODO: Implement secure sync protocol in secure P2P
 	bc.P2PNode.Broadcast(msg)
 	fmt.Printf("📤 Requested blocks %d to %d\n", startIndex, endIndex)
 }
 
 func (bc *Blockchain) BroadcastTransaction(tx *Transaction) {
-	data, _ := tx.Serialize()
+	data, err := tx.Serialize()
+	if err != nil {
+		fmt.Printf("❌ Failed to serialize transaction: %v\n", err)
+		return
+	}
 	msg := &Message{
 		Type:    MessageTypeTx,
 		Data:    data.([]byte),
 		Version: ProtocolVersion,
 	}
-	bc.P2PNode.Broadcast(msg)
+	
+	// Use secure P2P node if available, fallback to legacy
+	if bc.SecureP2PNode != nil {
+		err := bc.SecureP2PNode.BroadcastTransaction(tx)
+		if err != nil {
+			fmt.Printf("❌ Failed to broadcast transaction via secure P2P: %v\n", err)
+			// Fallback to legacy P2P
+			bc.P2PNode.Broadcast(msg)
+		}
+	} else {
+		bc.P2PNode.Broadcast(msg)
+	}
 }
 
 func (bc *Blockchain) BroadcastBlock(block *Block) {
@@ -638,7 +682,56 @@ func (bc *Blockchain) BroadcastBlock(block *Block) {
 		Data:    data,
 		Version: ProtocolVersion,
 	}
-	bc.P2PNode.Broadcast(msg)
+	
+	// Use secure P2P node if available, fallback to legacy
+	if bc.SecureP2PNode != nil {
+		err := bc.SecureP2PNode.BroadcastBlock(block)
+		if err != nil {
+			fmt.Printf("❌ Failed to broadcast block via secure P2P: %v\n", err)
+			// Fallback to legacy P2P
+			bc.P2PNode.Broadcast(msg)
+		}
+	} else {
+		bc.P2PNode.Broadcast(msg)
+	}
+}
+
+// StartNetworkAnnouncements starts periodic network announcements for wallet discovery
+func (bc *Blockchain) StartNetworkAnnouncements(httpPort int) {
+	if bc.DiscoveryService == nil {
+		log.Printf("⚠️ Cannot start network announcements: discovery service not available")
+		return
+	}
+
+	ticker := time.NewTicker(10 * time.Second)
+	go func() {
+		defer ticker.Stop()
+		for {
+			// Announce network with HTTP endpoint for wallet connectivity
+			if bc.DiscoveryService != nil {
+				// Create a copy of the blockchain for announcement
+				bc.mu.RLock()
+				announcementBC := &Blockchain{
+					Blocks:        bc.Blocks,
+					SecureP2PNode: bc.SecureP2PNode,
+					TotalSupply:   bc.TotalSupply,
+				}
+				bc.mu.RUnlock()
+				
+				err := bc.DiscoveryService.AnnounceNetwork(announcementBC)
+				if err != nil {
+					log.Printf("⚠️ Failed to announce network: %v", err)
+				}
+			}
+			select {
+			case <-ticker.C:
+				continue
+			default:
+				return
+			}
+		}
+	}()
+	log.Printf("📡 Started network announcements for wallet discovery")
 }
 
 func (bc *Blockchain) SyncChain() {

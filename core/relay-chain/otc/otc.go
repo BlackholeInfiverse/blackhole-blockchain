@@ -207,7 +207,11 @@ func (otc *OTCManager) CreateOrder(creator, tokenOffered, tokenRequested string,
 	}
 
 	// Generate order ID
-	orderID := fmt.Sprintf("otc_%d_%s", time.Now().UnixNano(), creator[:8])
+	creatorSuffix := creator
+	if len(creator) > 8 {
+		creatorSuffix = creator[:8]
+	}
+	orderID := fmt.Sprintf("otc_%d_%s", time.Now().UnixNano(), creatorSuffix)
 
 	// Determine order type
 	orderType := OrderTypeSell // Default: selling tokenOffered for tokenRequested
@@ -564,9 +568,8 @@ func (otc *OTCManager) ProcessExpiredOrders() {
 }
 
 // getRecentTradesForPair returns the n most recent trades for a token pair
+// Note: This function assumes the caller already holds the appropriate lock
 func (otc *OTCManager) getRecentTradesForPair(tokenA, tokenB string, n int) []*OTCTrade {
-	otc.mu.RLock()
-	defer otc.mu.RUnlock()
 
 	var trades []*OTCTrade
 	for _, trade := range otc.Trades {

@@ -1,0 +1,204 @@
+version: '3.8'
+
+networks:
+  blackhole-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
+services:
+  # Primary node (Bootstrap node)
+  node1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node1
+    environment:
+      - NODE_ID=1
+      - NODE_NAME=node1
+      - P2P_PORT=3001
+      - LEGACY_P2P_PORT=3100
+      - HTTP_PORT=8080
+      - BOOTSTRAP_PEERS=
+      - DOCKER_MODE=true
+      - GENESIS_VALIDATOR=true
+    ports:
+      - "8081:8080"   # HTTP API
+      - "3001:3001"   # Secure P2P
+      - "3100:3100"   # Legacy P2P
+      - "30303:30303" # P2P networking
+      - "8888:8888"   # Network discovery
+    networks:
+      blackhole-network:
+        ipv4_address: 172.20.0.10
+    volumes:
+      - node1_data:/app/data
+      - node1_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/blockchain/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Secondary node
+  node2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node2
+    environment:
+      - NODE_ID=2
+      - NODE_NAME=node2
+      - P2P_PORT=3001
+      - LEGACY_P2P_PORT=3100
+      - HTTP_PORT=8080
+      - BOOTSTRAP_PEERS=/ip4/172.20.0.10/tcp/3001,/ip4/172.20.0.10/tcp/3100
+      - DOCKER_MODE=true
+      - GENESIS_VALIDATOR=false
+    ports:
+      - "8082:8080"   # HTTP API
+      - "3002:3001"   # Secure P2P
+      - "3101:3100"   # Legacy P2P
+      - "30304:30303" # P2P networking
+      - "8889:8888"   # Network discovery
+    networks:
+      blackhole-network:
+        ipv4_address: 172.20.0.11
+    volumes:
+      - node2_data:/app/data
+      - node2_logs:/app/logs
+    depends_on:
+      node1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/blockchain/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Third node
+  node3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node3
+    environment:
+      - NODE_ID=3
+      - NODE_NAME=node3
+      - P2P_PORT=3001
+      - LEGACY_P2P_PORT=3100
+      - HTTP_PORT=8080
+      - BOOTSTRAP_PEERS=/ip4/172.20.0.10/tcp/3001,/ip4/172.20.0.10/tcp/3100,/ip4/172.20.0.11/tcp/3001
+      - DOCKER_MODE=true
+      - GENESIS_VALIDATOR=false
+    ports:
+      - "8083:8080"   # HTTP API
+      - "3003:3001"   # Secure P2P
+      - "3102:3100"   # Legacy P2P
+      - "30305:30303" # P2P networking
+      - "8890:8888"   # Network discovery
+    networks:
+      blackhole-network:
+        ipv4_address: 172.20.0.12
+    volumes:
+      - node3_data:/app/data
+      - node3_logs:/app/logs
+    depends_on:
+      node2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/blockchain/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Fourth node
+  node4:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node4
+    environment:
+      - NODE_ID=4
+      - NODE_NAME=node4
+      - P2P_PORT=3001
+      - LEGACY_P2P_PORT=3100
+      - HTTP_PORT=8080
+      - BOOTSTRAP_PEERS=/ip4/172.20.0.10/tcp/3001,/ip4/172.20.0.11/tcp/3001,/ip4/172.20.0.12/tcp/3001
+      - DOCKER_MODE=true
+      - GENESIS_VALIDATOR=false
+    ports:
+      - "8084:8080"   # HTTP API
+      - "3004:3001"   # Secure P2P
+      - "3103:3100"   # Legacy P2P
+      - "30306:30303" # P2P networking
+      - "8891:8888"   # Network discovery
+    networks:
+      blackhole-network:
+        ipv4_address: 172.20.0.13
+    volumes:
+      - node4_data:/app/data
+      - node4_logs:/app/logs
+    depends_on:
+      node3:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/blockchain/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Fifth node
+  node5:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node5
+    environment:
+      - NODE_ID=5
+      - NODE_NAME=node5
+      - P2P_PORT=3001
+      - LEGACY_P2P_PORT=3100
+      - HTTP_PORT=8080
+      - BOOTSTRAP_PEERS=/ip4/172.20.0.10/tcp/3001,/ip4/172.20.0.11/tcp/3001,/ip4/172.20.0.12/tcp/3001,/ip4/172.20.0.13/tcp/3001
+      - DOCKER_MODE=true
+      - GENESIS_VALIDATOR=false
+    ports:
+      - "8085:8080"   # HTTP API
+      - "3005:3001"   # Secure P2P
+      - "3104:3100"   # Legacy P2P
+      - "30307:30303" # P2P networking
+      - "8892:8888"   # Network discovery
+    networks:
+      blackhole-network:
+        ipv4_address: 172.20.0.14
+    volumes:
+      - node5_data:/app/data
+      - node5_logs:/app/logs
+    depends_on:
+      node4:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/blockchain/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  node1_data:
+  node1_logs:
+  node2_data:
+  node2_logs:
+  node3_data:
+  node3_logs:
+  node4_data:
+  node4_logs:
+  node5_data:
+  node5_logs:

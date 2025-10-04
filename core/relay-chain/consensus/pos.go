@@ -82,17 +82,29 @@ func (v *Validator) SelectValidator() string {
 }
 
 func (v *Validator) ValidateBlock(block *chain.Block, blockchain *chain.Blockchain) bool {
-	// 1. Time interval check
-	elapsed := time.Since(v.LastBlockTime)
-	const tolerance = 100 * time.Millisecond
-	if elapsed+tolerance < v.BlockInterval {
-		fmt.Printf("❌ Validation failed: Block mined too early.\n")
-		return false
-	}
-
-	// 2. Validate block structure
+	// 1. Validate block structure first
 	if !block.IsValid() {
 		fmt.Printf("❌ Validation failed: Invalid block structure\n")
+		return false
+	}
+	
+	// 2. Validate block signature if present
+	if !v.validateBlockSignature(block) {
+		fmt.Printf("❌ Validation failed: Invalid block signature\n")
+		return false
+	}
+	
+	// 3. Validate validator eligibility
+	if !v.validateValidatorEligibility(block) {
+		fmt.Printf("❌ Validation failed: Validator not eligible\n")
+		return false
+	}
+	
+	// 4. Time interval check (more flexible for initial sync)
+	elapsed := time.Since(v.LastBlockTime)
+	const tolerance = 2 * time.Second // More tolerant for network latency
+	if elapsed+tolerance < v.BlockInterval {
+		fmt.Printf("❌ Validation failed: Block mined too early (elapsed: %v)\n", elapsed)
 		return false
 	}
 
@@ -166,6 +178,42 @@ func (d *DynamicRewardStrategy) CalculateReward(currentSupply uint64) uint64 {
 	}
 
 	return newReward
+}
+
+// validateBlockSignature validates the cryptographic signature of a block
+func (v *Validator) validateBlockSignature(block *chain.Block) bool {
+	// For now, return true as signature validation needs to be integrated with P2P layer
+	// TODO: Implement proper block signing and verification
+	// This would require:
+	// 1. Block headers to include validator public key and signature
+	// 2. Integration with secure P2P node's signing mechanism
+	// 3. Public key registry for validators
+	return true
+}
+
+// validateValidatorEligibility checks if the validator was eligible to mine this block
+func (v *Validator) validateValidatorEligibility(block *chain.Block) bool {
+	// Check if validator has sufficient stake
+	validatorStake := v.StakePool.GetStake(block.Header.Validator)
+	if validatorStake == 0 {
+		fmt.Printf("❌ Validator %s has no stake\n", block.Header.Validator)
+		return false
+	}
+	
+	// Minimum stake requirement (1 BHX for testing)
+	const MinValidatorStake = 1
+	if validatorStake < MinValidatorStake {
+		fmt.Printf("❌ Validator %s stake too low: %d < %d\n", 
+			block.Header.Validator, validatorStake, MinValidatorStake)
+		return false
+	}
+	
+	// Additional eligibility checks can be added here:
+	// - Validator not slashed recently
+	// - Validator participated in recent consensus
+	// - etc.
+	
+	return true
 }
 
 // GetRewardInfo returns information about the current reward calculation

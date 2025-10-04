@@ -1,6 +1,8 @@
 package otc
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"testing"
 	"time"
 
@@ -9,7 +11,11 @@ import (
 )
 
 func setupTestOTC(t *testing.T) (*OTCManager, *chain.Blockchain) {
-	blockchain, err := chain.NewBlockchain(3000) // Using port 3000 for testing
+	// Generate unique port for each test to avoid conflicts
+	var randBytes [4]byte
+	rand.Read(randBytes[:])
+	port := 3000 + int(binary.LittleEndian.Uint32(randBytes[:])%1000)
+	blockchain, err := chain.NewBlockchain(port)
 	if err != nil {
 		t.Fatalf("Failed to create blockchain: %v", err)
 	}
@@ -155,14 +161,14 @@ func TestOrderExpiration(t *testing.T) {
 	tokenA := blockchain.TokenRegistry["TokenA"]
 	tokenA.Mint(creator, 5000)
 
-	// Create order with short expiration
-	order, err := otc.CreateOrder(creator, "TokenA", "TokenB", 2000, 3000, 1, false, nil)
+	// Create order with very short expiration (0 hours = expires immediately)
+	order, err := otc.CreateOrder(creator, "TokenA", "TokenB", 2000, 3000, 0, false, nil)
 	if err != nil {
 		t.Fatalf("Failed to create order: %v", err)
 	}
 
-	// Wait for expiration
-	time.Sleep(2 * time.Second)
+	// Wait a brief moment to ensure expiration time has passed
+	time.Sleep(100 * time.Millisecond)
 
 	// Process expired orders
 	otc.ProcessExpiredOrders()

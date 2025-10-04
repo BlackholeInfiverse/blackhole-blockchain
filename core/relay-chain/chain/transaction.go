@@ -45,8 +45,8 @@ type Transaction struct {
 	PublicKey []byte          `json:"public_key"`
 }
 
-func (tx *Transaction) Serialize() (any, any) {
-	panic("unimplemented")
+func (tx *Transaction) Serialize() (any, error) {
+	return json.Marshal(tx)
 }
 
 func NewTransaction(txType TransactionType, from, to string, amount uint64, publicKey []byte) *Transaction {
