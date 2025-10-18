@@ -33,3 +33,41 @@
 12:13:50.311746 version@stat F·[2] S·1KiB[1KiB] Sc·[0.50]
 12:13:50.359203 db@janitor F·4 G·0
 12:13:50.359203 db@open done T·65.8432ms
+=============== Oct 3, 2025 (IST) ===============
+11:58:23.972115 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:58:23.986142 version@stat F·[2] S·1KiB[1KiB] Sc·[0.50]
+11:58:23.986142 db@open opening
+11:58:23.986142 journal@recovery F·1
+11:58:23.986678 journal@recovery recovering @8
+11:58:23.995238 memdb@flush created L0@10 N·3 S·593B "acc..dd1,v17":"acc..211,v19"
+11:58:23.995891 version@stat F·[3] S·2KiB[2KiB] Sc·[0.75]
+11:58:24.000696 db@janitor F·5 G·0
+11:58:24.001226 db@open done T·15.0839ms
+=============== Oct 9, 2025 (IST) ===============
+15:20:42.513178 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+15:20:42.527226 version@stat F·[3] S·2KiB[2KiB] Sc·[0.75]
+15:20:42.527226 db@open opening
+15:20:42.527746 journal@recovery F·1
+15:20:42.527746 journal@recovery recovering @11
+15:20:42.626720 memdb@flush created L0@13 N·11 S·932B "acc..dd1,v26":"tok..BHX,v31"
+15:20:42.627231 version@stat F·[4] S·3KiB[3KiB] Sc·[1.00]
+15:20:42.633038 db@janitor F·6 G·0
+15:20:42.633038 db@open done T·105.8121ms
+15:20:42.633038 table@compaction L0·4 -> L1·0 S·3KiB Q·32
+15:20:42.694614 table@build created L1@16 N·15 S·1KiB "acc..dd1,v26":"tok..BHX,v31"
+15:20:42.694614 version@stat F·[0 1] S·1KiB[0B 1KiB] Sc·[0.00 0.00]
+15:20:42.710484 table@compaction committed F-3 S-1KiB Ke·0 D·13 T·75.3554ms
+15:20:42.711014 table@remove removed @10
+15:20:42.711014 table@remove removed @7
+15:20:42.711548 table@remove removed @2
+=============== Oct 10, 2025 (IST) ===============
+13:32:08.999136 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+13:32:09.014987 version@stat F·[0 1] S·1KiB[0B 1KiB] Sc·[0.00 0.00]
+13:32:09.014987 db@open opening
+13:32:09.014987 journal@recovery F·1
+13:32:09.014987 journal@recovery recovering @14
+13:32:09.024569 memdb@flush created L0@17 N·7 S·669B "acc..54a,v38":"tok..BHX,v35"
+13:32:09.026158 version@stat F·[1 1] S·2KiB[669B 1KiB] Sc·[0.25 0.00]
+13:32:09.030384 db@janitor F·5 G·1
+13:32:09.030384 db@janitor removing table-13
+13:32:09.030912 db@open done T·15.9246ms

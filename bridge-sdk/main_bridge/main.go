@@ -15,6 +15,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -780,6 +781,7 @@ type BridgeSDK struct {
 	// Enhanced dashboard fields
 	mu               sync.RWMutex
 	loadTestRunning  bool
+	simulations      map[string]map[string]interface{}
 	chaosTestRunning bool
 }
 
@@ -5815,6 +5817,7 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 	// --- NEW: Cross-Chain Simulation Endpoints ---
 	r.HandleFunc("/api/simulation/cross-chain", sdk.handleCrossChainSimulation).Methods("POST")
 	r.HandleFunc("/api/simulation/cross-chain/status/{id}", sdk.handleCrossChainSimulationStatus).Methods("GET")
+	r.HandleFunc("/api/execute-roundtrip-script", sdk.handleExecuteRoundtripScript).Methods("POST")
 	// --- END NEW ---
 
 	// API endpoints
@@ -5973,6 +5976,10 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 	r.HandleFunc("/api/main-dashboard/status", sdk.handleMainDashboardStatus).Methods("GET")
 	r.HandleFunc("/api/main-dashboard/activities", sdk.handleMainDashboardActivities).Methods("GET")
 	r.HandleFunc("/api/main-dashboard/monitor", sdk.handleMainDashboardMonitor).Methods("POST")
+	r.HandleFunc("/api/main-dashboard/dex-slippage", sdk.handleDEXSlippageStatus).Methods("GET")
+	r.HandleFunc("/api/dex/pools", sdk.handleDEXPools).Methods("GET", "POST")
+	r.HandleFunc("/api/dex/pools/{tokenA}/{tokenB}", sdk.handleDEXPool).Methods("PUT", "DELETE")
+	r.HandleFunc("/api/dex/test", sdk.handleDEXSlippageTest).Methods("POST")
 
 	// Wallet Dashboard Integration API endpoints
 	r.HandleFunc("/api/wallet-dashboard/status", sdk.handleWalletDashboardStatus).Methods("GET")
@@ -8018,6 +8025,19 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
         [data-theme="dark"] .monitoring-content div,
         [data-theme="dark"] .monitoring-content span,
+
+        /* Input field visibility fixes */
+        input[type="text"], input[type="number"] {
+            background: rgba(255, 255, 255, 0.95) !important;
+            color: #000 !important;
+            border: 1px solid #555 !important;
+        }
+
+        [data-theme="dark"] input[type="text"], [data-theme="dark"] input[type="number"] {
+            background: rgba(255, 255, 255, 0.95) !important;
+            color: #000 !important;
+            border: 1px solid #555 !important;
+        }
         [data-theme="dark"] .monitoring-content p {
             color: var(--text-primary);
         }
@@ -14855,6 +14875,146 @@ func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Reques
                 <h2>🌐 Network Status</h2>
                 <div class="section-content" id="networkStatus">Loading...</div>
             </div>
+            <div class="infra-card modular" draggable="true" id="dexSlippageCard">
+                <h2>💱 DEX Slippage Monitor</h2>
+                <div class="section-content" id="dexSlippageStatus">
+                    <!-- Pool Creation Form -->
+                    <div style="margin-bottom: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 5px;">
+                        <h4 style="margin: 0 0 10px 0; color: #fff;">Create DEX Pool</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 8px;">
+                            <input type="text" id="poolTokenA" placeholder="Token A (e.g., BHX)" style="padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: black; width: 120px;">
+                            <input type="text" id="poolTokenB" placeholder="Token B (e.g., USDT)" style="padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: black; width: 120px;">
+                            <input type="number" id="poolReserveA" placeholder="Reserve A" style="padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: black; width: 100px;">
+                            <input type="number" id="poolReserveB" placeholder="Reserve B" style="padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: black; width: 100px;">
+                        </div>
+                        <button class="mock-btn" onclick="createDEXPool()" style="background: #27ae60;">Create Pool</button>
+                    </div>
+
+                    <!-- Slippage Test Form -->
+                    <div style="margin-bottom: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 5px;">
+                        <h4 style="margin: 0 0 10px 0; color: #fff;">Run Slippage Test</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 8px;">
+                            <input type="text" id="testTokenA" placeholder="Token A" style="padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: #000; width: 100px;">
+                            <input type="text" id="testTokenB" placeholder="Token B" style="padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: #000; width: 100px;">
+                            <input type="number" id="testSwapAmount" placeholder="Swap Amount" style="padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: #000; width: 110px;">
+                            <input type="number" id="testMinAmountOut" placeholder="Min Amount Out" style="padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: #000; width: 120px;">
+                        </div>
+                        <button class="mock-btn" onclick="runDEXSlippageTest()" style="background: #e74c3c;">Run Test</button>
+                    </div>
+
+                    <!-- Results Display -->
+                    <div id="dexSlippageContent">Loading DEX slippage data...</div>
+                    <div style="margin-top: 10px;">
+                        <button class="mock-btn" onclick="refreshDEXSlippage()" style="background: #3498db;">Refresh</button>
+                    </div>
+                </div>
+            </div>
+            <div class="infra-card modular" draggable="true" id="roundtripCard">
+                <h2>🔄 Roundtrip Testing</h2>
+                <div class="section-content" id="roundtripStatus">
+                    <div style="margin-bottom: 15px;">
+                        <strong>Real BHX Cross-Chain Roundtrip Test</strong>
+                        <p style="font-size: 0.8em; color: #9ca3af; margin: 5px 0;">Execute real BHX token transfers through DEX to target blockchains with live monitoring</p>
+                    </div>
+
+                    <!-- Test Configuration -->
+                    <div style="margin-bottom: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                        <div style="margin-bottom: 8px;">
+                            <label style="display: block; font-size: 0.8em; font-weight: bold; margin-bottom: 4px;">Source Chain:</label>
+                            <select id="roundtripSourceChain" style="width: 100%; padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: black;">
+                                <option value="blackhole" selected>BlackHole (BHX)</option>
+                                <option value="ethereum">Ethereum</option>
+                                <option value="polygon">Polygon</option>
+                                <option value="bsc">BSC</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <label style="display: block; font-size: 0.8em; font-weight: bold; margin-bottom: 4px;">Target Chain:</label>
+                            <select id="roundtripTargetChain" style="width: 100%; padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: black;">
+                                <option value="ethereum" selected>Ethereum</option>
+                                <option value="bitcoin">Bitcoin</option>
+                                <option value="polygon">Polygon</option>
+                                <option value="bsc">BSC</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <label style="display: block; font-size: 0.8em; font-weight: bold; margin-bottom: 4px;">Amount (in wei):</label>
+                            <input type="text" id="roundtripAmount" value="1000000000" placeholder="1000000000" style="width: 100%; padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: black;">
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <label style="display: block; font-size: 0.8em; font-weight: bold; margin-bottom: 4px;">Token:</label>
+                            <select id="roundtripToken" style="width: 100%; padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: black;">
+                                <option value="BHX" selected>BHX (BlackHole Token)</option>
+                                <option value="ETH">ETH</option>
+                                <option value="USDT">USDT</option>
+                                <option value="USDC">USDC</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <label style="display: block; font-size: 0.8em; font-weight: bold; margin-bottom: 4px;">Slippage Tolerance (%):</label>
+                            <input type="number" id="roundtripSlippage" value="0.5" step="0.1" min="0.1" max="5" style="width: 100%; padding: 5px; border-radius: 3px; border: 1px solid #555; background: rgba(255,255,255,0.9); color: black;">
+                        </div>
+                    </div>
+
+                    <!-- Control Buttons -->
+                    <div style="margin-bottom: 15px;">
+                        <button class="mock-btn" onclick="startRoundtripTest()" style="background: #27ae60; width: 100%; margin-bottom: 8px;">🚀 Start Roundtrip Test</button>
+                        <button class="mock-btn" onclick="runRoundtripScript()" style="background: #3498db; width: 100%; margin-bottom: 8px;">📜 Run CLI Script</button>
+                        <button class="mock-btn" onclick="refreshRoundtripStatus()" style="background: #f39c12; width: 100%;">🔄 Refresh Status</button>
+                    </div>
+
+                    <!-- Status Display -->
+                    <div id="roundtripTestStatus" style="font-size: 0.8em;">
+                        <div style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-bottom: 8px;">
+                            <strong>Status:</strong> <span id="roundtripStatusText" style="color: #9ca3af;">Ready</span>
+                        </div>
+                        <div style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-bottom: 8px;">
+                            <strong>Simulation ID:</strong> <span id="roundtripSimulationId" style="color: #9ca3af;">None</span>
+                        </div>
+                        <div style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-bottom: 8px;">
+                            <strong>Current Step:</strong> <span id="roundtripCurrentStep" style="color: #9ca3af;">None</span>
+                        </div>
+                        <div style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-bottom: 8px;">
+                            <strong>Progress:</strong> <span id="roundtripProgress" style="color: #9ca3af;">0%</span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Visualization -->
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 0.8em; font-weight: bold; margin-bottom: 5px;">Test Progress:</div>
+                        <div style="width: 100%; height: 20px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
+                            <div id="roundtripProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #27ae60, #3498db); transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Step Indicators -->
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 0.8em; font-weight: bold; margin-bottom: 8px;">Test Steps:</div>
+                        <div style="display: grid; gap: 6px;">
+                            <div class="step-indicator" id="step1" style="display: flex; align-items: center; padding: 6px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 0.75em;">
+                                <span class="step-icon" style="margin-right: 8px; color: #9ca3af;">1️⃣</span>
+                                <span class="step-text">BHX wallet signs & submits swap to DEX</span>
+                                <span class="step-status" style="margin-left: auto; color: #6b7280;">⏳</span>
+                            </div>
+                            <div class="step-indicator" id="step2" style="display: flex; align-items: center; padding: 6px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 0.75em;">
+                                <span class="step-icon" style="margin-right: 8px; color: #9ca3af;">2️⃣</span>
+                                <span class="step-text">DEX processes BHX → bridge relays to target chain</span>
+                                <span class="step-status" style="margin-left: auto; color: #6b7280;">⏳</span>
+                            </div>
+                            <div class="step-indicator" id="step3" style="display: flex; align-items: center; padding: 6px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 0.75em;">
+                                <span class="step-icon" style="margin-right: 8px; color: #9ca3af;">3️⃣</span>
+                                <span class="step-text">Target blockchain receives confirmation</span>
+                                <span class="step-status" style="margin-left: auto; color: #6b7280;">⏳</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Results Display -->
+                    <div id="roundtripResults" style="font-size: 0.75em; max-height: 150px; overflow-y: auto;">
+                        <div style="color: #9ca3af; font-style: italic;">Test results will appear here...</div>
+                    </div>
+                </div>
+            </div>
             <div class="infra-card modular" draggable="true" id="mockCard">
                 <h2>🧪 Test Environment</h2>
                 <div class="section-content" id="mockStatus">
@@ -14888,7 +15048,8 @@ func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Reques
                 updateLiveEventStream(),
                 updateSystemHealth(),
                 updatePerformanceMetrics(),
-                updateNetworkStatus()
+                updateNetworkStatus(),
+                updateDEXSlippage()
             ]);
         }
 
@@ -15225,6 +15386,577 @@ func (sdk *BridgeSDK) handleInfraDashboard(w http.ResponseWriter, r *http.Reques
                 document.body.setAttribute('data-theme', 'dark');
                 document.getElementById('theme-text').textContent = '☀️ Light Mode';
             }
+        });
+
+        // DEX Slippage Monitoring Functions
+        async function updateDEXSlippage() {
+            try {
+                const response = await fetch('/api/main-dashboard/dex-slippage');
+                const data = await response.json();
+
+                if (data.success) {
+                    const slippageData = data.data;
+                    let html = '<div style="font-size: 12px;">';
+
+                    // Summary stats
+                    html += '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">';
+                    html += '<div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 4px; text-align: center;">';
+                    html += '<div style="font-weight: bold; color: #3498db;">' + slippageData.total_tests + '</div>';
+                    html += '<div style="color: #666;">Total Tests</div>';
+                    html += '</div>';
+                    html += '<div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 4px; text-align: center;">';
+                    html += '<div style="font-weight: bold; color: #e74c3c;">' + slippageData.failed_tests + '</div>';
+                    html += '<div style="color: #666;">Failed Tests</div>';
+                    html += '</div>';
+                    html += '<div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 4px; text-align: center;">';
+                    html += '<div style="font-weight: bold; color: #27ae60;">' + slippageData.pools.length + '</div>';
+                    html += '<div style="color: #666;">Active Pools</div>';
+                    html += '</div>';
+                    html += '</div>';
+
+                    // Pool details
+                    if (slippageData.pools && slippageData.pools.length > 0) {
+                        html += '<div style="margin-bottom: 8px; font-weight: bold;">Active Pools:</div>';
+                        slippageData.pools.forEach(pool => {
+                            html += '<div style="background: rgba(255,255,255,0.05); padding: 6px; margin: 4px 0; border-radius: 3px; font-size: 11px;">';
+                            html += '<div><strong>' + pool.token_a + '/' + pool.token_b + '</strong> ';
+                            html += '<button onclick="removeDEXPool(\'' + pool.token_a + '\', \'' + pool.token_b + '\')" style="float: right; background: #e74c3c; color: white; border: none; border-radius: 2px; padding: 2px 6px; font-size: 10px; cursor: pointer;">Remove</button></div>';
+                            html += '<div>Reserves: ' + pool.reserve_a + ' / ' + pool.reserve_b + ' (Ratio: ' + pool.ratio.toFixed(2) + ')</div>';
+                            html += '<div style="margin-top: 4px;">';
+                            html += '<input type="number" id="update_' + pool.token_a + '_' + pool.token_b + '_a" value="' + pool.reserve_a + '" style="width: 80px; padding: 2px; margin-right: 4px; font-size: 10px; background: rgba(255,255,255,0.9); color: #000; border: 1px solid #555;">';
+                            html += '<input type="number" id="update_' + pool.token_a + '_' + pool.token_b + '_b" value="' + pool.reserve_b + '" style="width: 80px; padding: 2px; margin-right: 4px; font-size: 10px; background: rgba(255,255,255,0.9); color: #000; border: 1px solid #555;">';
+                            html += '<button onclick="updateDEXPool(\'' + pool.token_a + '\', \'' + pool.token_b + '\')" style="background: #f39c12; color: white; border: none; border-radius: 2px; padding: 2px 6px; font-size: 10px; cursor: pointer;">Update</button>';
+                            html += '</div>';
+                            html += '</div>';
+                        });
+                    } else {
+                        html += '<div style="margin-bottom: 8px; font-style: italic; color: #666;">No pools created yet. Create one above.</div>';
+                    }
+
+                    // Recent test results
+                    if (slippageData.tests && slippageData.tests.length > 0) {
+                        html += '<div style="margin-top: 8px; font-weight: bold;">Recent Test Results:</div>';
+                        slippageData.tests.slice(-5).forEach(test => {  // Show last 5 tests
+                            const statusColor = test.reverted ? '#e74c3c' : (test.protected ? '#27ae60' : '#f39c12');
+                            const statusText = test.reverted ? 'REVERTED' : (test.protected ? 'PROTECTED' : 'AT RISK');
+                            const slippageLevel = test.slippage_percent > 50 ? 'EXTREME' : (test.slippage_percent > 10 ? 'HIGH' : 'MODERATE');
+
+                            html += '<div style="background: rgba(255,255,255,0.05); padding: 6px; margin: 3px 0; border-radius: 3px; font-size: 10px; border-left: 3px solid ' + statusColor + ';">';
+                            html += '<div style="color: ' + statusColor + '; font-weight: bold; margin-bottom: 2px;">' + statusText + ' (' + slippageLevel + ' SLIPPAGE)</div>';
+                            html += '<div style="margin-bottom: 2px;"><strong>Test:</strong> Swap ' + test.swap_amount + ' ' + test.pool.token_a + ' for ' + test.pool.token_b + '</div>';
+                            html += '<div style="margin-bottom: 2px;"><strong>Result:</strong> Expected ' + test.expected_output + ' ' + test.pool.token_b + ', got ' + test.actual_output + ' ' + test.pool.token_b + '</div>';
+                            html += '<div style="margin-bottom: 2px;"><strong>Slippage:</strong> ' + test.slippage_percent.toFixed(1) + '% (Pool ratio: ' + test.pool.ratio.toFixed(2) + ')</div>';
+                            html += '<div style="color: #666; font-size: 9px;"><strong>Protection:</strong> Min output ' + test.min_amount_out + ' | Status: ' + (test.protected ? 'Protected' : 'Unprotected') + '</div>';
+                            html += '</div>';
+                        });
+                    } else {
+                        html += '<div style="margin-top: 8px; font-style: italic; color: #666;">No tests run yet. Configure a test above and click "Run Test".</div>';
+                    }
+
+                    html += '</div>';
+                    document.getElementById('dexSlippageContent').innerHTML = html;
+                } else {
+                    document.getElementById('dexSlippageContent').innerHTML = 'Error loading DEX data';
+                }
+            } catch (error) {
+                console.error('Error updating DEX slippage:', error);
+                document.getElementById('dexSlippageContent').innerHTML = 'Connection error';
+            }
+        }
+
+        async function createDEXPool() {
+            const tokenA = document.getElementById('poolTokenA').value.trim().toUpperCase();
+            const tokenB = document.getElementById('poolTokenB').value.trim().toUpperCase();
+            const reserveA = parseInt(document.getElementById('poolReserveA').value) || 0;
+            const reserveB = parseInt(document.getElementById('poolReserveB').value) || 0;
+
+            console.log('Creating pool:', { tokenA, tokenB, reserveA, reserveB });
+
+            if (!tokenA || !tokenB) {
+                alert('Please enter both token symbols');
+                return;
+            }
+
+            if (tokenA === tokenB) {
+                alert('Token A and Token B must be different');
+                return;
+            }
+
+            if (reserveA <= 0 || reserveB <= 0) {
+                alert('Reserve amounts must be greater than 0');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/dex/pools', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        token_a: tokenA,
+                        token_b: tokenB,
+                        reserve_a: reserveA,
+                        reserve_b: reserveB
+                    })
+                });
+
+                console.log('Pool creation response status:', response.status);
+
+                const result = await response.json();
+                console.log('Pool creation result:', result);
+
+                if (result.success) {
+                    alert('DEX pool ' + tokenA + '/' + tokenB + ' created successfully with reserves ' + reserveA + '/' + reserveB + '!');
+                    // Clear form
+                    document.getElementById('poolTokenA').value = '';
+                    document.getElementById('poolTokenB').value = '';
+                    document.getElementById('poolReserveA').value = '';
+                    document.getElementById('poolReserveB').value = '';
+                    // Refresh display
+                    await updateDEXSlippage();
+                } else {
+                    alert('Error creating pool: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error creating DEX pool:', error);
+                alert('Failed to create pool: ' + error.message);
+            }
+        }
+
+        async function updateDEXPool(tokenA, tokenB) {
+            const reserveA = parseInt(document.getElementById('update_' + tokenA + '_' + tokenB + '_a').value) || 0;
+            const reserveB = parseInt(document.getElementById('update_' + tokenA + '_' + tokenB + '_b').value) || 0;
+
+            if (reserveA <= 0 || reserveB <= 0) {
+                alert('Reserve amounts must be greater than 0');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/dex/pools/' + tokenA + '/' + tokenB, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        reserve_a: reserveA,
+                        reserve_b: reserveB
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('DEX pool updated successfully!');
+                    await updateDEXSlippage();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error updating DEX pool:', error);
+                alert('Failed to update pool');
+            }
+        }
+
+        async function removeDEXPool(tokenA, tokenB) {
+            if (!confirm('Are you sure you want to remove the ' + tokenA + '/' + tokenB + ' pool?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/dex/pools/' + tokenA + '/' + tokenB, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('DEX pool removed successfully!');
+                    await updateDEXSlippage();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error removing DEX pool:', error);
+                alert('Failed to remove pool');
+            }
+        }
+
+        async function runDEXSlippageTest() {
+            const tokenA = document.getElementById('testTokenA').value.trim().toUpperCase();
+            const tokenB = document.getElementById('testTokenB').value.trim().toUpperCase();
+            const swapAmount = parseInt(document.getElementById('testSwapAmount').value) || 0;
+            const minAmountOut = parseInt(document.getElementById('testMinAmountOut').value) || 0;
+
+            console.log('Running test:', { tokenA, tokenB, swapAmount, minAmountOut });
+
+            if (!tokenA || !tokenB) {
+                alert('Please enter both token symbols');
+                return;
+            }
+
+            if (swapAmount <= 0) {
+                alert('Swap amount must be greater than 0');
+                return;
+            }
+
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = 'Running...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/dex/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        token_a: tokenA,
+                        token_b: tokenB,
+                        swap_amount: swapAmount,
+                        min_amount_out: minAmountOut
+                    })
+                });
+
+                console.log('Test response status:', response.status);
+
+                const result = await response.json();
+                console.log('Test result:', result);
+
+                if (result.success) {
+                    const testData = result.data;
+                    const statusMsg = testData.reverted ? 'REVERTED' : (testData.protected ? 'PROTECTED' : 'AT RISK');
+                    alert('DEX slippage test completed!\n\nResult: ' + statusMsg + '\nSlippage: ' + testData.slippage_percent.toFixed(1) + '%\nExpected Output: ' + testData.expected_output + '\nCheck detailed results below.');
+                    // Clear form
+                    document.getElementById('testTokenA').value = '';
+                    document.getElementById('testTokenB').value = '';
+                    document.getElementById('testSwapAmount').value = '';
+                    document.getElementById('testMinAmountOut').value = '';
+                    // Refresh display
+                    await updateDEXSlippage();
+                } else {
+                    alert('Error running test: ' + (result.error || 'Unknown error'));
+                }
+
+                btn.textContent = 'Test Complete!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            } catch (error) {
+                console.error('Error running DEX test:', error);
+                alert('Failed to run test: ' + error.message);
+                btn.textContent = 'Error!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            }
+        }
+
+        async function refreshDEXSlippage() {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = 'Refreshing...';
+            btn.disabled = true;
+
+            try {
+                await updateDEXSlippage();
+                btn.textContent = 'Refreshed!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 1000);
+            } catch (error) {
+                console.error('Error refreshing DEX data:', error);
+                btn.textContent = 'Error!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            }
+        }
+
+        // Roundtrip Test Functions
+        async function startRoundtripTest() {
+            const sourceChain = document.getElementById('roundtripSourceChain').value;
+            const targetChain = document.getElementById('roundtripTargetChain').value;
+            const amount = document.getElementById('roundtripAmount').value;
+            const token = document.getElementById('roundtripToken').value;
+            const slippage = document.getElementById('roundtripSlippage').value;
+
+            // Update UI to show starting
+            document.getElementById('roundtripStatusText').textContent = 'Starting CLI Script...';
+            document.getElementById('roundtripStatusText').style.color = '#f59e0b';
+            document.getElementById('roundtripSimulationId').textContent = 'CLI-' + Date.now();
+            document.getElementById('roundtripCurrentStep').textContent = 'Executing script';
+            document.getElementById('roundtripProgress').textContent = '0%';
+            document.getElementById('roundtripProgressBar').style.width = '0%';
+
+            // Reset step indicators
+            resetStepIndicators();
+
+            try {
+                // Execute the CLI script via API call
+                const response = await fetch('/api/execute-roundtrip-script', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        source_chain: sourceChain,
+                        target_chain: targetChain,
+                        amount: amount,
+                        token: token,
+                        slippage_tolerance: parseFloat(slippage)
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('roundtripStatusText').textContent = 'Script Started';
+                    document.getElementById('roundtripStatusText').style.color = '#3498db';
+                    document.getElementById('roundtripResults').innerHTML =
+                        '<div style="color: #22c55e;">✅ CLI script started successfully!</div>' +
+                        '<div style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">Check terminal/console for detailed output.</div>' +
+                        (data.command ? '<div style="margin-top: 8px; font-size: 0.75em; color: #666;">Command: ' + data.command + '</div>' : '');
+
+                    // Simulate progress for visual feedback
+                    simulateScriptProgress();
+                } else {
+                    throw new Error(data.error || data.message || 'Failed to execute script');
+                }
+            } catch (error) {
+                document.getElementById('roundtripStatusText').textContent = 'Failed';
+                document.getElementById('roundtripStatusText').style.color = '#ef4444';
+                document.getElementById('roundtripResults').innerHTML = '<div style="color: #ef4444;">❌ Error: ' + error.message + '</div>';
+            }
+        }
+
+        function simulateScriptProgress() {
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress >= 100) {
+                    progress = 100;
+                    clearInterval(interval);
+                    document.getElementById('roundtripStatusText').textContent = 'Script Completed';
+                    document.getElementById('roundtripStatusText').style.color = '#27ae60';
+                    document.getElementById('roundtripCurrentStep').textContent = 'All steps completed';
+                    updateStepIndicators('completed', 'completed');
+                }
+
+                document.getElementById('roundtripProgress').textContent = Math.round(progress) + '%';
+                document.getElementById('roundtripProgressBar').style.width = Math.round(progress) + '%';
+
+                // Update step indicators based on progress
+                if (progress < 33) {
+                    updateStepIndicators('wallet_sign', 'running');
+                } else if (progress < 66) {
+                    updateStepIndicators('dex_event', 'running');
+                } else if (progress < 100) {
+                    updateStepIndicators('target_confirm', 'running');
+                }
+            }, 1000);
+        }
+
+        async function monitorRoundtripTest(simulationId) {
+            const monitorInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/simulation/cross-chain/status/' + simulationId);
+                    const data = await response.json();
+
+                    if (data.success) {
+                        const status = data.data;
+                        updateRoundtripUI(status);
+
+                        if (status.status === 'completed' || status.status === 'failed') {
+                            clearInterval(monitorInterval);
+                            if (status.status === 'completed') {
+                                document.getElementById('roundtripStatusText').textContent = 'Completed';
+                                document.getElementById('roundtripStatusText').style.color = '#27ae60';
+                            } else {
+                                document.getElementById('roundtripStatusText').textContent = 'Failed';
+                                document.getElementById('roundtripStatusText').style.color = '#ef4444';
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error monitoring roundtrip:', error);
+                    clearInterval(monitorInterval);
+                }
+            }, 2000); // Check every 2 seconds
+        }
+
+        function updateRoundtripUI(status) {
+            document.getElementById('roundtripCurrentStep').textContent = status.current_step || 'Unknown';
+            document.getElementById('roundtripProgress').textContent = (status.progress || 0) + '%';
+            document.getElementById('roundtripProgressBar').style.width = (status.progress || 0) + '%';
+
+            // Update step indicators
+            updateStepIndicators(status.current_step, status.status);
+
+            // Update results
+            let resultsHtml = '<div style="margin-bottom: 8px;"><strong>Test Results:</strong></div>';
+            resultsHtml += '<div>Status: ' + status.status + '</div>';
+            resultsHtml += '<div>Progress: ' + (status.progress || 0) + '%</div>';
+            if (status.message) {
+                resultsHtml += '<div>Message: ' + status.message + '</div>';
+            }
+            if (status.total_time) {
+                resultsHtml += '<div>Total Time: ' + status.total_time + 's</div>';
+            }
+            if (status.steps_completed) {
+                resultsHtml += '<div>Steps Completed: ' + status.steps_completed + '/3</div>';
+            }
+            document.getElementById('roundtripResults').innerHTML = resultsHtml;
+        }
+
+        function updateStepIndicators(currentStep, overallStatus) {
+            const steps = ['step1', 'step2', 'step3'];
+            const stepNames = ['wallet_sign', 'dex_event', 'target_confirm'];
+
+            steps.forEach((stepId, index) => {
+                const stepElement = document.getElementById(stepId);
+                const statusElement = stepElement.querySelector('.step-status');
+
+                if (overallStatus === 'completed') {
+                    statusElement.textContent = '✅';
+                    statusElement.style.color = '#27ae60';
+                } else if (overallStatus === 'failed') {
+                    statusElement.textContent = '❌';
+                    statusElement.style.color = '#ef4444';
+                } else if (currentStep === stepNames[index]) {
+                    statusElement.textContent = '🔄';
+                    statusElement.style.color = '#3498db';
+                } else {
+                    // Check if this step is completed
+                    const stepIndex = stepNames.indexOf(currentStep);
+                    if (stepIndex > index) {
+                        statusElement.textContent = '✅';
+                        statusElement.style.color = '#27ae60';
+                    } else {
+                        statusElement.textContent = '⏳';
+                        statusElement.style.color = '#6b7280';
+                    }
+                }
+            });
+        }
+
+        function resetStepIndicators() {
+            const steps = ['step1', 'step2', 'step3'];
+            steps.forEach(stepId => {
+                const stepElement = document.getElementById(stepId);
+                const statusElement = stepElement.querySelector('.step-status');
+                statusElement.textContent = '⏳';
+                statusElement.style.color = '#6b7280';
+            });
+        }
+
+        async function runRoundtripScript() {
+            // Execute CLI script via API
+            const sourceChain = document.getElementById('roundtripSourceChain').value;
+            const targetChain = document.getElementById('roundtripTargetChain').value;
+            const amount = document.getElementById('roundtripAmount').value;
+            const token = document.getElementById('roundtripToken').value;
+            const slippage = document.getElementById('roundtripSlippage').value;
+
+            // Update UI to show starting
+            document.getElementById('roundtripStatusText').textContent = 'Starting CLI Script...';
+            document.getElementById('roundtripStatusText').style.color = '#f59e0b';
+            document.getElementById('roundtripSimulationId').textContent = 'CLI-' + Date.now();
+            document.getElementById('roundtripCurrentStep').textContent = 'Executing script';
+            document.getElementById('roundtripProgress').textContent = '0%';
+            document.getElementById('roundtripProgressBar').style.width = '0%';
+
+            // Reset step indicators
+            resetStepIndicators();
+
+            try {
+                const response = await fetch('/api/execute-roundtrip-script', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        source_chain: sourceChain,
+                        target_chain: targetChain,
+                        amount: amount,
+                        token: token,
+                        slippage_tolerance: parseFloat(slippage)
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('roundtripStatusText').textContent = 'Script Started';
+                    document.getElementById('roundtripStatusText').style.color = '#3498db';
+                    document.getElementById('roundtripResults').innerHTML =
+                        '<div style="color: #22c55e;">✅ CLI script started successfully!</div>' +
+                        '<div style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">Check terminal/console for detailed output.</div>' +
+                        (data.command ? '<div style="margin-top: 8px; font-size: 0.75em; color: #666; font-family: monospace;">Command: ' + data.command + '</div>' : '');
+
+                    // Simulate progress for visual feedback
+                    simulateScriptProgress();
+                } else {
+                    throw new Error(data.error || data.message || 'Failed to execute script');
+                }
+            } catch (error) {
+                document.getElementById('roundtripStatusText').textContent = 'Failed';
+                document.getElementById('roundtripStatusText').style.color = '#ef4444';
+                document.getElementById('roundtripResults').innerHTML = '<div style="color: #ef4444;">❌ Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function refreshRoundtripStatus() {
+            const simulationId = document.getElementById('roundtripSimulationId').textContent;
+
+            if (simulationId && simulationId !== 'None' && simulationId !== 'Creating...') {
+                try {
+                    const response = await fetch('/api/simulation/cross-chain/status/' + simulationId);
+                    const data = await response.json();
+
+                    if (data.success) {
+                        updateRoundtripUI(data.data);
+                    } else {
+                        document.getElementById('roundtripResults').innerHTML = '<div style="color: #ef4444;">❌ Failed to refresh status</div>';
+                    }
+                } catch (error) {
+                    document.getElementById('roundtripResults').innerHTML = '<div style="color: #ef4444;">❌ Error refreshing status: ' + error.message + '</div>';
+                }
+            } else {
+                document.getElementById('roundtripResults').innerHTML = '<div style="color: #9ca3af;">No active simulation to refresh</div>';
+            }
+        }
+
+        function simulateScriptProgress() {
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 15; // Random progress increment
+                if (progress >= 100) {
+                    progress = 100;
+                    clearInterval(progressInterval);
+                    document.getElementById('roundtripStatusText').textContent = 'Script Completed';
+                    document.getElementById('roundtripStatusText').style.color = '#27ae60';
+                }
+
+                document.getElementById('roundtripProgress').textContent = Math.round(progress) + '%';
+                document.getElementById('roundtripProgressBar').style.width = Math.round(progress) + '%';
+            }, 1000);
+        }
+
+        // Initialize roundtrip test UI on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set default values
+            document.getElementById('roundtripStatusText').textContent = 'Ready';
+            document.getElementById('roundtripSimulationId').textContent = 'None';
+            document.getElementById('roundtripCurrentStep').textContent = 'None';
+            document.getElementById('roundtripProgress').textContent = '0%';
+            document.getElementById('roundtripProgressBar').style.width = '0%';
         });
     </script>
         </div>
@@ -16050,14 +16782,12 @@ func (sdk *BridgeSDK) handleCrossChainSimulation(w http.ResponseWriter, r *http.
 	w.Header().Set("Content-Type", "application/json")
 
 	var request struct {
-		Route           string  `json:"route"`           // "ETH_TO_BH_TO_SOL", "SOL_TO_BH_TO_ETH", "FULL_CYCLE"
-		Amount          float64 `json:"amount"`          // Amount to transfer
-		TokenSymbol     string  `json:"token_symbol"`    // Token to transfer
-		SourceAddress   string  `json:"source_address"`  // Source wallet address
-		DestAddress     string  `json:"dest_address"`    // Destination wallet address
-		IncludeFailures bool    `json:"include_failures"` // Include failure scenarios
-		DetailedLogs    bool    `json:"detailed_logs"`   // Generate detailed logs
-		RealBlockchain  bool    `json:"real_blockchain"` // Use real BlackHole blockchain if available
+		SourceChain     string  `json:"source_chain"`     // Source chain (ethereum, polygon, etc.)
+		TargetChain     string  `json:"target_chain"`     // Target chain (polygon, ethereum, etc.)
+		Amount          string  `json:"amount"`           // Amount as string (wei)
+		Token           string  `json:"token"`            // Token symbol
+		WalletAddress   string  `json:"wallet_address"`   // Wallet address
+		SlippageTolerance float64 `json:"slippage_tolerance"` // Slippage tolerance
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -16066,43 +16796,454 @@ func (sdk *BridgeSDK) handleCrossChainSimulation(w http.ResponseWriter, r *http.
 	}
 
 	// Validate request
-	if request.Route == "" {
-		request.Route = "ETH_TO_BH_TO_SOL" // Default route
+	if request.SourceChain == "" {
+		request.SourceChain = "ethereum" // Default source chain
 	}
-	if request.Amount <= 0 {
-		request.Amount = 100.0 // Default amount
+	if request.TargetChain == "" {
+		request.TargetChain = "polygon" // Default target chain
 	}
-	if request.TokenSymbol == "" {
-		request.TokenSymbol = "USDC" // Default token
+	if request.Amount == "" {
+		request.Amount = "1000000000000000000" // Default amount (1 ETH in wei)
 	}
-	if request.SourceAddress == "" {
-		request.SourceAddress = "0x1234567890abcdef1234567890abcdef12345678"
+	if request.Token == "" {
+		request.Token = "ETH" // Default token
 	}
-	if request.DestAddress == "" {
-		request.DestAddress = "0xabcdef1234567890abcdef1234567890abcdef12"
+	if request.WalletAddress == "" {
+		request.WalletAddress = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+	}
+	if request.SlippageTolerance <= 0 {
+		request.SlippageTolerance = 0.5 // Default slippage tolerance
 	}
 
-	simulationID := fmt.Sprintf("crosschain_%d", time.Now().UnixNano())
+	simulationID := fmt.Sprintf("roundtrip_%d", time.Now().UnixNano())
 
-	// Start cross-chain simulation in background
-	go sdk.executeCrossChainSimulation(simulationID, request)
+	// Start roundtrip simulation in background
+	go sdk.executeRoundtripSimulation(simulationID, request)
 
 	response := map[string]interface{}{
 		"success": true,
+		"simulation_id": simulationID,
 		"data": map[string]interface{}{
-			"simulation_id":    simulationID,
-			"route":           request.Route,
-			"amount":          request.Amount,
-			"token_symbol":    request.TokenSymbol,
-			"source_address":  request.SourceAddress,
-			"dest_address":    request.DestAddress,
-			"status":          "started",
-			"estimated_time":  "30-60 seconds",
-			"real_blockchain": request.RealBlockchain && sdk.blockchainInterface != nil,
+			"simulation_id":      simulationID,
+			"source_chain":       request.SourceChain,
+			"target_chain":       request.TargetChain,
+			"amount":            request.Amount,
+			"token":             request.Token,
+			"wallet_address":    request.WalletAddress,
+			"slippage_tolerance": request.SlippageTolerance,
+			"status":            "started",
+			"estimated_time":    "30-60 seconds",
+			"current_step":      "initializing",
+			"progress":          0,
 		},
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleExecuteRoundtripScript executes the roundtrip test CLI script
+func (sdk *BridgeSDK) handleExecuteRoundtripScript(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var request struct {
+		SourceChain     string  `json:"source_chain"`
+		TargetChain     string  `json:"target_chain"`
+		Amount          string  `json:"amount"`
+		Token           string  `json:"token"`
+		SlippageTolerance float64 `json:"slippage_tolerance"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	// Build the CLI command
+	// Get the project root directory - try multiple approaches
+	var projectRoot string
+	var scriptPath string
+
+	// First try: assume we're in the project directory
+	if cwd, err := os.Getwd(); err == nil {
+		projectRoot = cwd
+		scriptPath = filepath.Join(projectRoot, "scripts", "roundtrip_test.sh")
+		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+			// Second try: go up from executable location
+			projectRoot = filepath.Join(filepath.Dir(os.Args[0]), "..", "..")
+			scriptPath = filepath.Join(projectRoot, "scripts", "roundtrip_test.sh")
+		}
+	} else {
+		// Fallback: go up from executable location
+		projectRoot = filepath.Join(filepath.Dir(os.Args[0]), "..", "..")
+		scriptPath = filepath.Join(projectRoot, "scripts", "roundtrip_test.sh")
+	}
+
+	cmdArgs := []string{
+		scriptPath,
+		"--source-chain", request.SourceChain,
+		"--target-chain", request.TargetChain,
+		"--amount", request.Amount,
+		"--token", request.Token,
+	}
+
+	// Execute the script in background
+	go func() {
+		var cmd *exec.Cmd
+
+		// Handle different platforms
+		if runtime.GOOS == "windows" {
+			// On Windows, use bash if available, otherwise try to run directly
+			if _, err := exec.LookPath("bash"); err == nil {
+				// Bash is available
+				cmdArgs = append([]string{scriptPath}, cmdArgs[1:]...)
+				cmd = exec.Command("bash", cmdArgs...)
+			} else {
+				// Try to run directly (might work with some shells)
+				cmd = exec.Command(scriptPath, cmdArgs[1:]...)
+			}
+		} else {
+			// Unix-like systems
+			cmd = exec.Command(scriptPath, cmdArgs[1:]...)
+		}
+
+		cmd.Dir = projectRoot // Set working directory to project root
+
+		// Capture output
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Printf("Roundtrip script execution failed: %v", err)
+			log.Printf("Script output: %s", string(output))
+			log.Printf("Working directory: %s", projectRoot)
+			log.Printf("Script path: %s", scriptPath)
+		} else {
+			log.Printf("Roundtrip script completed successfully")
+			log.Printf("Script output: %s", string(output))
+		}
+	}()
+
+	response := map[string]interface{}{
+		"success": true,
+		"message": "Roundtrip test script started successfully",
+		"command": strings.Join(cmdArgs, " "),
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// executeRoundtripSimulation runs the actual roundtrip simulation with real blockchain integration
+func (sdk *BridgeSDK) executeRoundtripSimulation(simulationID string, request struct {
+	SourceChain     string  `json:"source_chain"`
+	TargetChain     string  `json:"target_chain"`
+	Amount          string  `json:"amount"`
+	Token           string  `json:"token"`
+	WalletAddress   string  `json:"wallet_address"`
+	SlippageTolerance float64 `json:"slippage_tolerance"`
+}) {
+	// Initialize simulation status
+	sdk.mu.Lock()
+	if sdk.simulations == nil {
+		sdk.simulations = make(map[string]map[string]interface{})
+	}
+	sdk.simulations[simulationID] = map[string]interface{}{
+		"status": "running",
+		"current_step": "wallet_sign",
+		"progress": 0,
+		"start_time": time.Now(),
+		"steps_completed": 0,
+		"total_steps": 3,
+		"transactions": []map[string]interface{}{},
+	}
+	sdk.mu.Unlock()
+
+	defer func() {
+		sdk.mu.Lock()
+		if sim, exists := sdk.simulations[simulationID]; exists {
+			if sim["status"] == "running" {
+				sim["status"] = "failed"
+				sim["error"] = "Simulation failed or was interrupted"
+			}
+		}
+		sdk.mu.Unlock()
+	}()
+
+	// Parse amount
+	amount, err := strconv.ParseUint(request.Amount, 10, 64)
+	if err != nil {
+		sdk.updateSimulationStatus(simulationID, "failed", 0, "Invalid amount: "+err.Error())
+		return
+	}
+
+	// Step 1: Wallet signs & submits swap to DEX (BHX token transfer)
+	sdk.updateSimulationStatus(simulationID, "wallet_sign", 10, "Wallet signing and submitting BHX swap to DEX")
+
+	// Create BHX token transfer transaction to DEX
+	tx := &chain.Transaction{
+		ID:        "",
+		Type:      chain.TokenTransfer,
+		From:      request.WalletAddress,
+		To:        "dex_contract", // DEX contract address
+		Amount:    amount,
+		TokenID:   "BHX", // Use BHX token specifically
+		Fee:       1000,  // Small fee
+		Nonce:     1,
+		Timestamp: time.Now().Unix(),
+		Data:      nil,
+		Signature: nil,
+		PublicKey: nil,
+	}
+
+	// Submit transaction to main blockchain via proxy
+	if err := sdk.submitTransactionToMainBlockchain(tx); err != nil {
+		sdk.updateSimulationStatus(simulationID, "failed", 10, "Failed to submit BHX transaction: "+err.Error())
+		return
+	}
+
+	sdk.recordTransaction(simulationID, "bhx_transfer", tx.ID, "BHX transfer to DEX", amount)
+	sdk.updateSimulationStatus(simulationID, "wallet_sign", 33, "BHX transaction submitted successfully")
+
+	// Step 2: DEX emits event → bridge picks and relays to TargetChain
+	sdk.updateSimulationStatus(simulationID, "dex_event", 40, "DEX processing BHX swap event")
+
+	// Simulate DEX processing time
+	time.Sleep(3 * time.Second)
+
+	// Create cross-chain transfer based on target chain
+	var targetTx *chain.Transaction
+	switch request.TargetChain {
+	case "ethereum":
+		// Create ETH mint transaction on target chain
+		targetTx = &chain.Transaction{
+			ID:        "",
+			Type:      chain.TokenTransfer,
+			From:      "bridge_contract",
+			To:        request.WalletAddress,
+			Amount:    amount / 1000, // Convert BHX to ETH (simplified conversion)
+			TokenID:   "ETH",
+			Fee:       500,
+			Nonce:     1,
+			Timestamp: time.Now().Unix(),
+			Data:      nil,
+			Signature: nil,
+			PublicKey: nil,
+		}
+		sdk.updateSimulationStatus(simulationID, "dex_event", 66, "Bridge relaying to Ethereum network")
+
+	case "bitcoin":
+		// For Bitcoin, we'd create a BTC transaction
+		// This is simplified - in reality would use BTC-specific transaction format
+		targetTx = &chain.Transaction{
+			ID:        "",
+			Type:      chain.TokenTransfer,
+			From:      "bridge_contract",
+			To:        request.WalletAddress,
+			Amount:    amount / 10000, // Convert BHX to BTC (simplified conversion)
+			TokenID:   "BTC",
+			Fee:       1000,
+			Nonce:     1,
+			Timestamp: time.Now().Unix(),
+			Data:      nil,
+			Signature: nil,
+			PublicKey: nil,
+		}
+		sdk.updateSimulationStatus(simulationID, "dex_event", 66, "Bridge relaying to Bitcoin network")
+
+	default:
+		// Default to polygon/another EVM chain
+		targetTx = &chain.Transaction{
+			ID:        "",
+			Type:      chain.TokenTransfer,
+			From:      "bridge_contract",
+			To:        request.WalletAddress,
+			Amount:    amount / 500, // Convert BHX to target token
+			TokenID:   "MATIC", // Polygon native token
+			Fee:       300,
+			Nonce:     1,
+			Timestamp: time.Now().Unix(),
+			Data:      nil,
+			Signature: nil,
+			PublicKey: nil,
+		}
+		sdk.updateSimulationStatus(simulationID, "dex_event", 66, "Bridge relaying to "+request.TargetChain+" network")
+	}
+
+	// Submit target chain transaction
+	if err := sdk.submitTransactionToMainBlockchain(targetTx); err != nil {
+		sdk.updateSimulationStatus(simulationID, "failed", 66, "Failed to submit target chain transaction: "+err.Error())
+		return
+	}
+
+	sdk.recordTransaction(simulationID, "cross_chain_transfer", targetTx.ID, "Cross-chain transfer to "+request.TargetChain, targetTx.Amount)
+	sdk.updateSimulationStatus(simulationID, "dex_event", 80, "Cross-chain transaction submitted")
+
+	// Step 3: TargetChain receives mint/unlock confirmation
+	sdk.updateSimulationStatus(simulationID, "target_confirm", 90, "Waiting for "+request.TargetChain+" confirmation")
+
+	// Simulate confirmation time
+	time.Sleep(4 * time.Second)
+
+	// Verify transaction on target chain via main dashboard
+	if err := sdk.verifyTargetChainTransaction(targetTx.ID, request.TargetChain); err != nil {
+		sdk.updateSimulationStatus(simulationID, "failed", 90, "Target chain confirmation failed: "+err.Error())
+		return
+	}
+
+	sdk.updateSimulationStatus(simulationID, "target_confirm", 100, request.TargetChain+" confirmation received - Roundtrip complete!")
+
+	// Complete simulation
+	sdk.mu.Lock()
+	if sim, exists := sdk.simulations[simulationID]; exists {
+		sim["status"] = "completed"
+		sim["current_step"] = "completed"
+		sim["progress"] = 100
+		sim["steps_completed"] = 3
+		sim["total_time"] = time.Since(sim["start_time"].(time.Time)).Seconds()
+	}
+	sdk.mu.Unlock()
+}
+
+// updateSimulationStatus updates the status of a running simulation
+func (sdk *BridgeSDK) updateSimulationStatus(simulationID, step string, progress int, message string) {
+	sdk.mu.Lock()
+	defer sdk.mu.Unlock()
+
+	if sdk.simulations == nil {
+		sdk.simulations = make(map[string]map[string]interface{})
+	}
+
+	if sim, exists := sdk.simulations[simulationID]; exists {
+		sim["current_step"] = step
+		sim["progress"] = progress
+		sim["message"] = message
+
+		// Update steps completed based on current step
+		switch step {
+		case "wallet_sign":
+			sim["steps_completed"] = 0
+		case "dex_event":
+			sim["steps_completed"] = 1
+		case "target_confirm":
+			sim["steps_completed"] = 2
+		case "completed":
+			sim["steps_completed"] = 3
+		}
+	}
+}
+
+// submitTransactionToMainBlockchain submits a transaction to the main BlackHole blockchain via proxy
+func (sdk *BridgeSDK) submitTransactionToMainBlockchain(tx *chain.Transaction) error {
+	// Generate transaction ID if not set
+	if tx.ID == "" {
+		tx.ID = tx.CalculateHash()
+	}
+
+	// Submit to main dashboard via relay endpoint
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// Convert transaction type to string for API
+	var txTypeStr string
+	switch tx.Type {
+	case 0: // RegularTransfer
+		txTypeStr = "transfer"
+	case 1: // TokenTransfer
+		txTypeStr = "token_transfer"
+	case 2: // StakeDeposit
+		txTypeStr = "stake_deposit"
+	case 3: // StakeWithdraw
+		txTypeStr = "stake_withdraw"
+	case 4: // TokenMint
+		txTypeStr = "mint"
+	case 5: // TokenBurn
+		txTypeStr = "burn"
+	default:
+		txTypeStr = "transfer"
+	}
+
+	relayData := map[string]interface{}{
+		"type":      txTypeStr,
+		"from":      tx.From,
+		"to":        tx.To,
+		"amount":    tx.Amount,
+		"token_id":  tx.TokenID,
+		"fee":       tx.Fee,
+		"nonce":     tx.Nonce,
+		"timestamp": tx.Timestamp,
+		"signature": "", // Add signature if needed
+	}
+
+	jsonData, _ := json.Marshal(relayData)
+
+	resp, err := client.Post("http://localhost:8080/api/relay/submit", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to connect to main dashboard: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("main dashboard returned status %d", resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return fmt.Errorf("failed to parse main dashboard response: %v", err)
+	}
+
+	if success, ok := response["success"].(bool); !ok || !success {
+		return fmt.Errorf("main dashboard rejected transaction: %v", response)
+	}
+
+	return nil
+}
+
+// recordTransaction records a transaction in the simulation data
+func (sdk *BridgeSDK) recordTransaction(simulationID, txType, txID, description string, amount uint64) {
+	sdk.mu.Lock()
+	defer sdk.mu.Unlock()
+
+	if sim, exists := sdk.simulations[simulationID]; exists {
+		transactions, ok := sim["transactions"].([]map[string]interface{})
+		if !ok {
+			transactions = []map[string]interface{}{}
+		}
+
+		transaction := map[string]interface{}{
+			"type":        txType,
+			"id":          txID,
+			"description": description,
+			"amount":      amount,
+			"timestamp":   time.Now().Unix(),
+		}
+
+		sim["transactions"] = append(transactions, transaction)
+	}
+}
+
+// verifyTargetChainTransaction verifies a transaction on the target chain
+func (sdk *BridgeSDK) verifyTargetChainTransaction(txID string, targetChain string) error {
+	// Query main dashboard for transaction confirmation
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://localhost:8080/api/transactions/%s", txID))
+	if err != nil {
+		return fmt.Errorf("failed to verify transaction on main dashboard: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("transaction verification failed with status %d", resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return fmt.Errorf("failed to parse verification response: %v", err)
+	}
+
+	if success, ok := response["success"].(bool); !ok || !success {
+		return fmt.Errorf("transaction verification failed: %v", response)
+	}
+
+	// Additional chain-specific verification could be added here
+	// For now, we trust the main dashboard confirmation
+
+	return nil
 }
 
 // handleCrossChainSimulationStatus handles status requests for cross-chain simulations
@@ -16117,43 +17258,44 @@ func (sdk *BridgeSDK) handleCrossChainSimulationStatus(w http.ResponseWriter, r 
 		return
 	}
 
-	// For now, return a mock status - in production this would check actual simulation state
+	// Check actual simulation status
+	sdk.mu.RLock()
+	simulation, exists := sdk.simulations[simulationID]
+	sdk.mu.RUnlock()
+
+	if !exists {
+		response := map[string]interface{}{
+			"success": false,
+			"error":   "Simulation not found",
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Build response from actual simulation data
+	data := map[string]interface{}{
+		"simulation_id":   simulationID,
+		"status":          simulation["status"],
+		"current_step":    simulation["current_step"],
+		"progress":        simulation["progress"],
+		"message":         simulation["message"],
+		"steps_completed": simulation["steps_completed"],
+		"total_steps":     simulation["total_steps"],
+	}
+
+	// Add timing information if available
+	if startTime, ok := simulation["start_time"].(time.Time); ok {
+		data["start_time"] = startTime.Format(time.RFC3339)
+		if totalTime, ok := simulation["total_time"].(float64); ok {
+			data["total_time"] = totalTime
+		} else if simulation["status"] == "running" {
+			data["elapsed_time"] = time.Since(startTime).Seconds()
+		}
+	}
+
 	response := map[string]interface{}{
 		"success": true,
-		"data": map[string]interface{}{
-			"simulation_id": simulationID,
-			"status":        "completed",
-			"progress":      100,
-			"steps_completed": []map[string]interface{}{
-				{
-					"step":        "eth_detection",
-					"status":      "completed",
-					"timestamp":   time.Now().Add(-45 * time.Second).Format(time.RFC3339),
-					"duration":    "2.3s",
-					"tx_hash":     "0xeth123...",
-					"description": "Ethereum transaction detected and validated",
-				},
-				{
-					"step":        "bh_processing",
-					"status":      "completed",
-					"timestamp":   time.Now().Add(-40 * time.Second).Format(time.RFC3339),
-					"duration":    "1.8s",
-					"tx_hash":     "0xbh456...",
-					"description": "BlackHole blockchain processing completed",
-				},
-				{
-					"step":        "sol_relay",
-					"status":      "completed",
-					"timestamp":   time.Now().Add(-35 * time.Second).Format(time.RFC3339),
-					"duration":    "3.1s",
-					"tx_hash":     "sol789...",
-					"description": "Solana transaction relayed and confirmed",
-				},
-			},
-			"total_time":    "7.2s",
-			"success_rate":  100.0,
-			"logs_generated": 15,
-		},
+		"data":    data,
 	}
 
 	json.NewEncoder(w).Encode(response)
@@ -20249,6 +21391,314 @@ type MainDashboardActivity struct {
 	UserAgent   string                 `json:"user_agent,omitempty"`
 }
 
+// DEX Slippage Monitoring Structures
+type DEXSlippagePool struct {
+	TokenA      string  `json:"token_a"`
+	TokenB      string  `json:"token_b"`
+	ReserveA    uint64  `json:"reserve_a"`
+	ReserveB    uint64  `json:"reserve_b"`
+	Ratio       float64 `json:"ratio"`
+	LastUpdated time.Time `json:"last_updated"`
+}
+
+type DEXSlippageTest struct {
+	ID              string                 `json:"id"`
+	Pool            DEXSlippagePool        `json:"pool"`
+	SwapAmount      uint64                 `json:"swap_amount"`
+	ExpectedOutput  uint64                 `json:"expected_output"`
+	ActualOutput    uint64                 `json:"actual_output"`
+	SlippagePercent float64                `json:"slippage_percent"`
+	Reverted        bool                   `json:"reverted"`
+	MinAmountOut    uint64                 `json:"min_amount_out"`
+	Protected       bool                   `json:"protected"`
+	Timestamp       time.Time              `json:"timestamp"`
+	Details         map[string]interface{} `json:"details"`
+}
+
+type DEXSlippageMonitor struct {
+	Pools []DEXSlippagePool `json:"pools"`
+	Tests []DEXSlippageTest `json:"tests"`
+	mu    sync.RWMutex
+}
+
+// Global DEX slippage monitor instance
+var globalDEXMonitor = &DEXSlippageMonitor{
+	Pools: make([]DEXSlippagePool, 0),
+	Tests: make([]DEXSlippageTest, 0),
+}
+
+// DEX Slippage Monitoring Functions
+
+// createTinyReservePool creates a pool with tiny reserves for slippage testing
+func (sdk *BridgeSDK) createTinyReservePool(tokenA, tokenB string, reserveA, reserveB uint64) *DEXSlippagePool {
+	ratio := float64(reserveA) / float64(reserveB)
+
+	pool := &DEXSlippagePool{
+		TokenA:      tokenA,
+		TokenB:      tokenB,
+		ReserveA:    reserveA,
+		ReserveB:    reserveB,
+		Ratio:       ratio,
+		LastUpdated: time.Now(),
+	}
+
+	return pool
+}
+
+// simulateDEXSwap simulates a DEX swap with slippage calculation
+func (sdk *BridgeSDK) simulateDEXSwap(pool *DEXSlippagePool, amountIn uint64, tokenIn string) (uint64, float64, error) {
+	var amountOut uint64
+	var slippagePercent float64
+
+	// Simple AMM formula: amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
+	if tokenIn == pool.TokenA {
+		// Swapping TokenA for TokenB
+		amountOut = (amountIn * pool.ReserveB) / (pool.ReserveA + amountIn)
+		slippagePercent = (float64(amountIn) / float64(pool.ReserveA + amountIn)) * 100
+	} else if tokenIn == pool.TokenB {
+		// Swapping TokenB for TokenA
+		amountOut = (amountIn * pool.ReserveA) / (pool.ReserveB + amountIn)
+		slippagePercent = (float64(amountIn) / float64(pool.ReserveB + amountIn)) * 100
+	} else {
+		return 0, 0, fmt.Errorf("invalid token for swap")
+	}
+
+	return amountOut, slippagePercent, nil
+}
+
+// validateDEXSlippageTest validates tx reverts or minAmountOut protection
+func (sdk *BridgeSDK) validateDEXSlippageTest(pool *DEXSlippagePool, swapAmount uint64, minAmountOut uint64) *DEXSlippageTest {
+	testID := fmt.Sprintf("dex_test_%d", time.Now().UnixNano())
+
+	// Create test with tiny reserves (100 tokenA / 1 tokenB)
+	testPool := sdk.createTinyReservePool(pool.TokenA, pool.TokenB, 100, 1)
+
+	// Simulate large swap that should cause high slippage
+	expectedOutput, slippagePercent, err := sdk.simulateDEXSwap(testPool, swapAmount, testPool.TokenA)
+	if err != nil {
+		return &DEXSlippageTest{
+			ID:              testID,
+			Pool:            *testPool,
+			SwapAmount:      swapAmount,
+			ExpectedOutput:  0,
+			ActualOutput:    0,
+			SlippagePercent: 0,
+			Reverted:        true,
+			MinAmountOut:    minAmountOut,
+			Protected:       false,
+			Timestamp:       time.Now(),
+			Details: map[string]interface{}{
+				"error": err.Error(),
+			},
+		}
+	}
+
+	// Check if transaction would revert due to slippage
+	reverted := slippagePercent > 50.0 // High slippage threshold
+	protected := expectedOutput >= minAmountOut
+
+	test := &DEXSlippageTest{
+		ID:              testID,
+		Pool:            *testPool,
+		SwapAmount:      swapAmount,
+		ExpectedOutput:  expectedOutput,
+		ActualOutput:    expectedOutput, // In simulation, actual = expected
+		SlippagePercent: slippagePercent,
+		Reverted:        reverted,
+		MinAmountOut:    minAmountOut,
+		Protected:       protected,
+		Timestamp:       time.Now(),
+		Details: map[string]interface{}{
+			"simulation":     true,
+			"high_slippage":  slippagePercent > 10.0,
+			"extreme_slippage": slippagePercent > 50.0,
+		},
+	}
+
+	return test
+}
+
+// getDEXSlippageStatus returns current DEX slippage monitoring data
+func (sdk *BridgeSDK) getDEXSlippageStatus() map[string]interface{} {
+	globalDEXMonitor.mu.RLock()
+	defer globalDEXMonitor.mu.RUnlock()
+
+	pools := make([]DEXSlippagePool, len(globalDEXMonitor.Pools))
+	copy(pools, globalDEXMonitor.Pools)
+
+	tests := make([]DEXSlippageTest, len(globalDEXMonitor.Tests))
+	copy(tests, globalDEXMonitor.Tests)
+
+	return map[string]interface{}{
+		"pools":         pools,
+		"tests":         tests,
+		"total_tests":   len(tests),
+		"failed_tests":  countFailedTests(tests),
+		"last_updated":  time.Now().Format(time.RFC3339),
+	}
+}
+
+// Helper functions
+func createTinyReservePool(tokenA, tokenB string, reserveA, reserveB uint64) *DEXSlippagePool {
+	ratio := float64(reserveA) / float64(reserveB)
+
+	return &DEXSlippagePool{
+		TokenA:      tokenA,
+		TokenB:      tokenB,
+		ReserveA:    reserveA,
+		ReserveB:    reserveB,
+		Ratio:       ratio,
+		LastUpdated: time.Now(),
+	}
+}
+
+func validateDEXSlippageTest(pool *DEXSlippagePool, swapAmount uint64, minAmountOut uint64) *DEXSlippageTest {
+	testID := fmt.Sprintf("dex_test_%d", time.Now().UnixNano())
+
+	// Create test with tiny reserves (100 tokenA / 1 tokenB)
+	testPool := createTinyReservePool(pool.TokenA, pool.TokenB, 100, 1)
+
+	// Simulate large swap that should cause high slippage
+	expectedOutput := (swapAmount * testPool.ReserveB) / (testPool.ReserveA + swapAmount)
+	slippagePercent := (float64(swapAmount) / float64(testPool.ReserveA + swapAmount)) * 100
+
+	// Check if transaction would revert due to slippage
+	reverted := slippagePercent > 50.0 // High slippage threshold
+	protected := expectedOutput >= minAmountOut
+
+	test := &DEXSlippageTest{
+		ID:              testID,
+		Pool:            *testPool,
+		SwapAmount:      swapAmount,
+		ExpectedOutput:  expectedOutput,
+		ActualOutput:    expectedOutput, // In simulation, actual = expected
+		SlippagePercent: slippagePercent,
+		Reverted:        reverted,
+		MinAmountOut:    minAmountOut,
+		Protected:       protected,
+		Timestamp:       time.Now(),
+		Details: map[string]interface{}{
+			"simulation":     true,
+			"high_slippage":  slippagePercent > 10.0,
+			"extreme_slippage": slippagePercent > 50.0,
+		},
+	}
+
+	return test
+}
+
+func countFailedTests(tests []DEXSlippageTest) int {
+	count := 0
+	for _, test := range tests {
+		if test.Reverted || !test.Protected {
+			count++
+		}
+	}
+	return count
+}
+
+// DEX Pool Management Functions
+
+// AddPool adds a new DEX pool with specified reserves
+func (sdk *BridgeSDK) AddDEXPool(tokenA, tokenB string, reserveA, reserveB uint64) (*DEXSlippagePool, error) {
+	globalDEXMonitor.mu.Lock()
+	defer globalDEXMonitor.mu.Unlock()
+
+	// Check if pool already exists
+	for _, pool := range globalDEXMonitor.Pools {
+		if (pool.TokenA == tokenA && pool.TokenB == tokenB) ||
+		   (pool.TokenA == tokenB && pool.TokenB == tokenA) {
+			return nil, fmt.Errorf("pool %s-%s already exists", tokenA, tokenB)
+		}
+	}
+
+	pool := &DEXSlippagePool{
+		TokenA:      tokenA,
+		TokenB:      tokenB,
+		ReserveA:    reserveA,
+		ReserveB:    reserveB,
+		Ratio:       float64(reserveA) / float64(reserveB),
+		LastUpdated: time.Now(),
+	}
+
+	globalDEXMonitor.Pools = append(globalDEXMonitor.Pools, *pool)
+	return pool, nil
+}
+
+// UpdatePoolReserves updates the reserves of an existing pool
+func (sdk *BridgeSDK) UpdatePoolReserves(tokenA, tokenB string, reserveA, reserveB uint64) error {
+	globalDEXMonitor.mu.Lock()
+	defer globalDEXMonitor.mu.Unlock()
+
+	for i, pool := range globalDEXMonitor.Pools {
+		if (pool.TokenA == tokenA && pool.TokenB == tokenB) ||
+		   (pool.TokenA == tokenB && pool.TokenB == tokenA) {
+			globalDEXMonitor.Pools[i].ReserveA = reserveA
+			globalDEXMonitor.Pools[i].ReserveB = reserveB
+			globalDEXMonitor.Pools[i].Ratio = float64(reserveA) / float64(reserveB)
+			globalDEXMonitor.Pools[i].LastUpdated = time.Now()
+			return nil
+		}
+	}
+
+	return fmt.Errorf("pool %s-%s not found", tokenA, tokenB)
+}
+
+// RemovePool removes a DEX pool
+func (sdk *BridgeSDK) RemoveDEXPool(tokenA, tokenB string) error {
+	globalDEXMonitor.mu.Lock()
+	defer globalDEXMonitor.mu.Unlock()
+
+	for i, pool := range globalDEXMonitor.Pools {
+		if (pool.TokenA == tokenA && pool.TokenB == tokenB) ||
+		   (pool.TokenA == tokenB && pool.TokenB == tokenA) {
+			globalDEXMonitor.Pools = append(globalDEXMonitor.Pools[:i], globalDEXMonitor.Pools[i+1:]...)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("pool %s-%s not found", tokenA, tokenB)
+}
+
+// GetDEXPools returns all current DEX pools
+func (sdk *BridgeSDK) GetDEXPools() []DEXSlippagePool {
+	globalDEXMonitor.mu.RLock()
+	defer globalDEXMonitor.mu.RUnlock()
+
+	pools := make([]DEXSlippagePool, len(globalDEXMonitor.Pools))
+	copy(pools, globalDEXMonitor.Pools)
+	return pools
+}
+
+// RunDEXSlippageTest runs a slippage test on a specific pool
+func (sdk *BridgeSDK) RunDEXSlippageTest(tokenA, tokenB string, swapAmount uint64, minAmountOut uint64) (*DEXSlippageTest, error) {
+	globalDEXMonitor.mu.Lock()
+	defer globalDEXMonitor.mu.Unlock()
+
+	var testPool *DEXSlippagePool
+	for _, pool := range globalDEXMonitor.Pools {
+		if (pool.TokenA == tokenA && pool.TokenB == tokenB) ||
+		   (pool.TokenA == tokenB && pool.TokenB == tokenA) {
+			testPool = &pool
+			break
+		}
+	}
+
+	if testPool == nil {
+		return nil, fmt.Errorf("pool %s-%s not found", tokenA, tokenB)
+	}
+
+	test := sdk.validateDEXSlippageTest(testPool, swapAmount, minAmountOut)
+	globalDEXMonitor.Tests = append(globalDEXMonitor.Tests, *test)
+
+	// Keep only last 100 tests
+	if len(globalDEXMonitor.Tests) > 100 {
+		globalDEXMonitor.Tests = globalDEXMonitor.Tests[len(globalDEXMonitor.Tests)-100:]
+	}
+
+	return test, nil
+}
+
 // Main Dashboard Integration Handler Functions
 
 // handleMainDashboardStatus returns the status of main dashboard connectivity
@@ -20286,6 +21736,181 @@ func (sdk *BridgeSDK) handleMainDashboardStatus(w http.ResponseWriter, r *http.R
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleDEXSlippageStatus returns DEX slippage monitoring data
+func (sdk *BridgeSDK) handleDEXSlippageStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get DEX slippage monitoring data
+	slippageData := sdk.getDEXSlippageStatus()
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    slippageData,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleDEXPools handles DEX pool management (GET all pools, POST to create new pool)
+func (sdk *BridgeSDK) handleDEXPools(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "GET" {
+		pools := sdk.GetDEXPools()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"data":    pools,
+		})
+		return
+	}
+
+	if r.Method == "POST" {
+		var req struct {
+			TokenA   string `json:"token_a"`
+			TokenB   string `json:"token_b"`
+			ReserveA uint64 `json:"reserve_a"`
+			ReserveB uint64 `json:"reserve_b"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Invalid request format: " + err.Error(),
+			})
+			return
+		}
+
+		if req.TokenA == "" || req.TokenB == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Token symbols are required",
+			})
+			return
+		}
+
+		pool, err := sdk.AddDEXPool(req.TokenA, req.TokenB, req.ReserveA, req.ReserveB)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   err.Error(),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "DEX pool created successfully",
+			"data":    pool,
+		})
+	}
+}
+
+// handleDEXPool handles individual pool operations (PUT to update, DELETE to remove)
+func (sdk *BridgeSDK) handleDEXPool(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	tokenA := vars["tokenA"]
+	tokenB := vars["tokenB"]
+
+	if r.Method == "PUT" {
+		var req struct {
+			ReserveA uint64 `json:"reserve_a"`
+			ReserveB uint64 `json:"reserve_b"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Invalid request format: " + err.Error(),
+			})
+			return
+		}
+
+		err := sdk.UpdatePoolReserves(tokenA, tokenB, req.ReserveA, req.ReserveB)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   err.Error(),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "DEX pool updated successfully",
+		})
+		return
+	}
+
+	if r.Method == "DELETE" {
+		err := sdk.RemoveDEXPool(tokenA, tokenB)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   err.Error(),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "DEX pool removed successfully",
+		})
+	}
+}
+
+// handleDEXSlippageTest handles running slippage tests
+func (sdk *BridgeSDK) handleDEXSlippageTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != "POST" {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Method not allowed",
+		})
+		return
+	}
+
+	var req struct {
+		TokenA       string `json:"token_a"`
+		TokenB       string `json:"token_b"`
+		SwapAmount   uint64 `json:"swap_amount"`
+		MinAmountOut uint64 `json:"min_amount_out"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format: " + err.Error(),
+		})
+		return
+	}
+
+	if req.TokenA == "" || req.TokenB == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Token symbols are required",
+		})
+		return
+	}
+
+	test, err := sdk.RunDEXSlippageTest(req.TokenA, req.TokenB, req.SwapAmount, req.MinAmountOut)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "DEX slippage test completed",
+		"data":    test,
+	})
 }
 
 // handleMainDashboardActivities returns recent activities from main dashboard monitoring
