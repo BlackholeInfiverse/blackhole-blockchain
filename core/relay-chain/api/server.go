@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/bridge"
@@ -107,6 +109,12 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/relay/status", s.enableCORS(s.handleRelayStatus))
 	http.HandleFunc("/api/relay/events", s.enableCORS(s.handleRelayEvents))
 	http.HandleFunc("/api/relay/validate", s.enableCORS(s.handleRelayValidate))
+
+	// AI fraud detection integration - minimal endpoints for status
+	http.HandleFunc("/api/ai-fraud/status", s.enableCORS(s.handleAIFraudStatus))
+
+	// ML data endpoint for Yashika
+	http.HandleFunc("/api/transaction-data", s.enableCORS(s.handleTransactionData))
 
 	// Health check endpoint (using handleHealth instead of duplicate handleHealthCheck)
 
@@ -2664,8 +2672,8 @@ func (s *APIServer) handleRelaySubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	tx.ID = tx.CalculateHash()
 
-	// Validate and add to pending transactions
-	err := s.blockchain.ValidateTransaction(tx)
+	// Process transaction (validates AND adds to mempool)
+	err := s.blockchain.ProcessTransaction(tx)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -2674,6 +2682,9 @@ func (s *APIServer) handleRelaySubmit(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	fmt.Printf("✅ Bridge transaction added to mempool: %s (%s → %s, %d %s)\n",
+		tx.ID, tx.From, tx.To, tx.Amount, tx.TokenID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

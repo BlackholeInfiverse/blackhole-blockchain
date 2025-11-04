@@ -3,8 +3,8 @@ package bridgesdk
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/big"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -13,164 +13,178 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-// EventHandler is a function that handles blockchain events
-type EventHandler func(event *types.Log)
-
-// ChainListener listens for events on a blockchain
-type ChainListener struct {
+// EthereumListener handles Ethereum blockchain events
+type EthereumListener struct {
 	client       *ethclient.Client
 	bridgeAddr   common.Address
-	handlers     map[string][]EventHandler
-	subscription ethereum.Subscription
-	blockDelay   uint64
-	lastBlock    uint64
-	mu           sync.RWMutex
-	ctx          context.Context
-	cancel       context.CancelFunc
+	tokenAddr    common.Address
+	eventHandler EventHandler
+	logger       interface{} // Will be *logrus.Logger
+	running      bool
+	stopChan     chan bool
 }
 
-// NewChainListener creates a new chain listener
-func NewChainListener(client *ethclient.Client, bridgeAddr string, blockDelay uint64) (*ChainListener, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	listener := &ChainListener{
-		client:     client,
-		bridgeAddr: common.HexToAddress(bridgeAddr),
-		handlers:   make(map[string][]EventHandler),
-		blockDelay: blockDelay,
-		ctx:        ctx,
-		cancel:     cancel,
+// NewEthereumListener creates a new Ethereum listener
+func NewEthereumListener(rpcURL string, bridgeAddr, tokenAddr string, eventHandler EventHandler) (*EthereumListener, error) {
+	client, err := ethclient.Dial(rpcURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to Ethereum: %v", err)
 	}
 
-	return listener, nil
+	return &EthereumListener{
+		client:       client,
+		bridgeAddr:   common.HexToAddress(bridgeAddr),
+		tokenAddr:    common.HexToAddress(tokenAddr),
+		eventHandler: eventHandler,
+		stopChan:     make(chan bool),
+	}, nil
 }
 
-// RegisterEventHandler registers a handler for a specific event
-func (l *ChainListener) RegisterEventHandler(eventName string, handler EventHandler) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if l.handlers[eventName] == nil {
-		l.handlers[eventName] = make([]EventHandler, 0)
+// Start starts the Ethereum listener
+func (el *EthereumListener) Start() error {
+	if el.running {
+		return fmt.Errorf("listener is already running")
 	}
-	l.handlers[eventName] = append(l.handlers[eventName], handler)
+
+	el.running = true
+	go el.listenForEvents()
+	
+	log.Printf("🔗 Ethereum listener started, monitoring bridge: %s", el.bridgeAddr.Hex())
+	return nil
 }
 
-// Start starts listening for events
-func (l *ChainListener) Start() error {
+// Stop stops the Ethereum listener
+func (el *EthereumListener) Stop() error {
+	if !el.running {
+		return nil
+	}
+
+	el.running = false
+	el.stopChan <- true
+	
+	log.Printf("🛑 Ethereum listener stopped")
+	return nil
+}
+
+// listenForEvents listens for bridge events on Ethereum
+func (el *EthereumListener) listenForEvents() {
+	ticker := time.NewTicker(15 * time.Second) // Check every 15 seconds
+	defer ticker.Stop()
+
+	var lastBlock uint64 = 0
+
+	for {
+		select {
+		case <-el.stopChan:
+			return
+		case <-ticker.C:
+			if err := el.processNewBlocks(&lastBlock); err != nil {
+				log.Printf("❌ Error processing Ethereum blocks: %v", err)
+			}
+		}
+	}
+}
+
+// processNewBlocks processes new blocks for bridge events
+func (el *EthereumListener) processNewBlocks(lastBlock *uint64) error {
+	ctx := context.Background()
+	
 	// Get current block number
-	currentBlock, err := l.client.BlockNumber(l.ctx)
+	currentBlock, err := el.client.BlockNumber(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get current block: %v", err)
 	}
-	l.lastBlock = currentBlock - l.blockDelay
 
-	// Create filter query
-	query := ethereum.FilterQuery{
-		Addresses: []common.Address{l.bridgeAddr},
-		FromBlock: big.NewInt(int64(l.lastBlock)),
+	// If this is the first run, start from recent blocks
+	if *lastBlock == 0 {
+		*lastBlock = currentBlock - 10 // Start from 10 blocks ago
 	}
 
-	// Subscribe to logs
-	logs := make(chan types.Log)
-	sub, err := l.client.SubscribeFilterLogs(l.ctx, query, logs)
-	if err != nil {
-		return fmt.Errorf("failed to subscribe to logs: %v", err)
+	// Process blocks from lastBlock to currentBlock
+	for blockNum := *lastBlock + 1; blockNum <= currentBlock; blockNum++ {
+		if err := el.processBlock(ctx, blockNum); err != nil {
+			log.Printf("⚠️ Error processing block %d: %v", blockNum, err)
+			continue
+		}
+		*lastBlock = blockNum
 	}
-	l.subscription = sub
-
-	// Start processing events
-	go l.processEvents(logs)
-
-	// Start block monitoring
-	go l.monitorBlocks()
 
 	return nil
 }
 
-// Stop stops listening for events
-func (l *ChainListener) Stop() {
-	if l.subscription != nil {
-		l.subscription.Unsubscribe()
+// processBlock processes a single block for bridge events
+func (el *EthereumListener) processBlock(ctx context.Context, blockNum uint64) error {
+	// Create filter query for bridge contract events
+	query := ethereum.FilterQuery{
+		FromBlock: big.NewInt(int64(blockNum)),
+		ToBlock:   big.NewInt(int64(blockNum)),
+		Addresses: []common.Address{el.bridgeAddr},
 	}
-	l.cancel()
-}
 
-// processEvents processes incoming events
-func (l *ChainListener) processEvents(logs chan types.Log) {
-	for {
-		select {
-		case err := <-l.subscription.Err():
-			fmt.Printf("Error in event subscription: %v\n", err)
-			return
-		case vLog := <-logs:
-			l.handleEvent(&vLog)
-		case <-l.ctx.Done():
-			return
+	// Get logs
+	logs, err := el.client.FilterLogs(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to filter logs: %v", err)
+	}
+
+	// Process each log
+	for _, vLog := range logs {
+		if err := el.processLog(vLog); err != nil {
+			log.Printf("⚠️ Error processing log: %v", err)
 		}
 	}
+
+	return nil
 }
 
-// handleEvent handles a single event
-func (l *ChainListener) handleEvent(vLog *types.Log) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	// Get event signature (first topic)
-	if len(vLog.Topics) == 0 {
-		return
+// processLog processes a single log entry
+func (el *EthereumListener) processLog(vLog types.Log) error {
+	// Create event from log
+	event := Event{
+		ID:          fmt.Sprintf("eth_%s_%d", vLog.TxHash.Hex(), vLog.Index),
+		Type:        "bridge_deposit",
+		Chain:       "ethereum",
+		TxHash:      vLog.TxHash.Hex(),
+		Timestamp:   time.Now(),
+		BlockNumber: vLog.BlockNumber,
+		Data: map[string]interface{}{
+			"address":     vLog.Address.Hex(),
+			"topics":      vLog.Topics,
+			"data":        vLog.Data,
+			"block_hash":  vLog.BlockHash.Hex(),
+			"tx_index":    vLog.TxIndex,
+			"log_index":   vLog.Index,
+		},
+		Processed: false,
 	}
-	eventSig := vLog.Topics[0].Hex()
 
-	// Call handlers for this event
-	if handlers, ok := l.handlers[eventSig]; ok {
-		for _, handler := range handlers {
-			go handler(vLog)
-		}
+	// Handle the event
+	if err := el.eventHandler.HandleEvent(event); err != nil {
+		return fmt.Errorf("failed to handle event: %v", err)
 	}
+
+	log.Printf("✅ Processed Ethereum event: %s (block: %d)", event.ID, vLog.BlockNumber)
+	return nil
 }
 
-// monitorBlocks monitors new blocks
-func (l *ChainListener) monitorBlocks() {
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
+// GetLatestBlock returns the latest block number
+func (el *EthereumListener) GetLatestBlock() (uint64, error) {
+	ctx := context.Background()
+	return el.client.BlockNumber(ctx)
+}
 
-	for {
-		select {
-		case <-ticker.C:
-			currentBlock, err := l.client.BlockNumber(l.ctx)
-			if err != nil {
-				fmt.Printf("Error getting current block: %v\n", err)
-				continue
-			}
+// GetTransactionReceipt gets a transaction receipt
+func (el *EthereumListener) GetTransactionReceipt(txHash string) (*types.Receipt, error) {
+	ctx := context.Background()
+	hash := common.HexToHash(txHash)
+	return el.client.TransactionReceipt(ctx, hash)
+}
 
-			if currentBlock > l.lastBlock+l.blockDelay {
-				l.mu.Lock()
-				l.lastBlock = currentBlock - l.blockDelay
-				l.mu.Unlock()
-
-				// Update filter
-				query := ethereum.FilterQuery{
-					Addresses: []common.Address{l.bridgeAddr},
-					FromBlock: big.NewInt(int64(l.lastBlock)),
-				}
-
-				if l.subscription != nil {
-					l.subscription.Unsubscribe()
-				}
-
-				logs := make(chan types.Log)
-				sub, err := l.client.SubscribeFilterLogs(l.ctx, query, logs)
-				if err != nil {
-					fmt.Printf("Error updating subscription: %v\n", err)
-					continue
-				}
-
-				l.subscription = sub
-				go l.processEvents(logs)
-			}
-		case <-l.ctx.Done():
-			return
-		}
-	}
+// IsConnected checks if the client is connected
+func (el *EthereumListener) IsConnected() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	_, err := el.client.BlockNumber(ctx)
+	return err == nil
 }

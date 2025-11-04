@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	
 	"os"
 	"os/signal"
 	"strconv"
@@ -195,6 +196,8 @@ func main() {
 		fmt.Printf("🌐 Access dashboard at http://localhost:%d\n", availablePort)
 
 		// Keep the container running
+		fmt.Printf("   HTTP API Port: %d\n", availablePort)
+		fmt.Printf("🌐 Access dashboard at http://localhost:%d\n", availablePort)
 		<-ctx.Done()
 	}
 }

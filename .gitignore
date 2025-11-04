@@ -35,6 +35,21 @@ blockchaindb_*/
 blockchain_state_*.json
 monitoring.log
 
+# Bridge SDK Database Files
+data/
+.data/
+bridge.db
+*.bolt
+*.boltdb
+
+# Smart Contract Files
+contracts/node_modules/
+contracts/.env
+contracts/cache/
+contracts/artifacts/
+contracts/deployments/
+contracts/typechain-types/
+
 # Docker volumes
 data/blockchain/*
 data/mongodb/*
@@ -53,4 +68,15 @@ data/wallet/*
 .idea/
 .vscode/
 *.iml
+<<<<<<< HEAD
+
+# Reference and backup directories
+reference-shantanu-bridge-work/
+bridge-sdk-backup/
+temp-test-files/
+=======
 contracts/node_modules/.bin/mocha.cmd
+>>>>>>> f4c74d1830240c7b0b17c3a1603f76bcea22d04a
+
+services/wallet/data/badger/*.vlog
+services/wallet/data/badger/*.mem

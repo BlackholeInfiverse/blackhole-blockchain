@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlackHole Cybercrime Detection Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+
+        .card h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #00b894, #00a085);
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .wallet-info {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-frozen {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .reports-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+
+        .report-item {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+
+        .severity-1 { border-left: 5px solid #28a745; }
+        .severity-2 { border-left: 5px solid #ffc107; }
+        .severity-3 { border-left: 5px solid #fd7e14; }
+        .severity-4 { border-left: 5px solid #dc3545; }
+        .severity-5 { border-left: 5px solid #6f42c1; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ BlackHole Cybercrime Detection</h1>
+            <p>Fraud Detection & Wallet Security Dashboard</p>
+        </div>
+
+        <div class="dashboard">
+            <!-- Report Wallet Section -->
+            <div class="card">
+                <h2>🚨 Report Suspicious Wallet</h2>
+                <form id="reportForm">
+                    <div class="form-group">
+                        <label for="walletAddress">Wallet Address</label>
+                        <input type="text" id="walletAddress" placeholder="Enter wallet address" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reporterId">Your Reporter ID</label>
+                        <input type="text" id="reporterId" placeholder="Enter your identifier" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reason">Reason for Report</label>
+                        <textarea id="reason" rows="3" placeholder="Describe the suspicious activity" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="severity">Severity Level</label>
+                        <select id="severity" required>
+                            <option value="">Select severity</option>
+                            <option value="1">1 - Low (Suspicious pattern)</option>
+                            <option value="2">2 - Medium (Unusual activity)</option>
+                            <option value="3">3 - High (Likely fraud)</option>
+                            <option value="4">4 - Critical (Confirmed fraud)</option>
+                            <option value="5">5 - Emergency (Active attack)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="txHash">Transaction Hash (Optional)</label>
+                        <input type="text" id="txHash" placeholder="Related transaction hash">
+                    </div>
+                    <button type="submit" class="btn">Submit Report</button>
+                </form>
+                <div id="reportResult" class="result"></div>
+            </div>
+
+            <!-- Check Wallet Status Section -->
+            <div class="card">
+                <h2>🔍 Check Wallet Status</h2>
+                <form id="statusForm">
+                    <div class="form-group">
+                        <label for="checkAddress">Wallet Address</label>
+                        <input type="text" id="checkAddress" placeholder="Enter wallet address to check" required>
+                    </div>
+                    <button type="submit" class="btn">Check Status</button>
+                </form>
+                <div id="statusResult" class="result"></div>
+                <div id="walletInfo" class="wallet-info" style="display: none;"></div>
+            </div>
+
+            <!-- Admin Actions Section -->
+            <div class="card">
+                <h2>⚡ Admin Actions</h2>
+                <div class="form-group">
+                    <label for="adminAddress">Admin Address</label>
+                    <input type="text" id="adminAddress" placeholder="Your admin address" value="system">
+                </div>
+                <div class="form-group">
+                    <label for="targetAddress">Target Wallet Address</label>
+                    <input type="text" id="targetAddress" placeholder="Wallet to freeze/unfreeze">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <button id="freezeBtn" class="btn btn-danger">🧊 Freeze Wallet</button>
+                    <button id="unfreezeBtn" class="btn btn-success">🔓 Unfreeze Wallet</button>
+                </div>
+                <div id="adminResult" class="result"></div>
+            </div>
+
+            <!-- Statistics Section -->
+            <div class="card">
+                <h2>📊 System Statistics</h2>
+                <button id="loadStatsBtn" class="btn">Load Statistics</button>
+                <div id="statsContainer" class="stats-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api/cybercrime';
+
+        // Report wallet functionality
+        document.getElementById('reportForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const data = {
+                wallet_address: document.getElementById('walletAddress').value,
+                reporter_id: document.getElementById('reporterId').value,
+                reason: document.getElementById('reason').value,
+                severity: parseInt(document.getElementById('severity').value),
+                tx_hash: document.getElementById('txHash').value
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/report`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                const resultDiv = document.getElementById('reportResult');
+                
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = '✅ Report submitted successfully!';
+                    document.getElementById('reportForm').reset();
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = `❌ Error: ${result.error || 'Failed to submit report'}`;
+                }
+                
+                resultDiv.style.display = 'block';
+            } catch (error) {
+                const resultDiv = document.getElementById('reportResult');
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Network error: ${error.message}`;
+                resultDiv.style.display = 'block';
+            }
+        });
+
+        // Check wallet status functionality
+        document.getElementById('statusForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const address = document.getElementById('checkAddress').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/status/${address}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayWalletInfo(data);
+                } else {
+                    const resultDiv = document.getElementById('statusResult');
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = `❌ Error: ${data.error || 'Failed to fetch wallet status'}`;
+                    resultDiv.style.display = 'block';
+                }
+            } catch (error) {
+                const resultDiv = document.getElementById('statusResult');
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Network error: ${error.message}`;
+                resultDiv.style.display = 'block';
+            }
+        });
+
+        // Display wallet information
+        function displayWalletInfo(data) {
+            const infoDiv = document.getElementById('walletInfo');
+            const statusClass = data.status === 'frozen' ? 'status-frozen' : 'status-active';
+            
+            let reportsHtml = '';
+            if (data.reports && data.reports.length > 0) {
+                reportsHtml = '<div class="reports-list">';
+                data.reports.forEach(report => {
+                    reportsHtml += `
+                        <div class="report-item severity-${report.severity}">
+                            <strong>Reporter:</strong> ${report.reporter_id}<br>
+                            <strong>Reason:</strong> ${report.reason}<br>
+                            <strong>Severity:</strong> ${report.severity}/5<br>
+                            <strong>Date:</strong> ${new Date(report.timestamp).toLocaleString()}
+                            ${report.tx_hash ? `<br><strong>TX Hash:</strong> ${report.tx_hash}` : ''}
+                        </div>
+                    `;
+                });
+                reportsHtml += '</div>';
+            }
+
+            infoDiv.innerHTML = `
+                <h3>Wallet: ${data.address}</h3>
+                <p><strong>Status:</strong> <span class="status-badge ${statusClass}">${data.status}</span></p>
+                <p><strong>Report Count:</strong> ${data.report_count}</p>
+                <p><strong>Total Severity Score:</strong> ${data.total_severity_score}</p>
+                ${data.last_reported_at ? `<p><strong>Last Reported:</strong> ${new Date(data.last_reported_at).toLocaleString()}</p>` : ''}
+                ${data.unfreeze_requested ? '<p><strong>Unfreeze Requested:</strong> Yes</p>' : ''}
+                ${data.frozen_at ? `<p><strong>Frozen At:</strong> ${new Date(data.frozen_at).toLocaleString()}</p>` : ''}
+                ${data.frozen_by ? `<p><strong>Frozen By:</strong> ${data.frozen_by}</p>` : ''}
+                ${reportsHtml}
+            `;
+            
+            infoDiv.style.display = 'block';
+            document.getElementById('statusResult').style.display = 'none';
+        }
+
+        // Admin freeze functionality
+        document.getElementById('freezeBtn').addEventListener('click', async () => {
+            const adminAddress = document.getElementById('adminAddress').value;
+            const targetAddress = document.getElementById('targetAddress').value;
+
+            if (!adminAddress || !targetAddress) {
+                showAdminResult('❌ Please fill in both admin and target addresses', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/freeze`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        wallet_address: targetAddress,
+                        admin_address: adminAddress
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showAdminResult('🧊 Wallet frozen successfully!', 'success');
+                } else {
+                    showAdminResult(`❌ Error: ${result.error || 'Failed to freeze wallet'}`, 'error');
+                }
+            } catch (error) {
+                showAdminResult(`❌ Network error: ${error.message}`, 'error');
+            }
+        });
+
+        // Admin unfreeze functionality
+        document.getElementById('unfreezeBtn').addEventListener('click', async () => {
+            const adminAddress = document.getElementById('adminAddress').value;
+            const targetAddress = document.getElementById('targetAddress').value;
+
+            if (!adminAddress || !targetAddress) {
+                showAdminResult('❌ Please fill in both admin and target addresses', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/unfreeze`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        wallet_address: targetAddress,
+                        admin_address: adminAddress
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showAdminResult('🔓 Wallet unfrozen successfully!', 'success');
+                } else {
+                    showAdminResult(`❌ Error: ${result.error || 'Failed to unfreeze wallet'}`, 'error');
+                }
+            } catch (error) {
+                showAdminResult(`❌ Network error: ${error.message}`, 'error');
+            }
+        });
+
+        // Show admin result
+        function showAdminResult(message, type) {
+            const resultDiv = document.getElementById('adminResult');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+            resultDiv.style.display = 'block';
+        }
+
+        // Load statistics
+        document.getElementById('loadStatsBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const stats = await response.json();
+                
+                if (response.ok) {
+                    displayStats(stats);
+                } else {
+                    console.error('Failed to load statistics');
+                }
+            } catch (error) {
+                console.error('Network error:', error);
+            }
+        });
+
+        // Display statistics
+        function displayStats(stats) {
+            const container = document.getElementById('statsContainer');
+            container.innerHTML = `
+                <div class="stat-item">
+                    <div class="stat-number">${stats.total_reports}</div>
+                    <div class="stat-label">Total Reports</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${stats.total_frozen}</div>
+                    <div class="stat-label">Frozen Wallets</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${stats.total_unfrozen}</div>
+                    <div class="stat-label">Unfrozen Wallets</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${stats.auto_freeze_threshold}</div>
+                    <div class="stat-label">Auto-Freeze Threshold</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${stats.total_wallets}</div>
+                    <div class="stat-label">Total Wallets</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${stats.admin_count}</div>
+                    <div class="stat-label">Admin Count</div>
+                </div>
+            `;
+        }
+
+        // Load initial statistics
+        document.getElementById('loadStatsBtn').click();
+    </script>
+</body>
+</html>

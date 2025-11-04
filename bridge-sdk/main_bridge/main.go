@@ -23834,9 +23834,6 @@ func RegisterMissingAPIEndpoints(mux *http.ServeMux) {
 	// Security endpoints
 	mux.HandleFunc("/api/v1/security/status", securityMiddleware.SecureHandler(HandleSecurityOperations))
 
-	// Wrap existing endpoints with security
-	// mux.HandleFunc("/api/v1/existing", securityMiddleware.SecureHandler(existingHandler))
-	// Scalability endpoints
 	mux.HandleFunc("/api/v1/scalability/metrics", securityMiddleware.SecureHandler(HandleScalabilityOperations))
 
 	// Audit logging endpoint
