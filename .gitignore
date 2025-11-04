@@ -81,3 +81,5 @@ contracts/node_modules/.bin/mocha.cmd
 
 services/wallet/data/badger/*.vlog
 services/wallet/data/badger/*.mem
+services/wallet/data/badger/
+services/wallet/data/badger/
