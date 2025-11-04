@@ -58,6 +58,10 @@ message Transaction {
   string gas_price = 16;
   int32 retry_count = 17;
   repeated string compliance_checks = 18;
+  SourceModule source_module = 19;
+  string topic = 20;
+  map<string, string> meta = 21;
+  string message_version = 22; // e.g., "v1alpha1"
 }
 
 enum TransactionStatus {
@@ -67,6 +71,13 @@ enum TransactionStatus {
   TRANSACTION_STATUS_COMPLETED = 3;
   TRANSACTION_STATUS_FAILED = 4;
   TRANSACTION_STATUS_CANCELLED = 5;
+}
+
+enum SourceModule {
+  SOURCE_MODULE_UNSPECIFIED = 0;
+  SOURCE_MODULE_TOKEN = 1;
+  SOURCE_MODULE_DEX = 2;
+  SOURCE_MODULE_STAKE = 3;
 }
 
 message ProcessTransactionRequest {
@@ -173,7 +184,7 @@ message GetWalletBalanceResponse {
 
 // Bridge Operation Messages
 message RelayToChainRequest {
-  Transaction transaction = 1;
+  SignedBridgeMessage signed_message = 1;
   string target_chain = 2;
   bool force_relay = 3;
 }

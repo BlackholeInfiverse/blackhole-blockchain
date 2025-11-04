@@ -364,3 +364,105 @@ func (sdk *BridgeSDK) RelayToChain(tx *Transaction, targetChain string) error {
 
 	return nil
 }
+
+// HandleRelayEth handles POST /relay/eth
+func (sdk *BridgeSDK) HandleRelayEth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req pb.SignedBridgeMessage // Assuming generated pb from proto
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Verify signature (stub, implement in signature.go later)
+	if !verifySignature(&req) {
+		http.Error(w, "Invalid signature", http.StatusBadRequest)
+		return
+	}
+
+	// Extract Transaction from message
+	tx := req.Message
+
+	// Generate hash and check replay
+	hash := sdk.GenerateEventHash(tx)
+	if sdk.IsReplayAttack(hash) {
+		http.Error(w, "Duplicate event", http.StatusConflict)
+		sdk.IncrementBlockedReplays()
+		return
+	}
+
+	// Mark processed
+	if err := sdk.MarkAsProcessed(hash); err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Relay
+	if err := sdk.RelayToChain(tx, "blackhole"); err != nil {
+		http.Error(w, "Relay failed", http.StatusInternalServerError)
+		return
+	}
+
+	// Save event
+	sdk.AddEvent("relay_eth", "ethereum", tx.Hash, map[string]interface{}{"amount": tx.Amount})
+
+	// Response
+	resp := pb.RelayToChainResponse{Success: true, RelayTransactionId: tx.ID}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// HandleRelaySol handles POST /relay/sol
+func (sdk *BridgeSDK) HandleRelaySol(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req pb.SignedBridgeMessage
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Verify signature
+	if !verifySignature(&req) {
+		http.Error(w, "Invalid signature", http.StatusBadRequest)
+		return
+	}
+
+	tx := req.Message
+
+	hash := sdk.GenerateEventHash(tx)
+	if sdk.IsReplayAttack(hash) {
+		http.Error(w, "Duplicate event", http.StatusConflict)
+		sdk.IncrementBlockedReplays()
+		return
+	}
+
+	if err := sdk.MarkAsProcessed(hash); err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := sdk.RelayToChain(tx, "blackhole"); err != nil {
+		http.Error(w, "Relay failed", http.StatusInternalServerError)
+		return
+	}
+
+	sdk.AddEvent("relay_sol", "solana", tx.Hash, map[string]interface{}{"amount": tx.Amount})
+
+	resp := pb.RelayToChainResponse{Success: true, RelayTransactionId: tx.ID}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// verifySignature stub for Ed25519 (implement in core/signature.go)
+func verifySignature(req *pb.SignedBridgeMessage) bool {
+	// TODO: Implement Ed25519 verification using crypto/ed25519
+	return true // Stub for now
+}

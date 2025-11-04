@@ -35,7 +35,11 @@
   },
   "pending_blocks": 0,
   "total_supply": 1000000000,
+<<<<<<< HEAD
   "timestamp": "2025-10-04T17:30:48.8340787+05:30",
+=======
+  "timestamp": "2025-09-22T12:24:00.3949098+05:30",
+>>>>>>> 0c2901389bee48c6fb2dcea9e21742df52f94e43
   "fork_info": {
     "has_fork": false,
     "reason": "No forks detected"
