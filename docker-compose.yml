@@ -1,0 +1,94 @@
+version: '3.8'
+
+networks:
+  blackhole-network:
+    driver: bridge
+    name: blackhole-network
+
+volumes:
+  blockchain-data:
+    driver: local
+  blockchain-logs:
+    driver: local
+  bridge-data:
+    driver: local
+  bridge-logs:
+    driver: local
+
+services:
+  # Main BlackHole Blockchain Node
+  blockchain:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-blockchain
+    command: ["./blockchain"]
+    ports:
+      - "8081:8080"   # Main blockchain dashboard
+      - "8545:8545"   # RPC endpoint
+      - "30303:30303" # P2P networking
+    environment:
+      - NODE_ENV=production
+      - DOCKER_MODE=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BLOCKCHAIN_PORT=8080
+      - RPC_PORT=8545
+      - P2P_PORT=30303
+      - DATABASE_PATH=./data/blockchain.db
+      - LOG_FILE=./logs/blockchain.log
+      - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
+      - MAX_PEERS=${MAX_PEERS:-50}
+      - NODE_ID=${NODE_ID:-blackhole-node-1}
+    volumes:
+      - blockchain-data:/app/data
+      - blockchain-logs:/app/logs
+    networks:
+      - blackhole-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Bridge SDK Service
+  bridge:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-bridge
+    command: ["./bridge-sdk"]
+    ports:
+      - "8084:8084"   # Bridge dashboard & API
+      - "9090:9090"   # gRPC & Relay server
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - PORT=8084
+      - RELAY_PORT=9090
+      - DATABASE_PATH=/app/data/bridge_v4.db
+      - LOG_FILE=/app/logs/bridge.log
+      - BLACKHOLE_RPC=http://blockchain:8080
+      - ETHEREUM_RPC=${ETHEREUM_RPC:-wss://eth-mainnet.ws.alchemyapi.io/v2/demo}
+      - SOLANA_RPC=${SOLANA_RPC:-https://api.mainnet-beta.solana.com}
+      - REPLAY_PROTECTION_ENABLED=${REPLAY_PROTECTION_ENABLED:-true}
+      - CIRCUIT_BREAKER_ENABLED=${CIRCUIT_BREAKER_ENABLED:-true}
+      - MAX_RETRIES=${MAX_RETRIES:-5}
+      - RETRY_DELAY=${RETRY_DELAY:-5s}
+      - BATCH_SIZE=${BATCH_SIZE:-100}
+    volumes:
+      - bridge-data:/app/data
+      - bridge-logs:/app/logs
+    networks:
+      - blackhole-network
+    depends_on:
+      blockchain:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

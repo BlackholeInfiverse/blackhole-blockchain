@@ -1,0 +1,81 @@
+{
+<<<<<<< HEAD
+  "name": "blackhole-token-contracts",
+  "version": "1.0.0",
+  "description": "BlackHole (BHX) Token Smart Contracts for DEX Integration",
+=======
+  "name": "bhx-token-contracts",
+  "version": "1.0.0",
+  "description": "BlackHole (BHX) ERC20 Token Contract for Exchange Listing",
+>>>>>>> f4c74d1830240c7b0b17c3a1603f76bcea22d04a
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+<<<<<<< HEAD
+    "deploy:sepolia": "hardhat run deploy/deploy-bhx.js --network sepolia",
+    "deploy:bsc-testnet": "hardhat run deploy/deploy-bhx.js --network bscTestnet",
+    "deploy:ethereum": "hardhat run deploy/deploy-bhx.js --network ethereum",
+    "deploy:bsc": "hardhat run deploy/deploy-bhx.js --network bsc",
+    "deploy:polygon": "hardhat run deploy/deploy-bhx.js --network polygon",
+    "verify:sepolia": "hardhat verify --network sepolia",
+    "verify:bsc-testnet": "hardhat verify --network bscTestnet",
+    "verify:ethereum": "hardhat verify --network ethereum",
+    "verify:bsc": "hardhat verify --network bsc",
+    "clean": "hardhat clean",
+    "node": "hardhat node",
+    "console": "hardhat console"
+=======
+    "deploy:sepolia": "hardhat run deploy-bhx.js --network sepolia",
+    "deploy:amoy": "hardhat run deploy-bhx.js --network amoy",
+    "deploy:mumbai": "hardhat run deploy-bhx.js --network mumbai",
+    "deploy:mainnet": "hardhat run deploy-bhx.js --network mainnet",
+    "deploy:bsc": "hardhat run deploy-bhx.js --network bsc",
+    "deploy:polygon": "hardhat run deploy-bhx.js --network polygon",
+    "verify:sepolia": "hardhat verify --network sepolia",
+    "verify:mainnet": "hardhat verify --network mainnet",
+    "node": "hardhat node",
+    "clean": "hardhat clean"
+>>>>>>> f4c74d1830240c7b0b17c3a1603f76bcea22d04a
+  },
+  "keywords": [
+    "blockchain",
+    "ethereum",
+<<<<<<< HEAD
+    "bsc",
+    "defi",
+    "token",
+    "erc20",
+    "dex",
+    "blackhole"
+=======
+    "erc20",
+    "bhx",
+    "blackhole",
+    "defi",
+    "exchange"
+>>>>>>> f4c74d1830240c7b0b17c3a1603f76bcea22d04a
+  ],
+  "author": "BlackHole Blockchain Team",
+  "license": "MIT",
+  "devDependencies": {
+<<<<<<< HEAD
+    "@nomicfoundation/hardhat-toolbox": "^3.0.2",
+    "@openzeppelin/contracts": "^4.9.3",
+    "hardhat": "^2.17.1",
+    "dotenv": "^16.3.1"
+=======
+    "@nomicfoundation/hardhat-toolbox": "^2.0.0",
+    "@openzeppelin/contracts": "^4.9.3",
+    "dotenv": "^16.3.1",
+    "hardhat": "^2.17.2"
+>>>>>>> f4c74d1830240c7b0b17c3a1603f76bcea22d04a
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.3"
+  }
+<<<<<<< HEAD
+}
+=======
+}
+>>>>>>> f4c74d1830240c7b0b17c3a1603f76bcea22d04a

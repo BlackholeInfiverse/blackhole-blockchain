@@ -1,0 +1,2 @@
+services/wallet/data/badger/*.mem filter=lfs diff=lfs merge=lfs -text
+services/wallet/data/badger/*.vlog filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,29 @@
+# Build stage
+FROM golang:1.24.3-alpine AS builder
+
+WORKDIR /app
+
+# Install git and build tools
+RUN apk add --no-cache git gcc musl-dev
+
+# Copy the source code
+COPY . .
+
+# Download dependencies
+RUN go mod download
+
+# Build the blockchain binary
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o blackhole-blockchain ./cmd/relay/main.go
+
+# Final stage
+FROM alpine:latest
+
+WORKDIR /app
+
+# Copy the built binary from the builder
+COPY --from=builder /app/blackhole-blockchain .
+
+# Expose the default blockchain port
+EXPOSE 3000
+
+ENTRYPOINT ["./blackhole-blockchain"] 

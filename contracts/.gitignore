@@ -1,0 +1,58 @@
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Code coverage profiles and other test artifacts
+*.out
+coverage.*
+*.coverprofile
+profile.cov//;'./'/'///'
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+
+# BlackHole Blockchain Runtime Files
+blockchain_logs/
+blockchaindb_*/
+*.log
+*.db
+blockchain_state_*.json
+monitoring.log
+
+# Docker volumes
+data/blockchain/*
+data/mongodb/*
+data/wallet/*
+!data/blockchain/.gitkeep
+!data/mongodb/.gitkeep
+!data/wallet/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Editor/IDE
+.idea/
+.vscode/
+*.iml
+
+
+node_modules/

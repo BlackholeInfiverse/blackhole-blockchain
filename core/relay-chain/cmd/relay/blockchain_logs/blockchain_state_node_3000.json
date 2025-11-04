@@ -1,0 +1,46 @@
+{
+  "node_id": "node_3000",
+  "block_height": 1,
+  "latest_block": {
+    "Header": {
+      "index": 0,
+      "timestamp": "2025-05-15T07:55:00Z",
+      "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "validator": "genesis-validator",
+      "stakeSnapshot": 1000,
+      "merkleRoot": "4689110114b9d135e9407ff690beb2d30aafef992b53570a7384942acc86bc2b",
+      "stateRoot": "0x0",
+      "receiptsRoot": "0x0",
+      "consensusRound": 0
+    },
+    "Transactions": [
+      {
+        "id": "4689110114b9d135e9407ff690beb2d30aafef992b53570a7384942acc86bc2b",
+        "type": 1,
+        "from": "system",
+        "to": "genesis-validator",
+        "amount": 10,
+        "token_id": "BHX",
+        "data": null,
+        "timestamp": 1747295700,
+        "nonce": 0,
+        "signature": null,
+        "fee": 0,
+        "gas_limit": 0,
+        "gas_price": 0,
+        "public_key": null
+      }
+    ],
+    "hash": "818da2d9eb7b32a21ecb551fb74940578aff7763ff1ae70100777107f65aa0ba"
+  },
+  "pending_blocks": 0,
+  "total_supply": 1000000000,
+  "timestamp": "2025-11-01T12:58:33.4043751+05:30",
+  "fork_info": {
+    "has_fork": false,
+    "reason": "No forks detected"
+  },
+  "block_hashes": [
+    "818da2d9eb7b32a21ecb551fb74940578aff7763ff1ae70100777107f65aa0ba"
+  ]
+}

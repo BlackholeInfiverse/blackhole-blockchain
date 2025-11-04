@@ -1,0 +1,157 @@
+• Run:
+◦ go run ./bridge/cmd/bridge --config ./deploy/bridge/.env
+◦ go test ./bridge/...
+Day 1 (combines Day 1+2) — Schemas, Endpoints,
+Idempotency, Basic E2E
+Goal: Stand up the Bridge service with stable schemas, HTTP endpoints, in-process mock listeners,
+and idempotent relay into BlackHole.
+Build steps
+1. API schemas
+◦ Define api-schema.proto (v1alpha1): BridgeMessage, SignedBridgeMessage,
+RelayResponse, StatusResponse.
+◦ Generate stubs (gRPC + JSON/REST gateway) into bridge/api/gen/.
+2. HTTP/REST endpoints (backed by the same handlers used by gRPC):
+◦ POST /relay/eth, POST /relay/sol — accept SignedBridgeMessage.
+◦ GET /bridge/status — health, height, queueDepth.
+◦ GET /log/retry — last N retry items.
+◦ GET /log/events — recent accepted event summaries.
+3. Idempotency + replay protection
+◦ bridge/core/dedupe: BoltDB (or Badger) keyed by eventHash; reject duplicates.
+◦ bridge/core/retry: exponential backoff, max attempts, dead-letter queue file bridge/
+retry-dlq.jsonl.
+4. Minimal in-process listeners (mock)
+◦ bridge/core/listener/eth_mock.go, sol_mock.go produce Transfer-like events
+(configurable rate).
+◦ Pipe into Relay() and persist acceptance to bridge/internal/storage.
+5. Structured logs + metrics
+◦ Zap logger with fields: chain, txHash, eventHash, latency_ms, attempt.
+◦ Prometheus-style counters in memory; write snapshot to deploy/bridge/metrics.json
+every 30s.
+MVPD (must be pushed today)
+• Running Bridge binary with:
+◦ GET /bridge/status returns ok, queueDepth, accepted, duplicates.
+◦ POST /relay/eth accepts a sample message and logs accepted.
+• Files required: api-schema.proto, handlers, dedupe, retry, mock listeners, bridge-api.md
+(skeleton), Dockerfile (skeleton), .env.example.
+Acceptance checks
+• curl localhost:8080/bridge/status → JSON with nonzero counters after sending events.
+• Duplicate POST /relay/eth with same eventHash returns 409 or {status:"duplicate"}.
+• go test ./bridge/... runs unit tests for dedupe + retry.
+Values reflection (3–5 sentences could be LLM generated but context and
+thought must be yours, commit as docs/reflections/shantanu/day1.md)
+• One thing you weren’t sure about and how you handled it .
+• Credit any reference or teammate input .
+• One limitation you’re leaving explicit in code/docs .
+Day 2 (combines Day 3+4) — Cross-Chain Proof, Latency,
+Failure Injection, Docker
+Goal: Prove ETH→BH→SOL and reverse with measurable latency, robust retries, failure injection,
+and one-command Docker run.
+Build steps
+1. Cross-chain simulation
+◦ Script scripts/simulate.sh to emit ETH-like events, relay to BH, mirror to SOL
+listener.
+◦ Persist “eventRoot” per 10 events (Merkle root or rolling hash) to bridge/internal/
+roots/.
+2. Latency + SLO
+◦ Per event compute t_ingest, t_commit, latency_ms. Export rolling p50/p90/p99 to
+metrics.json.
+◦ CLI: bridgectl stats prints SLOs from metrics.json.
+3. Failure injection
+◦ Config flags: --inject-drop=0.03, --inject-delay-ms=50-200.
+◦ Ensure retries converge; DLQ remains near zero under 10k events.
+4. Dockerize
+◦ deploy/bridge/Dockerfile multi-stage build.
+◦ deploy/bridge/docker-compose.yml with service bridge, volume for BoltDB, port
+mappings.
+◦ .env parameters: RPC urls (mock), retry limits, batch size, failure-inject knobs.
+5. Docs
+◦ Expand bridge-api.md: endpoint examples (curl), error codes, dedupe policy, retry
+semantics, SLO targets.
+MVPD (must be pushed today)
+• docker-compose up brings Bridge online.
+• scripts/simulate.sh drives 1k events end-to-end with nonzero latency metrics and zero
+duplicates accepted.
+• metrics.json includes p50/p90/p99; roots/ contains at least 1 root file.
+Acceptance checks
+• p99 latency recorded; retries > 0 during injected failure test; DLQ file size < 1% of total
+events.
+• curl /log/retry shows empty or bounded retry queue after run.
+• bridgectl stats prints SLO summary.
+Values reflection (commit as
+docs/reflections/shantanu/day2.md)
+• Hardest failure mode you found .
+• Who/what unblocked you .
+• One explicit risk left in config with mitigation noted .
+Day 3 — Integration Hardening with Token/DEX + gRPC
+surface
+Goal: Align Bridge formats with Token and DEX modules; add gRPC surface and Postman
+collection; prove compatibility in logs.
+Build steps
+1. Message schema alignment
+◦ Extend BridgeMessage with sourceModule enum: TOKEN, DEX, STAKE.
+◦ Add topic and meta map for flexible fields (e.g., pair, amountIn, amountOut,
+slippage).
+◦ Versioning: messageVersion: "v1alpha1".
+2. Token and DEX log compatibility
+◦ Provide examples/token_approval.json, examples/dex_swap.json.
+◦ Validate both post cleanly; show in /log/events with correct parsing.
+3. gRPC server enablement
+◦ Start gRPC on port 9090; REST gateway on 8080.
+◦ Add examples/grpc/relay_client.go demo.
+4. Client artifacts
+◦ Postman collection bridge/postman/bridge.postman_collection.json.
+◦ Simple bridgectl tail to follow event logs.
+MVPD (push today)
+• Updated proto and handlers; both Token and DEX example payloads accepted and visible in
+logs.
+• gRPC online; example client compiles and runs.
+Acceptance checks
+• grpcurl -plaintext localhost:9090 bridge.Bridge/Relay works with sample.
+• curl /log/events?limit=5 shows mixed TOKEN and DEX events with parsed fields.
+Values reflection (docs/reflections/shantanu/day3.md)
+• Trade-off you made in schema design .
+• Credit to Token/DEX teammates’ formats .
+• One place you resisted over-engineering and documented a follow-up .
+Day 4 — Next-Step Layer: Signed Messages, Attestations, and
+Pre-Prod Readiness
+Goal: Go beyond v0.2 by adding signature validation, attestation hooks, and pre-prod guardrails.
+Build steps
+1. SignedBridgeMessage
+◦ Add signature, publicKey, sigScheme to proto.
+◦ Implement Ed25519 verification; reject unsigned or invalid messages.
+◦ Cache pubKey → lastSeenNonce to prevent replay across channels.
+2. Attestation stub
+◦ bridge/core/attest: accept “attestation bundles” (future: multisig, threshold).
+◦ Store per-batch attestation file alongside roots/.
+3. Pre-prod guardrails
+◦ Rate limiting per sourceChain, circuit breaker when DLQ > threshold.
+◦ Graceful shutdown with draining queues and persisted offset checkpoints.
+4. Release packaging
+◦ make bridge target; make docker image tag blackhole/bridge:v0.3-rc1.
+◦ bridge/CHANGELOG.md with upgrade notes.
+MVPD (push today)
+• Signature verification enforced by default; unsigned request returns 400.
+• Attestation files emitted for each root.
+• Makefile targets build locally and in Docker.
+Acceptance checks
+• Replay attempt with same (pubKey, nonce) rejected.
+• Circuit breaker engages under forced DLQ growth and auto-recovers when pressure
+subsides.
+Values reflection (docs/reflections/shantanu/day4.md)
+• One assumption you corrected after testing.
+• Acknowledge any library or prior art used for signatures.
+• Clear statement of what remains before true prod traffic .
+Hand-offs and integration points
+• To Shivam (Token): confirm final BridgeMessage fields and /examples/token_approval.json.
+• To Nihal (DEX): confirm slippage and pool fields in /examples/dex_swap.json.
+• To Yashika (AI/ML): ensure /log/events and metrics.json contain the fields her detectors
+need; document JSON schema.
+Definition of Done for this compressed sprint
+• Bridge runs locally and via Docker; gRPC and REST exposed; retries, dedupe, latency, and
+failure injection proven.
+• Token and DEX example events relay cleanly and appear in structured logs with versioned
+schema.
+• Signed messages enforced; attestation stub writes per-batch files; circuit breaker present.
+• Documentation: bridge-api.md, Postman collection, CHANGELOG.md, .env.example,
+Makefile targets.
+• Daily MVPD pushes and 4 values reflections committed under docs/reflections/shantanu/

@@ -1,0 +1,391 @@
+{
+  "info": {
+    "name": "Blackhole Blockchain Core API",
+    "description": "Complete API collection for Blackhole Blockchain core operations including blocks, transactions, validators, and network status.",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api",
+      "type": "string"
+    },
+    {
+      "key": "testAddress",
+      "value": "0x742d35Cc6634C0532925a3b8D4C0532925a3b8D4",
+      "type": "string"
+    },
+    {
+      "key": "testAddress2",
+      "value": "0x8ba1f109551bD432803012645Hac136c",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Check blockchain health status"
+          },
+          "response": []
+        },
+        {
+          "name": "Blockchain Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["status"]
+            },
+            "description": "Get detailed blockchain status"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Block Operations",
+      "item": [
+        {
+          "name": "Get Latest Block",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/blocks/latest",
+              "host": ["{{baseUrl}}"],
+              "path": ["blocks", "latest"]
+            },
+            "description": "Get the latest block in the chain"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Block by Height",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/blocks/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["blocks", "1"]
+            },
+            "description": "Get block by height number"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Blocks with Pagination",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/blocks?page=1&limit=10&order=desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["blocks"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "order",
+                  "value": "desc"
+                }
+              ]
+            },
+            "description": "Get blocks with pagination"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Transaction Operations",
+      "item": [
+        {
+          "name": "Submit Transaction",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"transfer\",\n  \"from\": \"{{testAddress}}\",\n  \"to\": \"{{testAddress2}}\",\n  \"amount\": 1000000,\n  \"token\": \"BHX\",\n  \"gas_limit\": 21000,\n  \"gas_price\": 20,\n  \"nonce\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions"]
+            },
+            "description": "Submit a new transaction to the blockchain"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Transaction by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transactions/tx_1234567890",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions", "tx_1234567890"]
+            },
+            "description": "Get transaction details by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transactions?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get all transactions with pagination"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Pending Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transactions/pending",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions", "pending"]
+            },
+            "description": "Get all pending transactions"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Transactions by Address",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transactions?address={{testAddress}}&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions"],
+              "query": [
+                {
+                  "key": "address",
+                  "value": "{{testAddress}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get transactions filtered by address"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Account Operations",
+      "item": [
+        {
+          "name": "Get Account Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{testAddress}}/balance",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "{{testAddress}}", "balance"]
+            },
+            "description": "Get account balance for all tokens"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Account Balance (Specific Token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{testAddress}}/balance?token=BHX",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "{{testAddress}}", "balance"],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "BHX"
+                }
+              ]
+            },
+            "description": "Get account balance for specific token"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Account Transaction History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{testAddress}}/transactions?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "{{testAddress}}", "transactions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get transaction history for specific account"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Validator Operations",
+      "item": [
+        {
+          "name": "Get All Validators",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/validators",
+              "host": ["{{baseUrl}}"],
+              "path": ["validators"]
+            },
+            "description": "Get all validators and their status"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Validator Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/validators/{{testAddress}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["validators", "{{testAddress}}"]
+            },
+            "description": "Get detailed information about specific validator"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Network Operations",
+      "item": [
+        {
+          "name": "Get Network Peers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/network/peers",
+              "host": ["{{baseUrl}}"],
+              "path": ["network", "peers"]
+            },
+            "description": "Get connected network peers"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Network Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/network/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["network", "stats"]
+            },
+            "description": "Get network statistics and metrics"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set timestamp for requests",
+          "pm.globals.set('timestamp', new Date().toISOString());"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Common tests for all requests",
+          "pm.test('Response time is less than 5000ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "pm.test('Response has success field', function () {",
+          "    const jsonData = pm.response.json();",
+          "    pm.expect(jsonData).to.have.property('success');",
+          "});",
+          "",
+          "pm.test('Content-Type is application/json', function () {",
+          "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+          "});"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "message": {
+    "id": "dex_swap_001",
+    "hash": "0xabcdef1234567890",
+    "source_chain": "ethereum",
+    "dest_chain": "blackhole",
+    "source_address": "0x742d35Cc6634C0532925a3b8D4C9db96590c6C87",
+    "dest_address": "BH1234567890abcdef",
+    "amount": "1.0",
+    "token_symbol": "ETH",
+    "status": "pending",
+    "created_at": 1640995200,
+    "completed_at": 0,
+    "confirmations": 0,
+    "processing_time": "",
+    "block_number": 18500000,
+    "gas_used": "150000",
+    "gas_price": "25000000000",
+    "retry_count": 0,
+    "compliance_checks": ["aml_check", "sanctions_check"],
+    "source_module": "DEX",
+    "topic": "dex_swap",
+    "meta": {
+      "pair": "ETH/USDC",
+      "amountIn": "1.0",
+      "amountOut": "1800.0",
+      "amountOutMin": "1750.0",
+      "slippage": "0.03",
+      "path": ["0xEther", "0xUSDC"],
+      "dex_router": "0xUniswapV3Router",
+      "deadline": 1640998800,
+      "swap_type": "exact_input_single"
+    },
+    "message_version": "v1alpha1"
+  },
+  "signature": "base64_encoded_ed25519_signature_here",
+  "public_key": "base64_encoded_public_key_here",
+  "signature_scheme": "ed25519",
+  "nonce": 67890,
+  "timestamp": 1640995200
+}

@@ -1,0 +1,45 @@
+{
+  "info": {
+    "name": "BlackHole Blockchain APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Stake",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"address\":\"user1\",\"target\":\"\",\"amount\":1000,\"stakeType\":\"validator\"}"
+        },
+        "url": { "raw": "http://localhost:8080/stake", "host": ["localhost"], "port": "8080", "path": ["stake"] }
+      }
+    },
+    {
+      "name": "Unstake",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"address\":\"user1\",\"amount\":500}"
+        },
+        "url": { "raw": "http://localhost:8080/unstake", "host": ["localhost"], "port": "8080", "path": ["unstake"] }
+      }
+    },
+    {
+      "name": "Claim Rewards",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8080/claim-rewards?address=user1",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["claim-rewards"],
+          "query": [{ "key": "address", "value": "user1" }]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+# =============================================================================
+# .dockerignore - Optimize Docker build performance
+# =============================================================================
+
+# Git and version control
+.git
+.gitignore
+*.md
+README*
+
+# Development files
+.vscode/
+.idea/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+vendor/
+bin/
+build/
+dist/
+
+# Test files
+*_test.go
+test/
+tests/
+coverage.out
+*.test
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+
+# Environment files (except production .env)
+.env.local
+.env.development
+.env.test
+*.env.backup
+
+# Temporary and cache files
+tmp/
+temp/
+.cache/
+*.cache
+
+# Documentation and examples (keep essential ones)
+docs/
+examples/
+*.example
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/
+logs/
+
+# Docker files
+Dockerfile.*
+docker-compose.*.yml
+.dockerignore
+
+# IDE and editor files
+*.swp
+*.swo
+*~
+.vimrc
