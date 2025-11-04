@@ -54,6 +54,7 @@ contracts/typechain-types/
 data/blockchain/*
 data/mongodb/*
 data/wallet/*
+data/badger/*
 !data/blockchain/.gitkeep
 !data/mongodb/.gitkeep
 !data/wallet/.gitkeep
