@@ -643,6 +643,22 @@ func AuthenticateUser(ctx context.Context, username, password string) (*User, er
 	return &user, nil
 }
 
+// GetUserByID retrieves a user by their ID
+func GetUserByID(ctx context.Context, userID string) (*User, error) {
+	objID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID format: %v", err)
+	}
+
+	var user User
+	err = UserCollection.FindOne(ctx, bson.M{"_id": objID}).Decode(&user)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %v", err)
+	}
+
+	return &user, nil
+}
+
 // SerializeCompressedHex serializes a btcec/v2 PublicKey to a compressed hexadecimal string
 func SerializeCompressedHex(pubKey *btcec.PublicKey) string {
 	return hex.EncodeToString(pubKey.SerializeCompressed())

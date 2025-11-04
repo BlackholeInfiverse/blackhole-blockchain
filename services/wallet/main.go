@@ -15,12 +15,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/storage"
 	wallet "github.com/Shivam-Patel-G/blackhole-blockchain/services/wallet/wallet"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// Global storage manager for enhanced multi-layer storage
+var storageManager *storage.StorageManager
+var storageService *storage.Service
 
 // Enhanced logging functions
 func logError(operation string, err error) {
@@ -78,6 +83,43 @@ func main() {
 	wallet.WalletCollection = db.Collection("wallets")
 	wallet.TransactionCollection = db.Collection("transactions")
 
+	// 🔧 Initialize Enhanced Storage System (PostgreSQL + Redis + BadgerDB)
+	fmt.Println("🔧 Initializing enhanced storage system...")
+	storageConfig := storage.LoadConfigFromEnv()
+	storageManager, err = storage.NewStorageManager(storageConfig)
+	if err != nil {
+		log.Printf("⚠️ Warning: Enhanced storage initialization failed: %v", err)
+		fmt.Println("📝 Continuing with MongoDB only...")
+	} else {
+		fmt.Println("✅ Enhanced storage system initialized successfully")
+		storageService = storage.NewService(storageManager)
+		
+		// Log storage backends status
+		if storageManager.IsPostgreSQLAvailable() {
+			fmt.Println("  ✓ PostgreSQL: Available")
+		} else {
+			fmt.Println("  ⊗ PostgreSQL: Not available (using BadgerDB fallback)")
+		}
+		
+		if storageManager.IsRedisAvailable() {
+			fmt.Println("  ✓ Redis: Available (caching enabled)")
+		} else {
+			fmt.Println("  ⊗ Redis: Not available (caching disabled)")
+		}
+		
+		fmt.Println("  ✓ BadgerDB: Available (fallback storage)")
+		
+		// Perform health check
+		healthCtx, healthCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer healthCancel()
+		health := storageManager.HealthCheck(healthCtx)
+		for system, err := range health {
+			if err != nil {
+				log.Printf("  Health check [%s]: %v", system, err)
+			}
+		}
+	}
+
 	// Initialize enhanced key management system
 	fmt.Println("🔐 Initializing enhanced key management...")
 	if err := wallet.InitializeGlobalKeyManager(); err != nil {
@@ -117,6 +159,18 @@ func main() {
 		fmt.Println("⚠️ Example: go run main.go -peerAddr /ip4/127.0.0.1/tcp/3000/p2p/12D3KooWEHMeACYKmddCU7yvY7FSN78CnhC3bENFmkCcouwu1z8R")
 		fmt.Println("⚠️ Wallet will work in offline mode.")
 	}
+
+	// Setup cleanup on exit
+	defer func() {
+		if storageManager != nil {
+			fmt.Println("📦 Closing storage connections...")
+			if err := storageManager.Close(); err != nil {
+				log.Printf("⚠️ Warning: Error closing storage: %v", err)
+			} else {
+				fmt.Println("✅ Storage connections closed successfully")
+			}
+		}
+	}()
 
 	// Check if web mode is requested
 	if *webMode {
@@ -519,6 +573,8 @@ func startWebServer(port int) {
 	http.HandleFunc("/api/login", enableCORS(handleLogin))
 	http.HandleFunc("/api/register", enableCORS(handleRegister))
 	http.HandleFunc("/api/logout", enableCORS(handleLogout))
+	http.HandleFunc("/api/status", enableCORS(handleStatus))
+	http.HandleFunc("/api/user", enableCORS(requireAuth(handleUser)))
 	http.HandleFunc("/api/wallets", enableCORS(requireAuth(handleWallets)))
 	http.HandleFunc("/api/wallets/create", enableCORS(requireAuth(handleCreateWallet)))
 	http.HandleFunc("/api/wallets/import", enableCORS(requireAuth(handleImportWallet)))
@@ -988,6 +1044,119 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 	sendJSONResponse(w, APIResponse{
 		Success: true,
 		Message: "Logout successful",
+	}, http.StatusOK)
+}
+
+// handleStatus provides API status information
+func handleStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Method not allowed"}, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check blockchain connection status
+	blockchainConnected := false
+	if wallet.DefaultBlockchainClient != nil {
+		// Add logic to check if blockchain client is actually connected
+		blockchainConnected = true
+	}
+
+	// Check database connection
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var dbStatus string = "connected"
+	if wallet.UserCollection != nil {
+		err := wallet.UserCollection.Database().Client().Ping(ctx, nil)
+		if err != nil {
+			dbStatus = "disconnected"
+		}
+	} else {
+		dbStatus = "not_initialized"
+	}
+
+	// Check enhanced storage status
+	var storageHealth map[string]interface{}
+	if storageManager != nil {
+		health := storageManager.HealthCheck(ctx)
+		storageHealth = map[string]interface{}{
+			"postgresql_available": storageManager.IsPostgreSQLAvailable(),
+			"redis_available":      storageManager.IsRedisAvailable(),
+			"badgerdb_available":   true,
+		}
+		
+		// Add health check details
+		healthDetails := make(map[string]string)
+		for system, err := range health {
+			if err != nil {
+				healthDetails[system] = "error: " + err.Error()
+			} else {
+				healthDetails[system] = "healthy"
+			}
+		}
+		storageHealth["health_details"] = healthDetails
+	} else {
+		storageHealth = map[string]interface{}{
+			"postgresql_available": false,
+			"redis_available":      false,
+			"badgerdb_available":   false,
+			"status":               "not_initialized",
+		}
+	}
+
+	status := map[string]interface{}{
+		"service":               "blackhole-wallet",
+		"version":               "2.0.0",
+		"status":                "running",
+		"timestamp":             time.Now().Unix(),
+		"blockchain_connected":  blockchainConnected,
+		"database_status":       dbStatus,
+		"storage_system":        storageHealth,
+		"active_sessions":       len(sessions),
+		"uptime_seconds":        time.Now().Unix(), // This would be more accurate with a start time
+	}
+
+	sendJSONResponse(w, APIResponse{
+		Success: true,
+		Message: "Service status retrieved successfully",
+		Data:    status,
+	}, http.StatusOK)
+}
+
+// handleUser provides current user information
+func handleUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Method not allowed"}, http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessionID := getSessionID(r)
+	sessionData := sessions[sessionID]
+
+	if sessionData == nil {
+		sendJSONResponse(w, APIResponse{Success: false, Message: "Session not found"}, http.StatusUnauthorized)
+		return
+	}
+
+	// Get user from database
+	ctx := context.Background()
+	user, err := wallet.GetUserByID(ctx, sessionData.UserID)
+	if err != nil {
+		logError("GET_USER", fmt.Errorf("failed to get user %s: %v", sessionData.UserID, err))
+		sendJSONResponse(w, APIResponse{Success: false, Message: "User not found"}, http.StatusNotFound)
+		return
+	}
+
+	userInfo := map[string]interface{}{
+		"id":         user.ID.Hex(),
+		"username":   user.Username,
+		"created_at": user.CreatedAt.Unix(),
+	}
+
+	sendJSONResponse(w, APIResponse{
+		Success: true,
+		Message: "User information retrieved successfully",
+		Data:    userInfo,
 	}, http.StatusOK)
 }
 
@@ -5157,9 +5326,20 @@ func matchOTCOrderOnBlockchain(orderID, counterparty string) (bool, error) {
 }
 
 // Blockchain connection testing functions
+
+// getBlockchainAPIURL returns the blockchain API URL from environment or defaults to localhost:8081
+func getBlockchainAPIURL() string {
+	// Check if BLOCKCHAIN_API_URL is set
+	if url := os.Getenv("BLOCKCHAIN_API_URL"); url != "" {
+		return url
+	}
+	// Default to first blockchain node
+	return "http://localhost:8081"
+}
+
 func testBlockchainConnection() bool {
 	// Test basic connectivity to blockchain API
-	testURL := "http://localhost:8080/api/health"
+	testURL := getBlockchainAPIURL() + "/api/health"
 
 	client := &http.Client{
 		Timeout: 5 * time.Second, // 5 second timeout
@@ -5197,7 +5377,7 @@ func retryBlockchainConnection(maxRetries int) bool {
 // getTokenBalanceFromBlockchainCached gets a single token balance using the cache system
 func getTokenBalanceFromBlockchainCached(userID, address, tokenSymbol string, forValidation bool) (uint64, error) {
 	// Try to connect to blockchain API with cache support
-	blockchainURL := "http://localhost:8080/api/balance/cached"
+	blockchainURL := getBlockchainAPIURL() + "/api/balance/cached"
 
 	requestData := map[string]interface{}{
 		"user_id":        userID,
@@ -5249,7 +5429,7 @@ func getTokenBalanceFromBlockchainCached(userID, address, tokenSymbol string, fo
 // getAllTokenBalancesFromBlockchainCached gets all token balances for an address using cache
 func getAllTokenBalancesFromBlockchainCached(userID, address string) (map[string]uint64, error) {
 	// Try to connect to blockchain API with cache support
-	blockchainURL := "http://localhost:8080/api/balance/all"
+	blockchainURL := getBlockchainAPIURL() + "/api/balance/all"
 
 	requestData := map[string]interface{}{
 		"user_id": userID,
@@ -5307,7 +5487,7 @@ func getAllTokenBalancesFromBlockchainCached(userID, address string) (map[string
 // preloadUserBalancesInBlockchain preloads balances for user's addresses into blockchain cache
 func preloadUserBalancesInBlockchain(userID string, addresses []string) error {
 	// Try to connect to blockchain API
-	blockchainURL := "http://localhost:8080/api/balance/preload"
+	blockchainURL := getBlockchainAPIURL() + "/api/balance/preload"
 
 	requestData := map[string]interface{}{
 		"user_id":   userID,
@@ -5349,7 +5529,7 @@ func preloadUserBalancesInBlockchain(userID string, addresses []string) error {
 // getTokenBalanceFromBlockchain gets balance directly from blockchain (fallback)
 func getTokenBalanceFromBlockchain(address, tokenSymbol string) (uint64, error) {
 	// Try to connect to blockchain API
-	blockchainURL := fmt.Sprintf("http://localhost:8080/api/balance?address=%s&token=%s", address, tokenSymbol)
+	blockchainURL := fmt.Sprintf("%s/api/balance?address=%s&token=%s", getBlockchainAPIURL(), address, tokenSymbol)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(blockchainURL)

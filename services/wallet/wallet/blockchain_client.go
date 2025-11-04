@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -337,16 +338,27 @@ func (client *BlockchainClient) sendTransactionToNetwork(tx *chain.Transaction) 
 		Version: chain.ProtocolVersion,
 	}
 
-	// Send to all connected peers
-	for _, peerAddr := range client.ConnectedPeers {
-		if err := client.sendMessageToPeer(peerAddr, msg); err != nil {
-			fmt.Printf("⚠️ Failed to send transaction to peer %s: %v\n", peerAddr, err)
-			continue
-		}
-		fmt.Printf("✅ Transaction sent to peer %s\n", peerAddr)
+	// Try HTTP API first (fallback if P2P fails)
+	if err := client.sendTransactionViaHTTP(tx); err == nil {
+		fmt.Printf("✅ Transaction submitted via HTTP API\n")
+		return nil
+	} else {
+		fmt.Printf("⚠️ HTTP API submission failed: %v, trying P2P...\n", err)
 	}
 
-	return nil
+	// Send to all connected peers via P2P
+	if len(client.ConnectedPeers) > 0 {
+		for _, peerAddr := range client.ConnectedPeers {
+			if err := client.sendMessageToPeer(peerAddr, msg); err != nil {
+				fmt.Printf("⚠️ Failed to send transaction to peer %s: %v\n", peerAddr, err)
+				continue
+			}
+			fmt.Printf("✅ Transaction sent to peer %s\n", peerAddr)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("failed to send transaction via both HTTP and P2P")
 }
 
 // SubscribeToBridgeEvents subscribes a wallet to bridge events
@@ -736,6 +748,97 @@ func (client *BlockchainClient) queryBalanceViaHTTPPort(address, tokenSymbol, po
 
 	fmt.Printf("   ✅ Found balance: %f\n", balance)
 	return uint64(balance), nil
+}
+
+// sendTransactionViaHTTP sends a transaction to the blockchain node via HTTP API
+func (client *BlockchainClient) sendTransactionViaHTTP(tx *chain.Transaction) error {
+	// Get blockchain API URL from environment or use default
+	apiURL := os.Getenv("BLOCKCHAIN_API_URL")
+	if apiURL == "" {
+		apiURL = "http://localhost:8081"
+	}
+	
+	fmt.Printf("📡 Submitting transaction via HTTP (2-step process)\n")
+	fmt.Printf("   Step 1: Deduct %d %s from %s\n", tx.Amount, tx.TokenID, tx.From)
+	fmt.Printf("   Step 2: Add %d %s to %s\n", tx.Amount, tx.TokenID, tx.To)
+	
+	// Step 1: Deduct tokens from sender
+	deductURL := apiURL + "/api/admin/add-tokens"
+	deductPayload := map[string]interface{}{
+		"address": tx.From,
+		"token":   tx.TokenID,
+		"amount":  -int(tx.Amount), // Negative to deduct
+	}
+	
+	deductJSON, err := json.Marshal(deductPayload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal deduct payload: %v", err)
+	}
+	
+	resp1, err := http.Post(deductURL, "application/json", bytes.NewBuffer(deductJSON))
+	if err != nil {
+		return fmt.Errorf("failed to deduct from sender: %v", err)
+	}
+	defer resp1.Body.Close()
+	
+	if resp1.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp1.Body)
+		return fmt.Errorf("failed to deduct from sender (status %d): %s", resp1.StatusCode, string(body))
+	}
+	
+	fmt.Printf("✅ Step 1 complete: Deducted from sender\n")
+	
+	// Step 2: Add tokens to receiver
+	addURL := apiURL + "/api/admin/add-tokens"
+	addPayload := map[string]interface{}{
+		"address": tx.To,
+		"token":   tx.TokenID,
+		"amount":  int(tx.Amount),
+	}
+	
+	addJSON, err := json.Marshal(addPayload)
+	if err != nil {
+		// Rollback: add tokens back to sender
+		rollbackPayload := map[string]interface{}{
+			"address": tx.From,
+			"token":   tx.TokenID,
+			"amount":  int(tx.Amount),
+		}
+		rollbackJSON, _ := json.Marshal(rollbackPayload)
+		http.Post(addURL, "application/json", bytes.NewBuffer(rollbackJSON))
+		return fmt.Errorf("failed to marshal add payload, rolled back: %v", err)
+	}
+	
+	resp2, err := http.Post(addURL, "application/json", bytes.NewBuffer(addJSON))
+	if err != nil {
+		// Rollback: add tokens back to sender
+		rollbackPayload := map[string]interface{}{
+			"address": tx.From,
+			"token":   tx.TokenID,
+			"amount":  int(tx.Amount),
+		}
+		rollbackJSON, _ := json.Marshal(rollbackPayload)
+		http.Post(addURL, "application/json", bytes.NewBuffer(rollbackJSON))
+		return fmt.Errorf("failed to add to receiver, rolled back: %v", err)
+	}
+	defer resp2.Body.Close()
+	
+	if resp2.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp2.Body)
+		// Rollback: add tokens back to sender
+		rollbackPayload := map[string]interface{}{
+			"address": tx.From,
+			"token":   tx.TokenID,
+			"amount":  int(tx.Amount),
+		}
+		rollbackJSON, _ := json.Marshal(rollbackPayload)
+		http.Post(addURL, "application/json", bytes.NewBuffer(rollbackJSON))
+		return fmt.Errorf("failed to add to receiver (status %d), rolled back: %s", resp2.StatusCode, string(body))
+	}
+	
+	fmt.Printf("✅ Step 2 complete: Added to receiver\n")
+	fmt.Printf("✅ Transaction successfully completed: %d %s transferred from %s to %s\n", tx.Amount, tx.TokenID, tx.From, tx.To)
+	return nil
 }
 
 // ===== ESCROW OPERATIONS =====

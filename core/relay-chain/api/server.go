@@ -49,6 +49,7 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/dev", s.enableCORS(s.serveDevMode))
 	http.HandleFunc("/api/blockchain/info", s.enableCORS(s.getBlockchainInfo))
 	http.HandleFunc("/api/admin/add-tokens", s.enableCORS(s.addTokens))
+	http.HandleFunc("/api/admin/submit-transaction", s.enableCORS(s.submitTransaction))
 	http.HandleFunc("/api/wallets", s.enableCORS(s.getWallets))
 	http.HandleFunc("/api/node/info", s.enableCORS(s.getNodeInfo))
 	http.HandleFunc("/api/dev/test-dex", s.enableCORS(s.testDEX))
@@ -617,6 +618,57 @@ func (s *APIServer) addTokens(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("Added %d %s tokens to %s", req.Amount, req.Token, req.Address),
+	})
+}
+
+func (s *APIServer) submitTransaction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		From   string `json:"from"`
+		To     string `json:"to"`
+		Token  string `json:"token"`
+		Amount uint64 `json:"amount"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request format",
+		})
+		return
+	}
+
+	// Create transaction
+	tx := &chain.Transaction{
+		Type:      chain.TokenTransfer,
+		From:      req.From,
+		To:        req.To,
+		Amount:    req.Amount,
+		TokenID:   req.Token,
+		Fee:       0,
+		Nonce:     uint64(time.Now().UnixNano()),
+		Timestamp: time.Now().Unix(),
+	}
+
+	// Calculate transaction ID
+	tx.ID = tx.CalculateHash()
+
+	// Add transaction to pending pool
+	s.blockchain.PendingTxs = append(s.blockchain.PendingTxs, tx)
+
+	fmt.Printf("✅ Transaction %s added to pending pool (from %s to %s, %d %s)\n", 
+		tx.ID, req.From, req.To, req.Amount, req.Token)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Transaction submitted successfully"),
+		"tx_id":   tx.ID,
 	})
 }
 
