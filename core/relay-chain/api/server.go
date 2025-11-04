@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/bridge"
@@ -122,6 +120,47 @@ func (s *APIServer) Start() {
 	fmt.Printf("🌐 Open http://localhost:%d in your browser\n", s.port)
 	addr := fmt.Sprintf("0.0.0.0:%d", s.port)
 	log.Fatal(http.ListenAndServe(addr, nil))
+}
+
+// handleAIFraudStatus returns AI fraud detection status
+func (s *APIServer) handleAIFraudStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"status":  "operational",
+		"message": "AI fraud detection system is running",
+	})
+}
+
+// handleTransactionData returns transaction data for ML analysis
+func (s *APIServer) handleTransactionData(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	// Get recent transactions for ML analysis
+	transactions := []map[string]interface{}{}
+	
+	if len(s.blockchain.Blocks) > 0 {
+		// Get transactions from recent blocks
+		for i := len(s.blockchain.Blocks) - 1; i >= 0 && len(transactions) < 100; i-- {
+			block := s.blockchain.Blocks[i]
+			for _, tx := range block.Transactions {
+				transactions = append(transactions, map[string]interface{}{
+					"id":        tx.ID,
+					"from":      tx.From,
+					"to":        tx.To,
+					"amount":    tx.Amount,
+					"timestamp": block.Header.Timestamp,
+					"block":     block.Header.Index,
+				})
+			}
+		}
+	}
+	
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    transactions,
+		"count":   len(transactions),
+	})
 }
 
 func (s *APIServer) enableCORS(handler http.HandlerFunc) http.HandlerFunc {

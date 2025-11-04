@@ -52,43 +52,43 @@ services:
       retries: 3
       start_period: 15s
 
-  # Bridge SDK Service
-  bridge:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    container_name: blackhole-bridge
-    command: ["./bridge-sdk"]
-    ports:
-      - "8084:8084"   # Bridge dashboard & API
-      - "9090:9090"   # gRPC & Relay server
-    environment:
-      - NODE_ENV=production
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - PORT=8084
-      - RELAY_PORT=9090
-      - DATABASE_PATH=/app/data/bridge_v4.db
-      - LOG_FILE=/app/logs/bridge.log
-      - BLACKHOLE_RPC=http://blockchain:8080
-      - ETHEREUM_RPC=${ETHEREUM_RPC:-wss://eth-mainnet.ws.alchemyapi.io/v2/demo}
-      - SOLANA_RPC=${SOLANA_RPC:-https://api.mainnet-beta.solana.com}
-      - REPLAY_PROTECTION_ENABLED=${REPLAY_PROTECTION_ENABLED:-true}
-      - CIRCUIT_BREAKER_ENABLED=${CIRCUIT_BREAKER_ENABLED:-true}
-      - MAX_RETRIES=${MAX_RETRIES:-5}
-      - RETRY_DELAY=${RETRY_DELAY:-5s}
-      - BATCH_SIZE=${BATCH_SIZE:-100}
-    volumes:
-      - bridge-data:/app/data
-      - bridge-logs:/app/logs
-    networks:
-      - blackhole-network
-    depends_on:
-      blockchain:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8084"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+  # Bridge SDK Service (commented out - run separately if needed)
+  # bridge:
+  #   build: 
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: blackhole-bridge
+  #   command: ["./bridge-sdk"]
+  #   ports:
+  #     - "8084:8084"   # Bridge dashboard & API
+  #     - "9090:9090"   # gRPC & Relay server
+  #   environment:
+  #     - NODE_ENV=production
+  #     - LOG_LEVEL=${LOG_LEVEL:-info}
+  #     - PORT=8084
+  #     - RELAY_PORT=9090
+  #     - DATABASE_PATH=/app/data/bridge_v4.db
+  #     - LOG_FILE=/app/logs/bridge.log
+  #     - BLACKHOLE_RPC=http://blockchain:8080
+  #     - ETHEREUM_RPC=${ETHEREUM_RPC:-wss://eth-mainnet.ws.alchemyapi.io/v2/demo}
+  #     - SOLANA_RPC=${SOLANA_RPC:-https://api.mainnet-beta.solana.com}
+  #     - REPLAY_PROTECTION_ENABLED=${REPLAY_PROTECTION_ENABLED:-true}
+  #     - CIRCUIT_BREAKER_ENABLED=${CIRCUIT_BREAKER_ENABLED:-true}
+  #     - MAX_RETRIES=${MAX_RETRIES:-5}
+  #     - RETRY_DELAY=${RETRY_DELAY:-5s}
+  #     - BATCH_SIZE=${BATCH_SIZE:-100}
+  #   volumes:
+  #     - bridge-data:/app/data
+  #     - bridge-logs:/app/logs
+  #   networks:
+  #     - blackhole-network
+  #   depends_on:
+  #     blockchain:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8084"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 15s
