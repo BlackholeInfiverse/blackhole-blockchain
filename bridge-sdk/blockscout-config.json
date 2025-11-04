@@ -1,0 +1,28 @@
+{
+  "blockscout": {
+    "enabled": true,
+    "url": "https://blockscout.com",
+    "api_key": "${BLOCKSCOUT_API_KEY}",
+    "network": "blackhole",
+    "sync_interval": "30s",
+    "batch_size": 100
+  },
+  "explorer": {
+    "custom_endpoints": {
+      "block": "/block/{height}",
+      "transaction": "/tx/{hash}",
+      "dex_transactions": "/api/transactions?type=dex",
+      "bridge_transactions": "/api/transactions?type=bridge"
+    },
+    "features": {
+      "dex_tracking": true,
+      "cross_chain_explorer": true,
+      "real_time_updates": true
+    }
+  },
+  "monitoring": {
+    "metrics_endpoint": "/metrics",
+    "health_endpoint": "/health",
+    "logs_endpoint": "/logs"
+  }
+}

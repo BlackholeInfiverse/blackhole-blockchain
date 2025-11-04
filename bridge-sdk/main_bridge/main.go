@@ -45,6 +45,56 @@ type BlackHoleBlockchainInterface struct {
 	logger     *logrus.Logger
 }
 
+// BlockInfo represents block information
+type BlockInfo struct {
+	Height     int64     `json:"height"`
+	Hash       string    `json:"hash"`
+	ParentHash string    `json:"parent_hash"`
+	Timestamp  time.Time `json:"timestamp"`
+	GasUsed    uint64    `json:"gas_used"`
+	GasLimit   uint64    `json:"gas_limit"`
+	Miner      string    `json:"miner"`
+	Size       int64     `json:"size"`
+}
+
+// GetBlockByHeight retrieves block information by height
+func (bhi *BlackHoleBlockchainInterface) GetBlockByHeight(height int64) *BlockInfo {
+	// Mock implementation - in real implementation, this would query the blockchain
+	return &BlockInfo{
+		Height:     height,
+		Hash:       fmt.Sprintf("0x%064x", height),
+		ParentHash: fmt.Sprintf("0x%064x", height-1),
+		Timestamp:  time.Now().Add(-time.Duration(height) * time.Minute),
+		GasUsed:    21000,
+		GasLimit:   30000000,
+		Miner:      "0x742d35Cc6634C0532925a3b8D4C9db96590c6C87",
+		Size:       1024,
+	}
+}
+
+// GetTransactionByHash retrieves transaction information by hash
+func (bhi *BlackHoleBlockchainInterface) GetTransactionByHash(hash string) *Transaction {
+	// Mock implementation - in real implementation, this would query the blockchain
+	return &Transaction{
+		ID:            hash,
+		Hash:          hash,
+		SourceChain:   "blackhole",
+		DestChain:     "ethereum",
+		SourceAddress: "bh1234567890123456789012345678901234567890",
+		DestAddress:   "0x742d35Cc6634C0532925a3b8D4C9db96590c6C87",
+		TokenSymbol:   "BHX",
+		Amount:        "100.0",
+		Fee:           "0.001",
+		Status:        "confirmed",
+		BlockNumber:   1000,
+		GasUsed:       21000,
+		GasPrice:      "20000000000",
+		CreatedAt:     time.Now().Add(-time.Hour),
+		CompletedAt:   &[]time.Time{time.Now().Add(-30 * time.Minute)}[0],
+		Confirmations: 12,
+	}
+}
+
 // ProcessBridgeTransaction processes a bridge transaction on the BlackHole blockchain
 func (bhi *BlackHoleBlockchainInterface) ProcessBridgeTransaction(bridgeTx *Transaction) error {
 	if bhi.blockchain == nil {
@@ -818,6 +868,8 @@ type Transaction struct {
 	Confirmations  int        `json:"confirmations"`
 	BlockNumber    uint64     `json:"block_number"`
 	GasUsed        uint64     `json:"gas_used,omitempty"`
+	SourceModule   *string    `json:"source_module,omitempty"` // DEX, TOKEN, STAKE
+	Events         []Event    `json:"events,omitempty"`
 	GasPrice       string     `json:"gas_price,omitempty"`
 	ErrorMessage   string     `json:"error_message,omitempty"`
 	RetryCount     int        `json:"retry_count"`
@@ -5825,6 +5877,10 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 	r.HandleFunc("/stats", sdk.handleStats).Methods("GET")
 	r.HandleFunc("/transactions", sdk.handleTransactions).Methods("GET")
 	r.HandleFunc("/transaction/{id}", sdk.handleTransactionDetail).Methods("GET")
+	r.HandleFunc("/block/{height}", sdk.handleBlockByHeight).Methods("GET")
+	r.HandleFunc("/tx/{hash}", sdk.handleTransactionByHash).Methods("GET")
+	r.HandleFunc("/api/transactions/dex", sdk.handleDEXTransactions).Methods("GET")
+	r.HandleFunc("/api/blockscout/sync", sdk.handleBlockscoutSync).Methods("GET", "POST")
 	r.HandleFunc("/errors", sdk.handleErrors).Methods("GET")
 	r.HandleFunc("/circuit-breakers", sdk.handleCircuitBreakers).Methods("GET")
 	r.HandleFunc("/failed-events", sdk.handleFailedEvents).Methods("GET")
@@ -6075,6 +6131,195 @@ func (sdk *BridgeSDK) handleTransactionDetail(w http.ResponseWriter, r *http.Req
 		"success": true,
 		"data":    tx,
 	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleBlockByHeight handles requests for block information by height
+func (sdk *BridgeSDK) handleBlockByHeight(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	heightStr := vars["height"]
+
+	height, err := strconv.ParseInt(heightStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid block height", http.StatusBadRequest)
+		return
+	}
+
+	// Get block information from the blockchain interface
+	blockInfo := sdk.blockchainInterface.GetBlockByHeight(height)
+	if blockInfo == nil {
+		http.Error(w, "Block not found", http.StatusNotFound)
+		return
+	}
+
+	// Get transactions in this block
+	blockTransactions := sdk.getTransactionsByBlockHeight(height)
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"height":       blockInfo.Height,
+			"hash":         blockInfo.Hash,
+			"parent_hash":  blockInfo.ParentHash,
+			"timestamp":    blockInfo.Timestamp,
+			"transactions": len(blockTransactions),
+			"gas_used":     blockInfo.GasUsed,
+			"gas_limit":    blockInfo.GasLimit,
+			"miner":        blockInfo.Miner,
+			"size":         blockInfo.Size,
+			"tx_list":      blockTransactions,
+		},
+		"timestamp": time.Now().UTC(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleTransactionByHash handles requests for transaction information by hash
+func (sdk *BridgeSDK) handleTransactionByHash(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	hash := vars["hash"]
+
+	// Try to find transaction by hash
+	var transaction *Transaction
+	for _, tx := range sdk.transactions {
+		if tx.Hash == hash {
+			transaction = tx
+			break
+		}
+	}
+
+	if transaction == nil {
+		// Try to get from blockchain interface if not in memory
+		if sdk.blockchainInterface != nil {
+			blockchainTx := sdk.blockchainInterface.GetTransactionByHash(hash)
+			if blockchainTx != nil {
+				transaction = blockchainTx
+			}
+		}
+	}
+
+	if transaction == nil {
+		http.Error(w, "Transaction not found", http.StatusNotFound)
+		return
+	}
+
+	// Check if this is a DEX transaction
+	isDEX := strings.Contains(strings.ToLower(transaction.TokenSymbol), "dex") ||
+		strings.Contains(strings.ToLower(transaction.SourceChain), "dex") ||
+		strings.Contains(strings.ToLower(transaction.DestChain), "dex") ||
+		(transaction.SourceModule != nil && *transaction.SourceModule == "DEX")
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"id":          transaction.ID,
+			"hash":        transaction.Hash,
+			"source_chain": transaction.SourceChain,
+			"dest_chain":  transaction.DestChain,
+			"source_address": transaction.SourceAddress,
+			"dest_address": transaction.DestAddress,
+			"token_symbol": transaction.TokenSymbol,
+			"amount":      transaction.Amount,
+			"fee":         transaction.Fee,
+			"status":      transaction.Status,
+			"created_at":  transaction.CreatedAt,
+			"completed_at": transaction.CompletedAt,
+			"confirmations": transaction.Confirmations,
+			"block_number": transaction.BlockNumber,
+			"gas_used":    transaction.GasUsed,
+			"gas_price":   transaction.GasPrice,
+			"events":      transaction.Events,
+			"type":        map[bool]string{true: "dex", false: "transfer"}[isDEX],
+		},
+		"timestamp": time.Now().UTC(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// getTransactionsByBlockHeight retrieves transactions for a specific block height
+func (sdk *BridgeSDK) getTransactionsByBlockHeight(height int64) []map[string]interface{} {
+	var blockTransactions []map[string]interface{}
+
+	for _, tx := range sdk.transactions {
+		if int64(tx.BlockNumber) == height {
+			// Check if this is a DEX transaction (based on source module or transaction type)
+			isDEX := strings.Contains(strings.ToLower(tx.TokenSymbol), "dex") ||
+				strings.Contains(strings.ToLower(tx.SourceChain), "dex") ||
+				strings.Contains(strings.ToLower(tx.DestChain), "dex") ||
+				(tx.SourceModule != nil && *tx.SourceModule == "DEX")
+
+			blockTransactions = append(blockTransactions, map[string]interface{}{
+				"hash":        tx.Hash,
+				"from":        tx.SourceAddress,
+				"to":          tx.DestAddress,
+				"value":       tx.Amount,
+				"gas_used":    tx.GasUsed,
+				"status":      tx.Status,
+				"timestamp":   tx.CreatedAt,
+				"type":        map[bool]string{true: "dex", false: "transfer"}[isDEX],
+				"token_symbol": tx.TokenSymbol,
+				"source_chain": tx.SourceChain,
+				"dest_chain":  tx.DestChain,
+			})
+		}
+	}
+
+	return blockTransactions
+}
+
+// handleDEXTransactions handles requests for DEX-specific transactions
+func (sdk *BridgeSDK) handleDEXTransactions(w http.ResponseWriter, r *http.Request) {
+	var dexTransactions []*Transaction
+
+	// Filter transactions that are DEX-related
+	for _, tx := range sdk.transactions {
+		isDEX := strings.Contains(strings.ToLower(tx.TokenSymbol), "dex") ||
+			strings.Contains(strings.ToLower(tx.SourceChain), "dex") ||
+			strings.Contains(strings.ToLower(tx.DestChain), "dex") ||
+			(tx.SourceModule != nil && *tx.SourceModule == "DEX")
+
+		if isDEX {
+			dexTransactions = append(dexTransactions, tx)
+		}
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"transactions": dexTransactions,
+			"total":        len(dexTransactions),
+			"type":         "dex",
+		},
+		"timestamp": time.Now().UTC(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleBlockscoutSync handles synchronization with Blockscout explorer
+func (sdk *BridgeSDK) handleBlockscoutSync(w http.ResponseWriter, r *http.Request) {
+	// This endpoint can be used to trigger manual sync with Blockscout
+	// For now, return current sync status
+
+	syncStatus := map[string]interface{}{
+		"last_sync":     time.Now().UTC(),
+		"blocks_synced": len(sdk.transactions),
+		"status":        "active",
+		"explorer_url":  "https://blockscout.com",
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    syncStatus,
+		"timestamp": time.Now().UTC(),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
