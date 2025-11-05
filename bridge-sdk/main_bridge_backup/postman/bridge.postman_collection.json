@@ -1,0 +1,90 @@
+{
+  "info": {
+    "name": "BlackHole Bridge API",
+    "description": "REST API collection for BlackHole Bridge SDK",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Bridge Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8081/bridge/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["bridge", "health"]
+        }
+      }
+    },
+    {
+      "name": "Get Bridge Statistics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8081/bridge/stats",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["bridge", "stats"]
+        }
+      }
+    },
+    {
+      "name": "Relay Token Approval",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"signed_message\":{\"message\":{\"id\":\"token_approval_001\",\"hash\":\"0x1234567890abcdef\",\"source_chain\":\"ethereum\",\"dest_chain\":\"blackhole\",\"source_address\":\"0x742d35Cc6634C0532925a3b8D4C9db96590c6C87\",\"dest_address\":\"BH1234567890abcdef\",\"amount\":\"1000.0\",\"token_symbol\":\"USDC\",\"status\":\"pending\",\"created_at\":1640995200,\"confirmations\":0,\"block_number\":18500000,\"source_module\":\"TOKEN\",\"topic\":\"token_approval\",\"meta\":{\"spender\":\"0xBridgeContractAddress\",\"allowance\":\"1000.0\"},\"message_version\":\"v1alpha1\"},\"signature\":\"base64_encoded_signature\",\"public_key\":\"base64_encoded_key\",\"signature_scheme\":\"ed25519\",\"nonce\":12345,\"timestamp\":1640995200},\"target_chain\":\"blackhole\"}"
+        },
+        "url": {
+          "raw": "http://localhost:8081/v1/bridge/relay",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["v1", "bridge", "relay"]
+        }
+      }
+    },
+    {
+      "name": "Relay DEX Swap",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"signed_message\":{\"message\":{\"id\":\"dex_swap_001\",\"hash\":\"0xabcdef1234567890\",\"source_chain\":\"ethereum\",\"dest_chain\":\"blackhole\",\"source_address\":\"0x742d35Cc6634C0532925a3b8D4C9db96590c6C87\",\"dest_address\":\"BH1234567890abcdef\",\"amount\":\"1.0\",\"token_symbol\":\"ETH\",\"status\":\"pending\",\"created_at\":1640995200,\"confirmations\":0,\"block_number\":18500000,\"source_module\":\"DEX\",\"topic\":\"dex_swap\",\"meta\":{\"pair\":\"ETH/USDC\",\"amountIn\":\"1.0\",\"amountOut\":\"1800.0\"},\"message_version\":\"v1alpha1\"},\"signature\":\"base64_encoded_signature\",\"public_key\":\"base64_encoded_key\",\"signature_scheme\":\"ed25519\",\"nonce\":67890,\"timestamp\":1640995200},\"target_chain\":\"blackhole\"}"
+        },
+        "url": {
+          "raw": "http://localhost:8081/v1/bridge/relay",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["v1", "bridge", "relay"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8081",
+      "type": "string"
+    }
+  ]
+}
