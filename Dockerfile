@@ -57,7 +57,11 @@ RUN mkdir -p data logs config media \
 
 # Copy binaries from builder
 COPY --from=builder /app/core/relay-chain/blockchain ./
+<<<<<<< Updated upstream
 COPY --from=builder /app/bridge-sdk/main_bridge/bridge-sdk ./
+=======
+COPY --from=builder /app/bridge-sdk/main_bridge ./
+>>>>>>> Stashed changes
 COPY --from=builder /app/bridge-sdk/media ./media
 
 # Copy environment file

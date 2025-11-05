@@ -32,8 +32,8 @@ COPY bridge-sdk/ ./bridge-sdk/
 # RUN go mod download
 
 # Build the bridge-sdk application
-WORKDIR /app/bridge-sdk/example
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o bridge-sdk main.go
+WORKDIR /app/bridge-sdk/main_bridge
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o main_bridge main.go 
 
 # Final stage - minimal runtime image
 FROM alpine:latest
