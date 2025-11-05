@@ -13,6 +13,11 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// EventHandler interface for handling blockchain events
+type EventHandler interface {
+	HandleEvent(event Event) error
+}
+
 // EthereumListener handles Ethereum blockchain events
 type EthereumListener struct {
 	client       *ethclient.Client

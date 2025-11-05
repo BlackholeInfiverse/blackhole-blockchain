@@ -1,3 +1,4 @@
+
 version: '3.8'
 
 networks:
@@ -6,9 +7,25 @@ networks:
     name: blackhole-network
 
 volumes:
-  blockchain-data:
+  blockchain-data-1:
     driver: local
-  blockchain-logs:
+  blockchain-logs-1:
+    driver: local
+  blockchain-data-2:
+    driver: local
+  blockchain-logs-2:
+    driver: local
+  blockchain-data-3:
+    driver: local
+  blockchain-logs-3:
+    driver: local
+  blockchain-data-4:
+    driver: local
+  blockchain-logs-4:
+    driver: local
+  blockchain-data-5:
+    driver: local
+  blockchain-logs-5:
     driver: local
   bridge-data:
     driver: local
@@ -16,15 +33,15 @@ volumes:
     driver: local
 
 services:
-  # Main BlackHole Blockchain Node
-  blockchain:
+  # BlackHole Blockchain Node 1
+  blockchain-node-1:
     build: 
       context: .
       dockerfile: Dockerfile
-    container_name: blackhole-blockchain
+    container_name: blackhole-node-1
     command: ["./blockchain"]
     ports:
-      - "8081:8080"   # Main blockchain dashboard
+      - "8081:8080"   # Dashboard
       - "8545:8545"   # RPC endpoint
       - "30303:30303" # P2P networking
     environment:
@@ -38,13 +55,165 @@ services:
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
-      - NODE_ID=${NODE_ID:-blackhole-node-1}
+      - NODE_ID=blackhole-node-1
     volumes:
-      - blockchain-data:/app/data
-      - blockchain-logs:/app/logs
+      - blockchain-data-1:/app/data
+      - blockchain-logs-1:/app/logs
     networks:
       - blackhole-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # BlackHole Blockchain Node 2
+  blockchain-node-2:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node-2
+    command: ["./blockchain"]
+    ports:
+      - "8082:8080"   # Dashboard
+      - "8546:8545"   # RPC endpoint
+      - "30304:30303" # P2P networking
+    environment:
+      - NODE_ENV=production
+      - DOCKER_MODE=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BLOCKCHAIN_PORT=8080
+      - RPC_PORT=8545
+      - P2P_PORT=30303
+      - DATABASE_PATH=./data/blockchain.db
+      - LOG_FILE=./logs/blockchain.log
+      - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
+      - MAX_PEERS=${MAX_PEERS:-50}
+      - NODE_ID=blackhole-node-2
+    volumes:
+      - blockchain-data-2:/app/data
+      - blockchain-logs-2:/app/logs
+    networks:
+      - blackhole-network
+    restart: unless-stopped
+    depends_on:
+      - blockchain-node-1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # BlackHole Blockchain Node 3
+  blockchain-node-3:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node-3
+    command: ["./blockchain"]
+    ports:
+      - "8083:8080"   # Dashboard
+      - "8547:8545"   # RPC endpoint
+      - "30305:30303" # P2P networking
+    environment:
+      - NODE_ENV=production
+      - DOCKER_MODE=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BLOCKCHAIN_PORT=8080
+      - RPC_PORT=8545
+      - P2P_PORT=30303
+      - DATABASE_PATH=./data/blockchain.db
+      - LOG_FILE=./logs/blockchain.log
+      - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
+      - MAX_PEERS=${MAX_PEERS:-50}
+      - NODE_ID=blackhole-node-3
+    volumes:
+      - blockchain-data-3:/app/data
+      - blockchain-logs-3:/app/logs
+    networks:
+      - blackhole-network
+    restart: unless-stopped
+    depends_on:
+      - blockchain-node-1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # BlackHole Blockchain Node 4
+  blockchain-node-4:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node-4
+    command: ["./blockchain"]
+    ports:
+      - "8084:8080"   # Dashboard
+      - "8548:8545"   # RPC endpoint
+      - "30306:30303" # P2P networking
+    environment:
+      - NODE_ENV=production
+      - DOCKER_MODE=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BLOCKCHAIN_PORT=8080
+      - RPC_PORT=8545
+      - P2P_PORT=30303
+      - DATABASE_PATH=./data/blockchain.db
+      - LOG_FILE=./logs/blockchain.log
+      - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
+      - MAX_PEERS=${MAX_PEERS:-50}
+      - NODE_ID=blackhole-node-4
+    volumes:
+      - blockchain-data-4:/app/data
+      - blockchain-logs-4:/app/logs
+    networks:
+      - blackhole-network
+    restart: unless-stopped
+    depends_on:
+      - blockchain-node-1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # BlackHole Blockchain Node 5
+  blockchain-node-5:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: blackhole-node-5
+    command: ["./blockchain"]
+    ports:
+      - "8085:8080"   # Dashboard
+      - "8549:8545"   # RPC endpoint
+      - "30307:30303" # P2P networking
+    environment:
+      - NODE_ENV=production
+      - DOCKER_MODE=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BLOCKCHAIN_PORT=8080
+      - RPC_PORT=8545
+      - P2P_PORT=30303
+      - DATABASE_PATH=./data/blockchain.db
+      - LOG_FILE=./logs/blockchain.log
+      - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
+      - MAX_PEERS=${MAX_PEERS:-50}
+      - NODE_ID=blackhole-node-5
+    volumes:
+      - blockchain-data-5:/app/data
+      - blockchain-logs-5:/app/logs
+    networks:
+      - blackhole-network
+    restart: unless-stopped
+    depends_on:
+      - blockchain-node-1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 30s

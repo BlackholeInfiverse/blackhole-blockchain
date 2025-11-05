@@ -37,7 +37,6 @@ import (
 
 	// BlackHole blockchain imports
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
-	core "github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk/core"
 )
 
 // BlackHoleBlockchainInterface represents the interface to the real blockchain
@@ -1791,12 +1790,13 @@ func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 
 	// Check if we should use real blockchain listeners
 	if sdk.useRealBlockchainListeners {
-		// Use real blockchain listener
-		realListener := core.NewRealBlockchainListener(sdk)
-		return realListener.StartEthereumListener(ctx)
+		// Use real blockchain adapter for production
+		adapter := NewBlockchainAdapter(sdk)
+		return adapter.StartEthereumListener(ctx)
 	}
 
-	// Otherwise use mock listener (default for development)
+	// Mock listener for development/testing
+	sdk.logger.Warn("⚠️ Using mock Ethereum listener - set USE_REAL_BLOCKCHAIN_LISTENERS=true for production")
 	go func() {
 		ticker := time.NewTicker(8 * time.Second)
 		defer ticker.Stop()
@@ -1838,12 +1838,13 @@ func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 
 	// Check if we should use real blockchain listeners
 	if sdk.useRealBlockchainListeners {
-		// Use real blockchain listener
-		realListener := core.NewRealBlockchainListener(sdk)
-		return realListener.StartSolanaListener(ctx)
+		// Use real blockchain adapter for production
+		adapter := NewBlockchainAdapter(sdk)
+		return adapter.StartSolanaListener(ctx)
 	}
 
-	// Otherwise use mock listener (default for development)
+	// Mock listener for development/testing
+	sdk.logger.Warn("⚠️ Using mock Solana listener - set USE_REAL_BLOCKCHAIN_LISTENERS=true for production")
 	go func() {
 		ticker := time.NewTicker(6 * time.Second)
 		defer ticker.Stop()
@@ -23892,4 +23893,3 @@ var (
 //
 //     // ... rest of existing code ...
 // }
->>>>>>> 0c2901389bee48c6fb2dcea9e21742df52f94e43:bridge-sdk/main_bridge/main.go

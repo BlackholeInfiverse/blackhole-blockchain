@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"time"
 
 	"go.etcd.io/bbolt"
@@ -175,7 +176,7 @@ func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 	// Check if we should use real blockchain listeners
 	if sdk.useRealBlockchainListeners {
 		// Use real blockchain listener
-		realListener := core.NewRealBlockchainListener(sdk)
+		realListener := NewRealBlockchainListener(sdk)
 		return realListener.StartEthereumListener(ctx)
 	}
 
@@ -261,7 +262,7 @@ func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 	// Check if we should use real blockchain listeners
 	if sdk.useRealBlockchainListeners {
 		// Use real blockchain listener
-		realListener := core.NewRealBlockchainListener(sdk)
+		realListener := NewRealBlockchainListener(sdk)
 		return realListener.StartSolanaListener(ctx)
 	}
 
@@ -372,7 +373,7 @@ func (sdk *BridgeSDK) HandleRelayEth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req pb.SignedBridgeMessage // Assuming generated pb from proto
+	var req SignedBridgeMessage
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
@@ -411,7 +412,7 @@ func (sdk *BridgeSDK) HandleRelayEth(w http.ResponseWriter, r *http.Request) {
 	sdk.AddEvent("relay_eth", "ethereum", tx.Hash, map[string]interface{}{"amount": tx.Amount})
 
 	// Response
-	resp := pb.RelayToChainResponse{Success: true, RelayTransactionId: tx.ID}
+	resp := RelayToChainResponse{Success: true, RelayTransactionId: tx.ID}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -423,7 +424,7 @@ func (sdk *BridgeSDK) HandleRelaySol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req pb.SignedBridgeMessage
+	var req SignedBridgeMessage
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
@@ -456,13 +457,13 @@ func (sdk *BridgeSDK) HandleRelaySol(w http.ResponseWriter, r *http.Request) {
 
 	sdk.AddEvent("relay_sol", "solana", tx.Hash, map[string]interface{}{"amount": tx.Amount})
 
-	resp := pb.RelayToChainResponse{Success: true, RelayTransactionId: tx.ID}
+	resp := RelayToChainResponse{Success: true, RelayTransactionId: tx.ID}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
 // verifySignature stub for Ed25519 (implement in core/signature.go)
-func verifySignature(req *pb.SignedBridgeMessage) bool {
+func verifySignature(req *SignedBridgeMessage) bool {
 	// TODO: Implement Ed25519 verification using crypto/ed25519
 	return true // Stub for now
 }

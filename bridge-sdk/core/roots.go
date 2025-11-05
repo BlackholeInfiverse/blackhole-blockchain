@@ -49,7 +49,13 @@ func calculateAvgLatency(events []Event) time.Duration {
 	}
 	var total time.Duration
 	for _, e := range events {
-		total += e.ProcessingTime
+		// Calculate processing time from timestamp to processed time
+		if e.ProcessedAt != nil {
+			total += e.ProcessedAt.Sub(e.Timestamp)
+		}
+	}
+	if total == 0 {
+		return 0
 	}
 	return total / time.Duration(len(events))
 }

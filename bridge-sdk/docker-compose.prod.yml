@@ -1,0 +1,331 @@
+version: '3.9'
+
+networks:
+  bridge-prod-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1500
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+
+volumes:
+  bridge-db-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BRIDGE_DATA_PATH:-/data/bridge}
+  bridge-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BRIDGE_LOGS_PATH:-/logs/bridge}
+  prometheus-data:
+    driver: local
+  postgres-data:
+    driver: local
+
+services:
+  # PostgreSQL for logging and metrics storage
+  postgres:
+    image: postgres:16-alpine
+    container_name: bridge-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bridge_db}
+      POSTGRES_USER: ${POSTGRES_USER:-bridge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - bridge-prod-network
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bridge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: bridge-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    networks:
+      - bridge-prod-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+
+  # Bridge SDK Service - Node 1 (Primary)
+  bridge-sdk-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: bridge-sdk-primary
+    environment:
+      NODE_ENV: production
+      NODE_ID: bridge-sdk-1
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_PATH: /app/data/bridge.db
+      LOG_FILE: /app/logs/bridge.log
+      ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL}
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
+      BLACKHOLE_RPC_URL: ${BLACKHOLE_RPC_URL}
+      ETHEREUM_PRIVATE_KEY: ${ETHEREUM_PRIVATE_KEY}
+      SOLANA_PRIVATE_KEY: ${SOLANA_PRIVATE_KEY}
+      BLACKHOLE_PRIVATE_KEY: ${BLACKHOLE_PRIVATE_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      API_KEY: ${API_KEY}
+      REPLAY_PROTECTION_ENABLED: "true"
+      CIRCUIT_BREAKER_ENABLED: "true"
+      MAX_RETRIES: "5"
+      RETRY_DELAY_MS: "5000"
+      METRICS_ENABLED: "true"
+      METRICS_PORT: "9091"
+      POSTGRES_URL: postgresql://${POSTGRES_USER:-bridge}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bridge_db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://yourdomain.com}
+    volumes:
+      - bridge-db-data:/app/data
+      - bridge-logs:/app/logs
+    ports:
+      - "8084:8084"   # Bridge API & Dashboard
+      - "9091:9091"   # Metrics
+      - "8545:8080"   # RPC endpoint
+    networks:
+      - bridge-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "Authorization: Bearer ${API_KEY}", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        labels: "service=bridge-sdk-1"
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc:
+        soft: 65536
+        hard: 65536
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+  # Bridge SDK Service - Node 2 (Replica)
+  bridge-sdk-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: bridge-sdk-replica-1
+    environment:
+      NODE_ENV: production
+      NODE_ID: bridge-sdk-2
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_PATH: /app/data/bridge.db
+      LOG_FILE: /app/logs/bridge.log
+      ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL}
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
+      BLACKHOLE_RPC_URL: ${BLACKHOLE_RPC_URL}
+      ETHEREUM_PRIVATE_KEY: ${ETHEREUM_PRIVATE_KEY}
+      SOLANA_PRIVATE_KEY: ${SOLANA_PRIVATE_KEY}
+      BLACKHOLE_PRIVATE_KEY: ${BLACKHOLE_PRIVATE_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      API_KEY: ${API_KEY}
+      REPLAY_PROTECTION_ENABLED: "true"
+      CIRCUIT_BREAKER_ENABLED: "true"
+      MAX_RETRIES: "5"
+      RETRY_DELAY_MS: "5000"
+      METRICS_ENABLED: "true"
+      METRICS_PORT: "9092"
+      POSTGRES_URL: postgresql://${POSTGRES_USER:-bridge}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bridge_db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://yourdomain.com}
+    volumes:
+      - bridge-db-data:/app/data
+      - bridge-logs:/app/logs
+    ports:
+      - "8085:8084"
+      - "9092:9092"
+      - "8546:8080"
+    networks:
+      - bridge-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "Authorization: Bearer ${API_KEY}", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        labels: "service=bridge-sdk-2"
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc:
+        soft: 65536
+        hard: 65536
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+  # Bridge SDK Service - Node 3 (Replica)
+  bridge-sdk-3:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: bridge-sdk-replica-2
+    environment:
+      NODE_ENV: production
+      NODE_ID: bridge-sdk-3
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_PATH: /app/data/bridge.db
+      LOG_FILE: /app/logs/bridge.log
+      ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL}
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
+      BLACKHOLE_RPC_URL: ${BLACKHOLE_RPC_URL}
+      ETHEREUM_PRIVATE_KEY: ${ETHEREUM_PRIVATE_KEY}
+      SOLANA_PRIVATE_KEY: ${SOLANA_PRIVATE_KEY}
+      BLACKHOLE_PRIVATE_KEY: ${BLACKHOLE_PRIVATE_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      API_KEY: ${API_KEY}
+      REPLAY_PROTECTION_ENABLED: "true"
+      CIRCUIT_BREAKER_ENABLED: "true"
+      MAX_RETRIES: "5"
+      RETRY_DELAY_MS: "5000"
+      METRICS_ENABLED: "true"
+      METRICS_PORT: "9093"
+      POSTGRES_URL: postgresql://${POSTGRES_USER:-bridge}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bridge_db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://yourdomain.com}
+    volumes:
+      - bridge-db-data:/app/data
+      - bridge-logs:/app/logs
+    ports:
+      - "8086:8084"
+      - "9093:9093"
+      - "8547:8080"
+    networks:
+      - bridge-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "Authorization: Bearer ${API_KEY}", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        labels: "service=bridge-sdk-3"
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc:
+        soft: 65536
+        hard: 65536
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+  # Nginx reverse proxy with load balancing
+  nginx:
+    image: nginx:alpine
+    container_name: bridge-nginx
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - bridge-prod-network
+    depends_on:
+      - bridge-sdk-1
+      - bridge-sdk-2
+      - bridge-sdk-3
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
