@@ -1,5 +1,4 @@
 
-version: '3.8'
 
 networks:
   blackhole-network:
@@ -41,16 +40,16 @@ services:
     container_name: blackhole-node-1
     command: ["./blockchain"]
     ports:
-      - "8081:8080"   # Dashboard
+      - "8080:8080"   # Dashboard
       - "8545:8545"   # RPC endpoint
-      - "30303:30303" # P2P networking
+      - "30303:3000" # P2P networking
     environment:
       - NODE_ENV=production
       - DOCKER_MODE=true
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
-      - P2P_PORT=30303
+      - P2P_PORT=3000
       - DATABASE_PATH=./data/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
@@ -77,16 +76,16 @@ services:
     container_name: blackhole-node-2
     command: ["./blockchain"]
     ports:
-      - "8082:8080"   # Dashboard
+      - "8081:8080"   # Dashboard
       - "8546:8545"   # RPC endpoint
-      - "30304:30303" # P2P networking
+      - "30304:3000" # P2P networking
     environment:
       - NODE_ENV=production
       - DOCKER_MODE=true
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
-      - P2P_PORT=30303
+      - P2P_PORT=3000
       - DATABASE_PATH=./data/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
@@ -115,16 +114,16 @@ services:
     container_name: blackhole-node-3
     command: ["./blockchain"]
     ports:
-      - "8083:8080"   # Dashboard
+      - "8082:8080"   # Dashboard
       - "8547:8545"   # RPC endpoint
-      - "30305:30303" # P2P networking
+      - "30305:3000" # P2P networking
     environment:
       - NODE_ENV=production
       - DOCKER_MODE=true
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
-      - P2P_PORT=30303
+      - P2P_PORT=3000
       - DATABASE_PATH=./data/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
@@ -153,16 +152,16 @@ services:
     container_name: blackhole-node-4
     command: ["./blockchain"]
     ports:
-      - "8084:8080"   # Dashboard
+      - "8083:8080"   # Dashboard
       - "8548:8545"   # RPC endpoint
-      - "30306:30303" # P2P networking
+      - "30306:3000" # P2P networking
     environment:
       - NODE_ENV=production
       - DOCKER_MODE=true
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
-      - P2P_PORT=30303
+      - P2P_PORT=3000
       - DATABASE_PATH=./data/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
@@ -193,14 +192,14 @@ services:
     ports:
       - "8085:8080"   # Dashboard
       - "8549:8545"   # RPC endpoint
-      - "30307:30303" # P2P networking
+      - "30307:3000" # P2P networking
     environment:
       - NODE_ENV=production
       - DOCKER_MODE=true
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
-      - P2P_PORT=30303
+      - P2P_PORT=3000
       - DATABASE_PATH=./data/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}

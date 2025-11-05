@@ -70,6 +70,9 @@ type Blockchain struct {
 
 	// Mempool configuration
 	MempoolThreshold int // Number of transactions to trigger auto block creation
+
+	// P2P identity management
+	PeerIdentity *PeerIdentity
 }
 
 type RealBlockchain struct {
@@ -195,6 +198,12 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		genesis = createGenesisBlock()
 	}
 
+	// Load or generate persistent peer identity (main node only)
+	peerIdentity, err := LoadOrGeneratePeerIdentity(p2pPort)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load/generate peer identity: %w", err)
+	}
+
 	// Initialize P2P node
 	node, err := NewNode(context.Background(), p2pPort)
 	if err != nil {
@@ -221,6 +230,7 @@ func NewBlockchain(p2pPort int) (*Blockchain, error) {
 		TokenRegistry:    make(map[string]*token.Token),
 		MempoolThreshold: 3, // Default: create block when 3 transactions are pending
 		AIFraudChecker:   NewAIFraudChecker(),   // Initialize AI fraud detection integration
+		PeerIdentity:     peerIdentity,         // Persistent P2P identity (main node only)
 	}
 
 	// Initialize slashing manager after TokenRegistry is created
@@ -1859,6 +1869,44 @@ func (bc *Blockchain) getTokenRegistryInfo() map[string]interface{} {
 		}
 	}
 	return tokens
+}
+
+// GetPeerInfo returns P2P network information (main node only)
+func (bc *Blockchain) GetPeerInfo() map[string]interface{} {
+	peerInfo := map[string]interface{}{
+		"chainName":      "blackhole-mainnet",
+		"version":        "1.0.0",
+		"chainID":        "blackhole-1",
+		"isMainNode":     false,
+		"peerID":         "unknown",
+		"mainAddress":    "not available",
+		"connectedPeers": len(bc.P2PNode.peers),
+		"features": []string{
+			"ed25519_signing",
+			"message_verification",
+			"pub_sub_gossip",
+			"mdns_discovery",
+		},
+		"nodeStatus": "active",
+	}
+
+	// Include persistent peer identity if available (main node only)
+	if bc.PeerIdentity != nil && bc.PeerIdentity.IsMainNode {
+		peerInfo["isMainNode"] = true
+		peerInfo["peerID"] = bc.PeerIdentity.GetPeerID()
+		peerInfo["mainAddress"] = bc.PeerIdentity.GetPeerAddress()
+		peerInfo["identityPersistent"] = true
+	} else {
+		peerInfo["identityPersistent"] = false
+	}
+
+	// Add libp2p peer info from P2P node
+	if bc.P2PNode != nil && bc.P2PNode.Host != nil {
+		peerInfo["libp2pPeerID"] = bc.P2PNode.Host.ID().String()
+		peerInfo["libp2pAddresses"] = bc.P2PNode.Host.Addrs()
+	}
+
+	return peerInfo
 }
 
 // AddTokenBalance adds tokens to an address (admin function for testing)

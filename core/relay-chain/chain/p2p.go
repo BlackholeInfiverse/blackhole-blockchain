@@ -58,6 +58,7 @@ func NewNode(ctx context.Context, port int) (*Node, error) {
 
 	h.SetStreamHandler("/blackhole/1.0.0", node.handleStream)
 
+	// Display peer information (will be persistent for main node, fresh for others)
 	fmt.Println("🆔 Peer ID:", h.ID().String())
 	for _, addr := range h.Addrs() {
 		fullAddr := fmt.Sprintf("%s/p2p/%s", addr.String(), h.ID().String())
