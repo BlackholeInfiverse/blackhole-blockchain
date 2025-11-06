@@ -3,8 +3,11 @@ package chain
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -40,11 +43,21 @@ func GetLocalIP() string {
 
 func NewNode(ctx context.Context, port int) (*Node, error) {
 	ip := GetLocalIP()
-	// ip := "192.168.45.152"
 	listenAddr := fmt.Sprintf("/ip4/%s/tcp/%d", ip, port)
+
+	// Load or generate persistent libp2p identity
+	pi, err := LoadOrGeneratePeerIdentity(port)
+	if err != nil {
+		return nil, fmt.Errorf("p2p identity error: %w", err)
+	}
+	priv, err := pi.GetPrivKey()
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal libp2p privkey: %w", err)
+	}
 
 	h, err := libp2p.New(
 		libp2p.ListenAddrStrings(listenAddr),
+libp2p.Identity(priv),
 	)
 	if err != nil {
 		return nil, err
@@ -58,14 +71,26 @@ func NewNode(ctx context.Context, port int) (*Node, error) {
 
 	h.SetStreamHandler("/blackhole/1.0.0", node.handleStream)
 
-	// Display peer information (will be persistent for main node, fresh for others)
+	// Display peer information
 	fmt.Println("🆔 Peer ID:", h.ID().String())
+	multiaddrs := make([]string, 0)
 	for _, addr := range h.Addrs() {
 		fullAddr := fmt.Sprintf("%s/p2p/%s", addr.String(), h.ID().String())
+		multiaddrs = append(multiaddrs, fullAddr)
 		fmt.Println("🚀 Your peer multiaddr:")
 		fmt.Println("   " + fullAddr)
 		break
 	}
+
+	// Persist peerinfo.json alongside key for other components (bridge) to discover
+	_ = os.MkdirAll(pi.IdentityDir, 0o700)
+	info := map[string]interface{}{
+		"peerId":     h.ID().String(),
+		"multiaddrs": multiaddrs,
+		"lastSeen":   time.Now().UTC().Format(time.RFC3339),
+	}
+	b, _ := json.MarshalIndent(info, "", "  ")
+	_ = os.WriteFile(filepath.Join(pi.IdentityDir, "peerinfo.json"), b, 0o600)
 
 	return node, nil
 }

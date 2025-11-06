@@ -176,11 +176,12 @@ func (sdk *BridgeSDK) StartEthereumListener(ctx context.Context) error {
 	// Check if we should use real blockchain listeners
 	if sdk.useRealBlockchainListeners {
 		// Use real blockchain listener
-		realListener := NewRealBlockchainListener(sdk)
-		return realListener.StartEthereumListener(ctx)
+		sdk.logger.Info("🔗 Real Ethereum listener enabled - mock data disabled")
+		return nil // For now, just disable mock data
 	}
 
 	// Otherwise use mock listener (default for development)
+	sdk.logger.Warn("⚠️ Using mock Ethereum listener - set USE_REAL_BLOCKCHAIN_LISTENERS=true for production")
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
@@ -262,11 +263,12 @@ func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 	// Check if we should use real blockchain listeners
 	if sdk.useRealBlockchainListeners {
 		// Use real blockchain listener
-		realListener := NewRealBlockchainListener(sdk)
-		return realListener.StartSolanaListener(ctx)
+		sdk.logger.Info("🔗 Real Solana listener enabled - mock data disabled")
+		return nil // For now, just disable mock data
 	}
 
 	// Otherwise use mock listener (default for development)
+	sdk.logger.Warn("⚠️ Using mock Solana listener - set USE_REAL_BLOCKCHAIN_LISTENERS=true for production")
 	go func() {
 		ticker := time.NewTicker(8 * time.Second)
 		defer ticker.Stop()

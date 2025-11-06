@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk/core"
+	core "github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk/core"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
@@ -59,10 +59,7 @@ func main() {
 	if dbPath == "" {
 		dbPath = "bridge.db"
 	}
-	sdk, err := core.NewBridgeSDK(dbPath, config)
-	if err != nil {
-		log.Fatalf("Failed to initialize Bridge SDK: %v", err)
-	}
+	sdk := core.NewBridgeSDK(config)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

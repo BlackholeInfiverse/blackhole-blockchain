@@ -81,7 +81,7 @@ func NewBlockchainClient(port int) (*BlockchainClient, error) {
 		P2PHost:             h,
 		ConnectedPeers:      make([]string, 0),
 		APIEndpoint:         "",                      // Will be set when connecting to peers
-		BridgeEndpoint:      "http://localhost:8083", // Default bridge endpoint
+		BridgeEndpoint:      "http://localhost:8084", // Default bridge endpoint
 		BridgeSubscriptions: make(map[string]*BridgeEventSubscription),
 	}, nil
 }
@@ -753,9 +753,9 @@ func (client *BlockchainClient) queryBalanceViaHTTPPort(address, tokenSymbol, po
 // sendTransactionViaHTTP sends a transaction to the blockchain node via HTTP API
 func (client *BlockchainClient) sendTransactionViaHTTP(tx *chain.Transaction) error {
 	// Get blockchain API URL from environment or use default
-	apiURL := os.Getenv("BLOCKCHAIN_API_URL")
+apiURL := os.Getenv("BLOCKCHAIN_API_URL")
 	if apiURL == "" {
-		apiURL = "http://localhost:8081"
+		apiURL = "http://localhost:8080"
 	}
 	
 	fmt.Printf("📡 Submitting transaction via HTTP (2-step process)\n")

@@ -1,208 +1,121 @@
 package chain
 
 import (
-	"crypto/ed25519"
-	"encoding/hex"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+
+	libp2pCrypto "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-// PeerIdentity manages persistent P2P node identity
+// PeerIdentity manages persistent P2P node identity backed by libp2p keys
 type PeerIdentity struct {
-	PrivateKey   ed25519.PrivateKey
-	PublicKey    ed25519.PublicKey
+	PrivKeyBytes []byte // marshaled libp2p private key (protobuf)
 	PeerID       string
 	MultiAddr    string
 	Port         int
 	IsMainNode   bool
-	IdentityFile string
+	IdentityDir  string
+	KeyPath      string // <IdentityDir>/key.pem
+	InfoPath     string // <IdentityDir>/peerinfo.json
 }
 
-// LoadOrGeneratePeerIdentity loads an existing peer identity or generates a new one
-// Only main node (port 3000) gets persistent identity; other nodes generate fresh ones
+// identityDir determines where to persist identity (env override supported)
+func identityDir() string {
+	if d := os.Getenv("BLOCKCHAIN_IDENTITY_DIR"); d != "" {
+		return d
+	}
+	// Prefer host-mounted path if available, otherwise local folder
+	defaultRoot := filepath.FromSlash("/data/blockchain")
+	if st, err := os.Stat(defaultRoot); err == nil && st.IsDir() {
+		return filepath.Join(defaultRoot, "identity")
+	}
+	return filepath.Join(".", "data", "blockchain", "identity")
+}
+
+// LoadOrGeneratePeerIdentity loads existing libp2p identity or creates one (persists across runs)
 func LoadOrGeneratePeerIdentity(port int) (*PeerIdentity, error) {
-	identity := &PeerIdentity{
-		Port:       port,
-		IsMainNode: port == 3000, // Only port 3000 is the main node
+pi := &PeerIdentity{Port: port, IsMainNode: port == 3000}
+pi.IdentityDir = identityDir()
+	pi.KeyPath = filepath.Join(pi.IdentityDir, "key.pem")
+	pi.InfoPath = filepath.Join(pi.IdentityDir, "peerinfo.json")
+
+	// Ensure directory exists
+	if err := os.MkdirAll(pi.IdentityDir, 0o700); err != nil {
+		return nil, fmt.Errorf("failed to create identity dir: %w", err)
 	}
 
-	// Only persist identity for main node
-	if identity.IsMainNode {
-		identity.IdentityFile = filepath.Join(".", "peer_identity.key")
-
-		// Try to load existing identity
-		if err := identity.Load(); err == nil {
-			fmt.Printf("✅ Loaded persistent peer identity from %s\n", identity.IdentityFile)
-			return identity, nil
+	// Try loading existing key
+	if b, err := os.ReadFile(pi.KeyPath); err == nil && len(b) > 0 {
+		// Stored as base64 of libp2p protobuf marshaled key
+		raw, err := base64.StdEncoding.DecodeString(string(b))
+		if err != nil {
+			return nil, fmt.Errorf("failed to base64-decode key: %w", err)
 		}
-
-		// Generate new identity and persist it
-		if err := identity.Generate(); err != nil {
-			return nil, fmt.Errorf("failed to generate peer identity: %w", err)
+		priv, err := libp2pCrypto.UnmarshalPrivateKey(raw)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal libp2p private key: %w", err)
 		}
-
-		if err := identity.Save(); err != nil {
-			return nil, fmt.Errorf("failed to save peer identity: %w", err)
+		pub := priv.GetPublic()
+		pid, err := peer.IDFromPublicKey(pub)
+		if err != nil {
+			return nil, fmt.Errorf("failed to derive peer id: %w", err)
 		}
-
-		fmt.Printf("✅ Generated and saved new persistent peer identity to %s\n", identity.IdentityFile)
-		return identity, nil
+		marshaled, _ := libp2pCrypto.MarshalPrivateKey(priv)
+		pi.PrivKeyBytes = marshaled
+		pi.PeerID = pid.String()
+		pi.MultiAddr = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/p2p/%s", pi.Port, pi.PeerID)
+		return pi, nil
 	}
 
-	// For non-main nodes, generate fresh identity without persistence
-	if err := identity.Generate(); err != nil {
-		return nil, fmt.Errorf("failed to generate peer identity: %w", err)
-	}
-
-	fmt.Printf("✅ Generated fresh peer identity for node on port %d (not persisted)\n", port)
-	return identity, nil
-}
-
-// Generate creates a new Ed25519 key pair and derives peer ID
-func (pi *PeerIdentity) Generate() error {
-	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	// Generate a new Ed25519 libp2p key and persist it
+	priv, _, err := libp2pCrypto.GenerateEd25519Key(nil)
 	if err != nil {
-		return fmt.Errorf("failed to generate ed25519 key: %w", err)
+		return nil, fmt.Errorf("failed to generate ed25519 key: %w", err)
 	}
-
-	pi.PublicKey = publicKey
-	pi.PrivateKey = privateKey
-	pi.PeerID = derivePeerID(publicKey)
+	marshaled, err := libp2pCrypto.MarshalPrivateKey(priv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal private key: %w", err)
+	}
+	if err := os.WriteFile(pi.KeyPath, []byte(base64.StdEncoding.EncodeToString(marshaled)), 0o600); err != nil {
+		return nil, fmt.Errorf("failed to write key file: %w", err)
+	}
+	pub := priv.GetPublic()
+	pid, err := peer.IDFromPublicKey(pub)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive peer id: %w", err)
+	}
+	pi.PrivKeyBytes = marshaled
+	pi.PeerID = pid.String()
 	pi.MultiAddr = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/p2p/%s", pi.Port, pi.PeerID)
-
-	return nil
+	return pi, nil
 }
 
-// Save persists the peer identity to disk (only for main node)
-func (pi *PeerIdentity) Save() error {
-	if !pi.IsMainNode {
-		return nil // Skip saving for non-main nodes
+// SavePeerInfo writes a JSON containing peerId and multiaddrs for other services to read
+func (pi *PeerIdentity) SavePeerInfo(multiaddrs []string, bridgeConnected bool) error {
+	info := map[string]interface{}{
+		"peerId":          pi.PeerID,
+		"multiaddrs":      multiaddrs,
+		"bridgeConnected": bridgeConnected,
+		"lastSeen":        fmt.Sprintf("%d", os.Getpid()), // placeholder, real timestamp set by writer
 	}
-
-	if pi.IdentityFile == "" {
-		return fmt.Errorf("identity file path not set")
+	b, _ := json.MarshalIndent(info, "", "  ")
+	if err := os.MkdirAll(pi.IdentityDir, 0o700); err != nil {
+		return err
 	}
-
-	// Create identity data in format: privkey_hex|pubkey_hex|peerid|multiaddr
-	identityData := fmt.Sprintf("%s|%s|%s|%s",
-		hex.EncodeToString(pi.PrivateKey),
-		hex.EncodeToString(pi.PublicKey),
-		pi.PeerID,
-		pi.MultiAddr,
-	)
-
-	// Write to file with restricted permissions (owner read/write only)
-	if err := os.WriteFile(pi.IdentityFile, []byte(identityData), 0600); err != nil {
-		return fmt.Errorf("failed to write identity file: %w", err)
-	}
-
-	return nil
+	return os.WriteFile(pi.InfoPath, b, 0o600)
 }
 
-// Load reads the peer identity from disk (only for main node)
-func (pi *PeerIdentity) Load() error {
-	if !pi.IsMainNode {
-		return fmt.Errorf("only main node can load persistent identity")
-	}
-
-	if pi.IdentityFile == "" {
-		pi.IdentityFile = filepath.Join(".", "peer_identity.key")
-	}
-
-	// Check if file exists
-	data, err := os.ReadFile(pi.IdentityFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("identity file not found: %s", pi.IdentityFile)
-		}
-		return fmt.Errorf("failed to read identity file: %w", err)
-	}
-
-	// Parse identity data
-	parts := strings.Split(string(data), "|")
-	if len(parts) != 4 {
-		return fmt.Errorf("invalid identity file format")
-	}
-
-	// Decode keys
-	privKeyBytes, err := hex.DecodeString(parts[0])
-	if err != nil {
-		return fmt.Errorf("failed to decode private key: %w", err)
-	}
-
-	pubKeyBytes, err := hex.DecodeString(parts[1])
-	if err != nil {
-		return fmt.Errorf("failed to decode public key: %w", err)
-	}
-
-	// Validate key lengths
-	if len(privKeyBytes) != ed25519.PrivateKeySize {
-		return fmt.Errorf("invalid private key size: %d (expected %d)", len(privKeyBytes), ed25519.PrivateKeySize)
-	}
-
-	if len(pubKeyBytes) != ed25519.PublicKeySize {
-		return fmt.Errorf("invalid public key size: %d (expected %d)", len(pubKeyBytes), ed25519.PublicKeySize)
-	}
-
-	pi.PrivateKey = ed25519.PrivateKey(privKeyBytes)
-	pi.PublicKey = ed25519.PublicKey(pubKeyBytes)
-	pi.PeerID = parts[2]
-	pi.MultiAddr = parts[3]
-
-	return nil
-}
-
-// derivePeerID creates a deterministic peer ID from public key
-// Using simplified approach compatible with libp2p naming
-func derivePeerID(pubKey ed25519.PublicKey) string {
-	// Create a deterministic ID from public key hash
-	// Format: 12D3Kooxxx... (libp2p style)
-	keyBytes := pubKey
-	if len(keyBytes) > 16 {
-		keyBytes = keyBytes[:16]
-	}
-
-	// Convert to base32-like representation
-	// Using first 8 bytes of public key as basis
-	idStr := hex.EncodeToString(keyBytes)
-
-	// Create libp2p-compatible peer ID format
-	// Simplified: use Qm + base32 encoded hash
-	peerID := fmt.Sprintf("12D3Koo%s", idStr[:20])
-
-	return peerID
+// GetPrivKey returns the libp2p private key (unmarshaled)
+func (pi *PeerIdentity) GetPrivKey() (libp2pCrypto.PrivKey, error) {
+	return libp2pCrypto.UnmarshalPrivateKey(pi.PrivKeyBytes)
 }
 
 // GetPeerAddress returns the full multiaddr for this peer
-func (pi *PeerIdentity) GetPeerAddress() string {
-	return pi.MultiAddr
-}
+func (pi *PeerIdentity) GetPeerAddress() string { return pi.MultiAddr }
 
 // GetPeerID returns just the peer ID
-func (pi *PeerIdentity) GetPeerID() string {
-	return pi.PeerID
-}
-
-// Delete removes the persistent identity file (useful for cleanup)
-func (pi *PeerIdentity) Delete() error {
-	if !pi.IsMainNode {
-		return nil
-	}
-
-	if pi.IdentityFile != "" && fileExists(pi.IdentityFile) {
-		if err := os.Remove(pi.IdentityFile); err != nil {
-			return fmt.Errorf("failed to delete identity file: %w", err)
-		}
-		fmt.Printf("🗑️ Deleted persistent peer identity file: %s\n", pi.IdentityFile)
-	}
-
-	return nil
-}
-
-// Helper function to check if file exists
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
+func (pi *PeerIdentity) GetPeerID() string { return pi.PeerID }

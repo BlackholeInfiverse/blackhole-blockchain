@@ -80,3 +80,5 @@ ENV ENABLE_DOCUMENTATION=true
 
 # Run the bridge-sdk
 CMD ["./bridge-sdk"]
+
+# Now next task is to update docker setup with wallet connections, read and analyse the wallet structure and running process in services/wallet, it uses peerAddr to connect, so use our persistent address for connecting nodes. it follows the command 'go run main.go -port 9000 -peerAddr <peer_Address>'

@@ -146,17 +146,32 @@ func main() {
 	}
 
 	// Connect to blockchain node
-	if *peerAddr != "" {
-		fmt.Printf("🔗 Connecting to blockchain node: %s\n", *peerAddr)
-		if err := wallet.DefaultBlockchainClient.ConnectToBlockchain(*peerAddr); err != nil {
+	peer := strings.TrimSpace(*peerAddr)
+	if peer == "" {
+		// Try env override
+		peer = strings.TrimSpace(os.Getenv("BLOCKCHAIN_PEER_ADDRESS"))
+	}
+	if peer == "" {
+		// Try to auto-discover from local API (host mode)
+		if resp, err := http.Get("http://localhost:8080/api/p2p/info"); err == nil {
+			defer resp.Body.Close()
+			var info struct{ PeerId string `json:"peerId"` }
+			if err := json.NewDecoder(resp.Body).Decode(&info); err == nil && info.PeerId != "" {
+				peer = "/ip4/127.0.0.1/tcp/30303/p2p/" + info.PeerId
+			}
+		}
+	}
+	if peer != "" {
+		fmt.Printf("🔗 Connecting to blockchain node: %s\n", peer)
+		if err := wallet.DefaultBlockchainClient.ConnectToBlockchain(peer); err != nil {
 			fmt.Printf("⚠️ Failed to connect to blockchain node: %v\n", err)
 			fmt.Println("⚠️ Wallet will work in offline mode. Check the peer address and try again.")
 		} else {
 			fmt.Println("✅ Successfully connected to blockchain node!")
 		}
 	} else {
-		fmt.Println("⚠️ No peer address provided. Use -peerAddr flag to connect to blockchain node.")
-		fmt.Println("⚠️ Example: go run main.go -peerAddr /ip4/127.0.0.1/tcp/3000/p2p/12D3KooWEHMeACYKmddCU7yvY7FSN78CnhC3bENFmkCcouwu1z8R")
+		fmt.Println("⚠️ No peer address provided. Use -peerAddr flag or set BLOCKCHAIN_PEER_ADDRESS.")
+		fmt.Println("⚠️ Example: go run main.go -peerAddr /ip4/127.0.0.1/tcp/30303/p2p/12D3KooW...")
 		fmt.Println("⚠️ Wallet will work in offline mode.")
 	}
 
@@ -3371,7 +3386,7 @@ func serveDashboard(w http.ResponseWriter, r *http.Request) {
         // Check for OTC events (real-time updates)
         async function checkOTCEvents() {
             try {
-                const response = await fetch('http://localhost:8081/api/otc/events');
+const response = await fetch('http://localhost:8080/api/otc/events');
                 const result = await response.json();
 
                 if (result.success && result.data && result.data.length > 0) {
@@ -3649,7 +3664,7 @@ func serveDashboard(w http.ResponseWriter, r *http.Request) {
             }
 
             try {
-                const response = await fetch('http://localhost:8081/api/cross-chain/quote', {
+const response = await fetch('http://localhost:8080/api/cross-chain/quote', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -5289,7 +5304,7 @@ func cancelOTCOrderOnBlockchain(orderID, canceller string) (bool, error) {
 
 func matchOTCOrderOnBlockchain(orderID, counterparty string) (bool, error) {
 	// Try to connect to blockchain API
-	blockchainURL := "http://localhost:8081/api/otc/match"
+blockchainURL := "http://localhost:8080/api/otc/match"
 
 	requestData := map[string]interface{}{
 		"order_id":     orderID,
@@ -5333,8 +5348,8 @@ func getBlockchainAPIURL() string {
 	if url := os.Getenv("BLOCKCHAIN_API_URL"); url != "" {
 		return url
 	}
-	// Default to first blockchain node
-	return "http://localhost:8081"
+	// Default to main blockchain node UI/API port
+	return "http://localhost:8080"
 }
 
 func testBlockchainConnection() bool {

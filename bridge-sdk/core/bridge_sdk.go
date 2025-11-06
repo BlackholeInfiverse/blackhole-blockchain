@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/bbolt"
+	"encoding/json"
 )
 
 // Main BridgeSDK struct
@@ -302,6 +303,58 @@ func (sdk *BridgeSDK) GetTransactionStatus(id string) (*Transaction, error) {
 	}
 
 	return tx, nil
+}
+
+// incrementBlockedReplays increments the blocked replays counter
+func (sdk *BridgeSDK) incrementBlockedReplays() {
+	sdk.blockedMutex.Lock()
+	defer sdk.blockedMutex.Unlock()
+	sdk.blockedReplays++
+}
+
+// saveTransaction saves a transaction to the database and in-memory store
+func (sdk *BridgeSDK) saveTransaction(tx *Transaction) {
+	sdk.transactionsMutex.Lock()
+	defer sdk.transactionsMutex.Unlock()
+	sdk.transactions[tx.ID] = tx
+
+	// Also save to database
+	sdk.db.Update(func(boltTx *bbolt.Tx) error {
+		bucket := boltTx.Bucket([]byte("transactions"))
+		if bucket == nil {
+			return fmt.Errorf("transactions bucket not found")
+		}
+
+		data, err := json.Marshal(tx)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(tx.ID), data)
+	})
+}
+
+// addEvent adds an event to the system
+func (sdk *BridgeSDK) addEvent(eventType, chain, txHash string, data map[string]interface{}) {
+	sdk.eventsMutex.Lock()
+	defer sdk.eventsMutex.Unlock()
+
+	event := Event{
+		ID:        fmt.Sprintf("event_%d", time.Now().UnixNano()),
+		Type:      eventType,
+		Chain:     chain,
+		TxHash:    txHash,
+		Timestamp: time.Now(),
+		Data:      data,
+		Processed: false,
+	}
+
+	sdk.events = append(sdk.events, event)
+
+	// Keep only last 1000 events
+	if len(sdk.events) > 1000 {
+		sdk.events = sdk.events[len(sdk.events)-1000:]
+	}
 }
 
 // GetTransactionsByStatus returns transactions filtered by status

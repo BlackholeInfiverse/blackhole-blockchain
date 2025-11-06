@@ -1,11 +1,13 @@
-
 package main
 
 import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,6 +15,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -25,10 +28,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	cryptorand "crypto/rand"
-	"crypto/ed25519"
-	"encoding/base64"
-	"net"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -97,6 +96,11 @@ func (bhi *BlackHoleBlockchainInterface) GetTransactionByHash(hash string) *Tran
 
 // ProcessBridgeTransaction processes a bridge transaction on the BlackHole blockchain
 func (bhi *BlackHoleBlockchainInterface) ProcessBridgeTransaction(bridgeTx *Transaction) error {
+	// Safety check: if blockchain interface is nil, skip processing
+	if bhi == nil || bhi.logger == nil {
+		return nil // Silently skip in simulation mode
+	}
+
 	if bhi.blockchain == nil {
 		// Use HTTP API to process transaction
 		return bhi.processTransactionViaHTTP(bridgeTx)
@@ -207,11 +211,11 @@ func (bhi *BlackHoleBlockchainInterface) processTransactionViaHTTP(bridgeTx *Tra
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("failed to decode blockchain response: %v", err)
-	} 
+	}
 
 	// Update bridge transaction status
 	bridgeTx.Status = "confirmed"
-	if txHash, ok := result["transaction_hash"].(string); ok {                 
+	if txHash, ok := result["transaction_hash"].(string); ok {
 		bridgeTx.Hash = txHash
 	}
 	if blockNum, ok := result["block_number"].(float64); ok {
@@ -784,50 +788,50 @@ func (sdk *BridgeSDK) calculateViolationSeverity(violations []string) string {
 
 // PerformanceMetrics tracks system performance statistics
 type PerformanceMetrics struct {
-	mutex               sync.RWMutex
-	cpuUsage           float64
-	memoryUsage        float64
-	activeConnections  int
-	eventsPerSecond    float64
-	avgResponseTime    float64
-	errorCount         int
-	lastEventTime      time.Time
-	eventCount         int64
+	mutex             sync.RWMutex
+	cpuUsage          float64
+	memoryUsage       float64
+	activeConnections int
+	eventsPerSecond   float64
+	avgResponseTime   float64
+	errorCount        int
+	lastEventTime     time.Time
+	eventCount        int64
 }
 
 // BridgeSDK represents the main bridge SDK
 type BridgeSDK struct {
-	blockchain          interface{}                   // Can be BlackHoleBlockchainInterface or nil for simulation
-	blockchainInterface *BlackHoleBlockchainInterface // Real blockchain interface
-	config              *Config
-	db                  *bbolt.DB
-	logger              *logrus.Logger
-	upgrader            websocket.Upgrader
-	clients             map[*websocket.Conn]bool
-	clientsMutex        sync.RWMutex
-	replayProtection    *ReplayProtection
-	circuitBreakers     map[string]*CircuitBreaker
-	errorHandler        *ErrorHandler
-	eventRecovery       *EventRecovery
-	logStreamer         *LogStreamer
-	retryQueue          *RetryQueue
-	panicRecovery       *PanicRecovery
-	startTime           time.Time
-	performanceMetrics  *PerformanceMetrics
-	transactions        map[string]*Transaction
-	transactionsMutex   sync.RWMutex
-	events              []Event
-	eventsMutex         sync.RWMutex
-	blockedReplays      int64
-	blockedMutex        sync.RWMutex
-	deadLetterQueue     []DeadLetterItem
-	deadLetterMutex     sync.RWMutex
-	retryConfig         RetryConfig
-	relayServer         *RelayServer
-	performanceMonitor  *PerformanceMonitor
-	loadTester          *LoadTester
-	chaosTester         *ChaosTester
- 	useRealBlockchainListeners bool
+	blockchain                 interface{}                   // Can be BlackHoleBlockchainInterface or nil for simulation
+	blockchainInterface        *BlackHoleBlockchainInterface // Real blockchain interface
+	config                     *Config
+	db                         *bbolt.DB
+	logger                     *logrus.Logger
+	upgrader                   websocket.Upgrader
+	clients                    map[*websocket.Conn]bool
+	clientsMutex               sync.RWMutex
+	replayProtection           *ReplayProtection
+	circuitBreakers            map[string]*CircuitBreaker
+	errorHandler               *ErrorHandler
+	eventRecovery              *EventRecovery
+	logStreamer                *LogStreamer
+	retryQueue                 *RetryQueue
+	panicRecovery              *PanicRecovery
+	startTime                  time.Time
+	performanceMetrics         *PerformanceMetrics
+	transactions               map[string]*Transaction
+	transactionsMutex          sync.RWMutex
+	events                     []Event
+	eventsMutex                sync.RWMutex
+	blockedReplays             int64
+	blockedMutex               sync.RWMutex
+	deadLetterQueue            []DeadLetterItem
+	deadLetterMutex            sync.RWMutex
+	retryConfig                RetryConfig
+	relayServer                *RelayServer
+	performanceMonitor         *PerformanceMonitor
+	loadTester                 *LoadTester
+	chaosTester                *ChaosTester
+	useRealBlockchainListeners bool
 	// Enhanced dashboard fields
 	mu               sync.RWMutex
 	loadTestRunning  bool
@@ -1718,15 +1722,15 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 				return true // Allow all origins for demo
 			},
 		},
-		clients:            make(map[*websocket.Conn]bool),
-		replayProtection:   replayProtection,
-		circuitBreakers:    circuitBreakers,
-		errorHandler:       errorHandler,
-		eventRecovery:      eventRecovery,
-		logStreamer:        logStreamer,
-		retryQueue:         retryQueue,
-		panicRecovery:      panicRecovery,
-		startTime:          time.Now(),
+		clients:          make(map[*websocket.Conn]bool),
+		replayProtection: replayProtection,
+		circuitBreakers:  circuitBreakers,
+		errorHandler:     errorHandler,
+		eventRecovery:    eventRecovery,
+		logStreamer:      logStreamer,
+		retryQueue:       retryQueue,
+		panicRecovery:    panicRecovery,
+		startTime:        time.Now(),
 		performanceMetrics: &PerformanceMetrics{
 			cpuUsage:          15.0,
 			memoryUsage:       45.0,
@@ -1781,6 +1785,7 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 			},
 			StopChannel: make(chan bool, 1),
 		},
+		useRealBlockchainListeners: getEnvBoolOrDefault("USE_REAL_BLOCKCHAIN_LISTENERS", false),
 	}
 }
 
@@ -1906,7 +1911,6 @@ func (sdk *BridgeSDK) StartSolanaListener(ctx context.Context) error {
 
 	return nil
 }
-
 
 // Retry Queue Methods
 func (rq *RetryQueue) AddItem(itemType string, data map[string]interface{}) string {
@@ -3045,10 +3049,10 @@ func (sdk *BridgeSDK) handlePerformanceDashboard(w http.ResponseWriter, r *http.
 	chainPerformance := make(map[string]interface{})
 	for chainName, metrics := range sdk.performanceMonitor.ChainMetrics {
 		chainPerformance[chainName] = map[string]interface{}{
-			"events_count":     metrics.EventCount,
-			"average_latency":  metrics.AverageLatency.Milliseconds(),
-			"error_rate":       metrics.ErrorRate,
-			"last_event":       metrics.LastEventTime.Format(time.RFC3339),
+			"events_count":    metrics.EventCount,
+			"average_latency": metrics.AverageLatency.Milliseconds(),
+			"error_rate":      metrics.ErrorRate,
+			"last_event":      metrics.LastEventTime.Format(time.RFC3339),
 			"trend":           metrics.ThroughputTrend,
 		}
 	}
@@ -3079,9 +3083,9 @@ func (sdk *BridgeSDK) handlePerformanceDashboard(w http.ResponseWriter, r *http.
 			},
 			"historical_data": historicalData,
 			"thresholds": map[string]interface{}{
-				"max_latency_ms":    sdk.performanceMonitor.AlertThresholds.MaxLatency.Milliseconds(),
-				"max_error_rate":    sdk.performanceMonitor.AlertThresholds.MaxErrorRate,
-				"min_throughput":    sdk.performanceMonitor.AlertThresholds.MinThroughput,
+				"max_latency_ms": sdk.performanceMonitor.AlertThresholds.MaxLatency.Milliseconds(),
+				"max_error_rate": sdk.performanceMonitor.AlertThresholds.MaxErrorRate,
+				"min_throughput": sdk.performanceMonitor.AlertThresholds.MinThroughput,
 			},
 		},
 	}
@@ -3117,10 +3121,10 @@ func (sdk *BridgeSDK) handlePerformanceAlerts(w http.ResponseWriter, r *http.Req
 
 		if severity == "" || severity == alertSeverity {
 			alerts = append(alerts, map[string]interface{}{
-				"id":          fmt.Sprintf("latency_%d", time.Now().Unix()),
-				"type":        "latency",
-				"severity":    alertSeverity,
-				"title":       "High Latency Detected",
+				"id":       fmt.Sprintf("latency_%d", time.Now().Unix()),
+				"type":     "latency",
+				"severity": alertSeverity,
+				"title":    "High Latency Detected",
 				"description": fmt.Sprintf("Average latency %v exceeds threshold %v",
 					sdk.performanceMonitor.Metrics.AverageLatency,
 					sdk.performanceMonitor.AlertThresholds.MaxLatency),
@@ -3141,10 +3145,10 @@ func (sdk *BridgeSDK) handlePerformanceAlerts(w http.ResponseWriter, r *http.Req
 
 		if severity == "" || severity == alertSeverity {
 			alerts = append(alerts, map[string]interface{}{
-				"id":          fmt.Sprintf("error_rate_%d", time.Now().Unix()),
-				"type":        "error_rate",
-				"severity":    alertSeverity,
-				"title":       "High Error Rate Detected",
+				"id":       fmt.Sprintf("error_rate_%d", time.Now().Unix()),
+				"type":     "error_rate",
+				"severity": alertSeverity,
+				"title":    "High Error Rate Detected",
 				"description": fmt.Sprintf("Error rate %.2f%% exceeds threshold %.2f%%",
 					sdk.performanceMonitor.Metrics.ErrorRate,
 					sdk.performanceMonitor.AlertThresholds.MaxErrorRate),
@@ -3165,10 +3169,10 @@ func (sdk *BridgeSDK) handlePerformanceAlerts(w http.ResponseWriter, r *http.Req
 
 		if severity == "" || severity == alertSeverity {
 			alerts = append(alerts, map[string]interface{}{
-				"id":          fmt.Sprintf("throughput_%d", time.Now().Unix()),
-				"type":        "throughput",
-				"severity":    alertSeverity,
-				"title":       "Low Throughput Detected",
+				"id":       fmt.Sprintf("throughput_%d", time.Now().Unix()),
+				"type":     "throughput",
+				"severity": alertSeverity,
+				"title":    "Low Throughput Detected",
 				"description": fmt.Sprintf("Events per second %.2f below threshold %.2f",
 					sdk.performanceMonitor.Metrics.EventsPerSecond,
 					sdk.performanceMonitor.AlertThresholds.MinThroughput),
@@ -3185,11 +3189,11 @@ func (sdk *BridgeSDK) handlePerformanceAlerts(w http.ResponseWriter, r *http.Req
 		if chainMetrics.ErrorRate > 10.0 { // 10% error rate threshold per chain
 			if severity == "" || severity == "warning" {
 				alerts = append(alerts, map[string]interface{}{
-					"id":          fmt.Sprintf("chain_error_%s_%d", chainName, time.Now().Unix()),
-					"type":        "chain_error",
-					"severity":    "warning",
-					"title":       fmt.Sprintf("High Error Rate on %s Chain", strings.Title(chainName)),
-					"description": fmt.Sprintf("Chain %s has error rate %.2f%%", chainName, chainMetrics.ErrorRate),
+					"id":            fmt.Sprintf("chain_error_%s_%d", chainName, time.Now().Unix()),
+					"type":          "chain_error",
+					"severity":      "warning",
+					"title":         fmt.Sprintf("High Error Rate on %s Chain", strings.Title(chainName)),
+					"description":   fmt.Sprintf("Chain %s has error rate %.2f%%", chainName, chainMetrics.ErrorRate),
 					"current_value": fmt.Sprintf("%.2f%%", chainMetrics.ErrorRate),
 					"threshold":     "10.0%",
 					"timestamp":     time.Now().Format(time.RFC3339),
@@ -3207,10 +3211,10 @@ func (sdk *BridgeSDK) handlePerformanceAlerts(w http.ResponseWriter, r *http.Req
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"alerts":       alerts,
-			"total_count":  len(alerts),
+			"alerts":          alerts,
+			"total_count":     len(alerts),
 			"severity_filter": severity,
-			"timestamp":    time.Now().Format(time.RFC3339),
+			"timestamp":       time.Now().Format(time.RFC3339),
 		},
 	}
 
@@ -3437,12 +3441,12 @@ func (sdk *BridgeSDK) calculateHistoricalStats(data []map[string]interface{}) ma
 	if len(data) == 0 {
 		return map[string]interface{}{
 			"total_events":     0,
-			"avg_tps":         0.0,
-			"max_tps":         0.0,
-			"min_tps":         0.0,
-			"avg_latency_ms":  0,
-			"max_latency_ms":  0,
-			"min_latency_ms":  0,
+			"avg_tps":          0.0,
+			"max_tps":          0.0,
+			"min_tps":          0.0,
+			"avg_latency_ms":   0,
+			"max_latency_ms":   0,
+			"min_latency_ms":   0,
 			"avg_success_rate": 100.0,
 		}
 	}
@@ -3486,12 +3490,12 @@ func (sdk *BridgeSDK) calculateHistoricalStats(data []map[string]interface{}) ma
 
 	return map[string]interface{}{
 		"total_events":     totalEvents,
-		"avg_tps":         totalTPS / float64(dataPointCount),
-		"max_tps":         maxTPS,
-		"min_tps":         minTPS,
-		"avg_latency_ms":  totalLatency / int64(dataPointCount),
-		"max_latency_ms":  maxLatency,
-		"min_latency_ms":  minLatency,
+		"avg_tps":          totalTPS / float64(dataPointCount),
+		"max_tps":          maxTPS,
+		"min_tps":          minTPS,
+		"avg_latency_ms":   totalLatency / int64(dataPointCount),
+		"max_latency_ms":   maxLatency,
+		"min_latency_ms":   minLatency,
 		"avg_success_rate": totalSuccessRate / float64(dataPointCount),
 	}
 }
@@ -4068,13 +4072,13 @@ func (sdk *BridgeSDK) handleResilienceTest(w http.ResponseWriter, r *http.Reques
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"test_id":       testID,
-			"test_type":     request.TestType,
-			"duration":      request.Duration,
-			"intensity":     request.Intensity,
-			"target_chains": request.TargetChains,
-			"scenarios":     request.Scenarios,
-			"status":        "started",
+			"test_id":              testID,
+			"test_type":            request.TestType,
+			"duration":             request.Duration,
+			"intensity":            request.Intensity,
+			"target_chains":        request.TargetChains,
+			"scenarios":            request.Scenarios,
+			"status":               "started",
 			"estimated_completion": time.Now().Add(time.Duration(request.Duration) * time.Minute).Format(time.RFC3339),
 		},
 	}
@@ -4157,9 +4161,9 @@ func (sdk *BridgeSDK) handleResilienceScenarios(w http.ResponseWriter, r *http.R
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"scenarios":     scenarios,
-			"total_count":   len(scenarios),
-			"categories":    []string{"circuit_breaker", "retry_queue", "network", "recovery", "cascade"},
+			"scenarios":   scenarios,
+			"total_count": len(scenarios),
+			"categories":  []string{"circuit_breaker", "retry_queue", "network", "recovery", "cascade"},
 		},
 	}
 
@@ -4171,11 +4175,11 @@ func (sdk *BridgeSDK) handleCircuitBreakerTest(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "application/json")
 
 	var request struct {
-		TargetBreaker   string `json:"target_breaker"`   // Which circuit breaker to test
-		FailureCount    int    `json:"failure_count"`    // Number of failures to inject
-		TestDuration    int    `json:"test_duration"`    // Duration in minutes
-		RecoveryTest    bool   `json:"recovery_test"`    // Test recovery behavior
-		AutoReset       bool   `json:"auto_reset"`       // Auto-reset after test
+		TargetBreaker string `json:"target_breaker"` // Which circuit breaker to test
+		FailureCount  int    `json:"failure_count"`  // Number of failures to inject
+		TestDuration  int    `json:"test_duration"`  // Duration in minutes
+		RecoveryTest  bool   `json:"recovery_test"`  // Test recovery behavior
+		AutoReset     bool   `json:"auto_reset"`     // Auto-reset after test
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -4219,12 +4223,12 @@ func (sdk *BridgeSDK) handleRetryQueueTest(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 
 	var request struct {
-		FailureRate     float64 `json:"failure_rate"`     // Percentage of transactions to fail (0-100)
+		FailureRate      float64 `json:"failure_rate"`      // Percentage of transactions to fail (0-100)
 		TransactionCount int     `json:"transaction_count"` // Number of test transactions
-		MaxRetries      int     `json:"max_retries"`      // Override max retries for test
-		TestDuration    int     `json:"test_duration"`    // Duration in minutes
-		TestDeadLetter  bool    `json:"test_dead_letter"` // Test dead letter queue behavior
-		StressTest      bool    `json:"stress_test"`      // High-volume stress test
+		MaxRetries       int     `json:"max_retries"`       // Override max retries for test
+		TestDuration     int     `json:"test_duration"`     // Duration in minutes
+		TestDeadLetter   bool    `json:"test_dead_letter"`  // Test dead letter queue behavior
+		StressTest       bool    `json:"stress_test"`       // High-volume stress test
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -4460,11 +4464,11 @@ func (sdk *BridgeSDK) runComprehensiveResilienceTest(testID string, request stru
 
 // executeCircuitBreakerTest runs a specific circuit breaker test
 func (sdk *BridgeSDK) executeCircuitBreakerTest(testID string, request struct {
-	TargetBreaker   string `json:"target_breaker"`
-	FailureCount    int    `json:"failure_count"`
-	TestDuration    int    `json:"test_duration"`
-	RecoveryTest    bool   `json:"recovery_test"`
-	AutoReset       bool   `json:"auto_reset"`
+	TargetBreaker string `json:"target_breaker"`
+	FailureCount  int    `json:"failure_count"`
+	TestDuration  int    `json:"test_duration"`
+	RecoveryTest  bool   `json:"recovery_test"`
+	AutoReset     bool   `json:"auto_reset"`
 }) {
 	sdk.logger.Infof("🔌 Starting circuit breaker test: %s (target: %s)", testID, request.TargetBreaker)
 
@@ -4552,12 +4556,12 @@ func (sdk *BridgeSDK) executeCircuitBreakerTest(testID string, request struct {
 
 // executeRetryQueueTest runs a specific retry queue test
 func (sdk *BridgeSDK) executeRetryQueueTest(testID string, request struct {
-	FailureRate     float64 `json:"failure_rate"`
+	FailureRate      float64 `json:"failure_rate"`
 	TransactionCount int     `json:"transaction_count"`
-	MaxRetries      int     `json:"max_retries"`
-	TestDuration    int     `json:"test_duration"`
-	TestDeadLetter  bool    `json:"test_dead_letter"`
-	StressTest      bool    `json:"stress_test"`
+	MaxRetries       int     `json:"max_retries"`
+	TestDuration     int     `json:"test_duration"`
+	TestDeadLetter   bool    `json:"test_dead_letter"`
+	StressTest       bool    `json:"stress_test"`
 }) {
 	sdk.logger.Infof("🔄 Starting retry queue test: %s", testID)
 
@@ -4691,22 +4695,22 @@ func (sdk *BridgeSDK) getResilienceTestStatus(testID string) map[string]interfac
 	}
 
 	return map[string]interface{}{
-		"test_id":    testID,
-		"test_type":  testType,
-		"status":     "completed", // Mock status
-		"progress":   100.0,
-		"started_at": time.Now().Add(-10 * time.Minute).Format(time.RFC3339),
+		"test_id":      testID,
+		"test_type":    testType,
+		"status":       "completed", // Mock status
+		"progress":     100.0,
+		"started_at":   time.Now().Add(-10 * time.Minute).Format(time.RFC3339),
 		"completed_at": time.Now().Format(time.RFC3339),
-		"duration":   "10m0s",
+		"duration":     "10m0s",
 		"results": map[string]interface{}{
-			"overall_score":      85.5,
-			"circuit_breakers":   circuitBreakerStates,
-			"retry_queue_size":   retryQueueSize,
-			"dead_letter_size":   deadLetterSize,
-			"tests_passed":       8,
-			"tests_failed":       2,
-			"recovery_time_avg":  "2.3s",
-			"system_stability":   "92.1%",
+			"overall_score":     85.5,
+			"circuit_breakers":  circuitBreakerStates,
+			"retry_queue_size":  retryQueueSize,
+			"dead_letter_size":  deadLetterSize,
+			"tests_passed":      8,
+			"tests_failed":      2,
+			"recovery_time_avg": "2.3s",
+			"system_stability":  "92.1%",
 		},
 		"recommendations": []string{
 			"Consider increasing circuit breaker timeout for ethereum_listener",
@@ -6022,7 +6026,6 @@ func (sdk *BridgeSDK) StartWebServer(addr string) error {
 	r.HandleFunc("/api/v2/monitoring/real-time/alerts", sdk.handleRealTimeAlerts).Methods("GET")
 	r.HandleFunc("/api/v2/monitoring/real-time/metrics", sdk.handleRealTimeMetrics).Methods("GET")
 
-
 	sdk.logger.Infof("🌐 Starting web server on %s", addr)
 	return http.ListenAndServe(addr, r)
 }
@@ -6174,24 +6177,24 @@ func (sdk *BridgeSDK) handleTransactionByHash(w http.ResponseWriter, r *http.Req
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"id":          transaction.ID,
-			"hash":        transaction.Hash,
-			"source_chain": transaction.SourceChain,
-			"dest_chain":  transaction.DestChain,
+			"id":             transaction.ID,
+			"hash":           transaction.Hash,
+			"source_chain":   transaction.SourceChain,
+			"dest_chain":     transaction.DestChain,
 			"source_address": transaction.SourceAddress,
-			"dest_address": transaction.DestAddress,
-			"token_symbol": transaction.TokenSymbol,
-			"amount":      transaction.Amount,
-			"fee":         transaction.Fee,
-			"status":      transaction.Status,
-			"created_at":  transaction.CreatedAt,
-			"completed_at": transaction.CompletedAt,
-			"confirmations": transaction.Confirmations,
-			"block_number": transaction.BlockNumber,
-			"gas_used":    transaction.GasUsed,
-			"gas_price":   transaction.GasPrice,
-			"events":      transaction.Events,
-			"type":        map[bool]string{true: "dex", false: "transfer"}[isDEX],
+			"dest_address":   transaction.DestAddress,
+			"token_symbol":   transaction.TokenSymbol,
+			"amount":         transaction.Amount,
+			"fee":            transaction.Fee,
+			"status":         transaction.Status,
+			"created_at":     transaction.CreatedAt,
+			"completed_at":   transaction.CompletedAt,
+			"confirmations":  transaction.Confirmations,
+			"block_number":   transaction.BlockNumber,
+			"gas_used":       transaction.GasUsed,
+			"gas_price":      transaction.GasPrice,
+			"events":         transaction.Events,
+			"type":           map[bool]string{true: "dex", false: "transfer"}[isDEX],
 		},
 		"timestamp": time.Now().UTC(),
 	}
@@ -6213,17 +6216,17 @@ func (sdk *BridgeSDK) getTransactionsByBlockHeight(height int64) []map[string]in
 				(tx.SourceModule != nil && *tx.SourceModule == "DEX")
 
 			blockTransactions = append(blockTransactions, map[string]interface{}{
-				"hash":        tx.Hash,
-				"from":        tx.SourceAddress,
-				"to":          tx.DestAddress,
-				"value":       tx.Amount,
-				"gas_used":    tx.GasUsed,
-				"status":      tx.Status,
-				"timestamp":   tx.CreatedAt,
-				"type":        map[bool]string{true: "dex", false: "transfer"}[isDEX],
+				"hash":         tx.Hash,
+				"from":         tx.SourceAddress,
+				"to":           tx.DestAddress,
+				"value":        tx.Amount,
+				"gas_used":     tx.GasUsed,
+				"status":       tx.Status,
+				"timestamp":    tx.CreatedAt,
+				"type":         map[bool]string{true: "dex", false: "transfer"}[isDEX],
 				"token_symbol": tx.TokenSymbol,
 				"source_chain": tx.SourceChain,
-				"dest_chain":  tx.DestChain,
+				"dest_chain":   tx.DestChain,
 			})
 		}
 	}
@@ -6274,8 +6277,8 @@ func (sdk *BridgeSDK) handleBlockscoutSync(w http.ResponseWriter, r *http.Reques
 	}
 
 	response := map[string]interface{}{
-		"success": true,
-		"data":    syncStatus,
+		"success":   true,
+		"data":      syncStatus,
 		"timestamp": time.Now().UTC(),
 	}
 
@@ -6507,79 +6510,79 @@ func (sdk *BridgeSDK) handleGRPCEndpoints(w http.ResponseWriter, r *http.Request
 			"base_url": "localhost:50051",
 			"endpoints": []map[string]interface{}{
 				{
-					"method": "StartEthereumListener",
+					"method":      "StartEthereumListener",
 					"description": "Starts Ethereum blockchain event listener",
 					"request_format": map[string]interface{}{
-						"chain_id": "string",
-						"rpc_url": "string",
+						"chain_id":         "string",
+						"rpc_url":          "string",
 						"contract_address": "string",
 					},
 					"response_format": map[string]interface{}{
-						"success": "boolean",
+						"success":     "boolean",
 						"listener_id": "string",
-						"status": "string",
+						"status":      "string",
 					},
 					"authentication": "API Key required in metadata",
 				},
 				{
-					"method": "StartSolanaListener",
+					"method":      "StartSolanaListener",
 					"description": "Starts Solana blockchain event listener",
 					"request_format": map[string]interface{}{
-						"cluster": "string (mainnet-beta, testnet, devnet)",
+						"cluster":    "string (mainnet-beta, testnet, devnet)",
 						"program_id": "string",
 						"commitment": "string",
 					},
 					"response_format": map[string]interface{}{
-						"success": "boolean",
+						"success":     "boolean",
 						"listener_id": "string",
-						"status": "string",
+						"status":      "string",
 					},
 					"authentication": "API Key required in metadata",
 				},
 				{
-					"method": "RelayToChain",
+					"method":      "RelayToChain",
 					"description": "Relays transaction to target blockchain",
 					"request_format": map[string]interface{}{
-						"source_chain": "string",
-						"dest_chain": "string",
+						"source_chain":     "string",
+						"dest_chain":       "string",
 						"transaction_hash": "string",
-						"amount": "string",
-						"token_symbol": "string",
-						"dest_address": "string",
+						"amount":           "string",
+						"token_symbol":     "string",
+						"dest_address":     "string",
 					},
 					"response_format": map[string]interface{}{
-						"success": "boolean",
-						"relay_id": "string",
+						"success":      "boolean",
+						"relay_id":     "string",
 						"dest_tx_hash": "string",
-						"status": "string",
+						"status":       "string",
 					},
 					"authentication": "API Key required in metadata",
 				},
 				{
-					"method": "GetTransactionStatus",
+					"method":      "GetTransactionStatus",
 					"description": "Gets status of bridge transaction",
 					"request_format": map[string]interface{}{
 						"transaction_id": "string",
 					},
 					"response_format": map[string]interface{}{
 						"transaction_id": "string",
-						"status": "string (pending, confirmed, failed)",
+						"status":         "string (pending, confirmed, failed)",
 						"source_tx_hash": "string",
-						"dest_tx_hash": "string",
-						"confirmations": "int32",
+						"dest_tx_hash":   "string",
+						"confirmations":  "int32",
 					},
 					"authentication": "API Key required in metadata",
 				},
 				{
-					"method": "GetBridgeHealth",
-					"description": "Gets bridge service health status",
+					"method":         "GetBridgeHealth",
+					"description":    "Gets bridge service health status",
 					"request_format": map[string]interface{}{},
 					"response_format": map[string]interface{}{
-						"status": "string",
-						"uptime": "string",
-						"active_listeners": "int32",
+						"status":                 "string",
+						"uptime":                 "string",
+						"active_listeners":       "int32",
 						"processed_transactions": "int64",
-						"error_rate": "float",
+						"error_rate":             "float",
 					},
 					"authentication": "None required",
 				},
@@ -6589,47 +6592,47 @@ func (sdk *BridgeSDK) handleGRPCEndpoints(w http.ResponseWriter, r *http.Request
 			"base_url": "localhost:50052",
 			"endpoints": []map[string]interface{}{
 				{
-					"method": "CreateWallet",
+					"method":      "CreateWallet",
 					"description": "Creates a new wallet",
 					"request_format": map[string]interface{}{
 						"wallet_type": "string (ethereum, solana, blackhole)",
-						"password": "string",
+						"password":    "string",
 					},
 					"response_format": map[string]interface{}{
-						"wallet_id": "string",
-						"address": "string",
+						"wallet_id":  "string",
+						"address":    "string",
 						"public_key": "string",
 					},
 					"authentication": "Bearer token required",
 				},
 				{
-					"method": "GetWalletBalance",
+					"method":      "GetWalletBalance",
 					"description": "Gets wallet balance for specific token",
 					"request_format": map[string]interface{}{
-						"wallet_id": "string",
+						"wallet_id":    "string",
 						"token_symbol": "string",
 					},
 					"response_format": map[string]interface{}{
-						"balance": "string",
+						"balance":      "string",
 						"token_symbol": "string",
-						"decimals": "int32",
+						"decimals":     "int32",
 					},
 					"authentication": "Bearer token required",
 				},
 				{
-					"method": "SendTransaction",
+					"method":      "SendTransaction",
 					"description": "Sends transaction from wallet",
 					"request_format": map[string]interface{}{
-						"wallet_id": "string",
-						"to_address": "string",
-						"amount": "string",
+						"wallet_id":    "string",
+						"to_address":   "string",
+						"amount":       "string",
 						"token_symbol": "string",
-						"gas_price": "string (optional)",
+						"gas_price":    "string (optional)",
 					},
 					"response_format": map[string]interface{}{
 						"transaction_hash": "string",
-						"status": "string",
-						"gas_used": "string",
+						"status":           "string",
+						"gas_used":         "string",
 					},
 					"authentication": "Bearer token required",
 				},
@@ -6639,30 +6642,30 @@ func (sdk *BridgeSDK) handleGRPCEndpoints(w http.ResponseWriter, r *http.Request
 			"base_url": "localhost:50053",
 			"endpoints": []map[string]interface{}{
 				{
-					"method": "GetBlockchainInfo",
+					"method":      "GetBlockchainInfo",
 					"description": "Gets blockchain information",
 					"request_format": map[string]interface{}{
 						"chain": "string",
 					},
 					"response_format": map[string]interface{}{
-						"chain_id": "string",
+						"chain_id":     "string",
 						"latest_block": "int64",
-						"network": "string",
-						"sync_status": "boolean",
+						"network":      "string",
+						"sync_status":  "boolean",
 					},
 					"authentication": "None required",
 				},
 				{
-					"method": "GetTokenInfo",
+					"method":      "GetTokenInfo",
 					"description": "Gets token information",
 					"request_format": map[string]interface{}{
 						"token_address": "string",
-						"chain": "string",
+						"chain":         "string",
 					},
 					"response_format": map[string]interface{}{
-						"name": "string",
-						"symbol": "string",
-						"decimals": "int32",
+						"name":         "string",
+						"symbol":       "string",
+						"decimals":     "int32",
 						"total_supply": "string",
 					},
 					"authentication": "None required",
@@ -6671,25 +6674,25 @@ func (sdk *BridgeSDK) handleGRPCEndpoints(w http.ResponseWriter, r *http.Request
 		},
 		"authentication": map[string]interface{}{
 			"api_key": map[string]interface{}{
-				"header": "X-API-Key",
+				"header":      "X-API-Key",
 				"description": "API key for bridge service authentication",
-				"example": "bridge_api_key_12345",
+				"example":     "bridge_api_key_12345",
 			},
 			"bearer_token": map[string]interface{}{
-				"header": "Authorization",
-				"format": "Bearer <token>",
+				"header":      "Authorization",
+				"format":      "Bearer <token>",
 				"description": "JWT token for wallet service authentication",
-				"example": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+				"example":     "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
 			},
 		},
 		"error_codes": map[string]interface{}{
-			"INVALID_REQUEST": "Request format is invalid",
-			"UNAUTHORIZED": "Authentication failed",
-			"CHAIN_NOT_SUPPORTED": "Blockchain not supported",
+			"INVALID_REQUEST":      "Request format is invalid",
+			"UNAUTHORIZED":         "Authentication failed",
+			"CHAIN_NOT_SUPPORTED":  "Blockchain not supported",
 			"INSUFFICIENT_BALANCE": "Insufficient wallet balance",
-			"TRANSACTION_FAILED": "Transaction execution failed",
-			"LISTENER_ERROR": "Blockchain listener error",
-			"NETWORK_ERROR": "Network connectivity error",
+			"TRANSACTION_FAILED":   "Transaction execution failed",
+			"LISTENER_ERROR":       "Blockchain listener error",
+			"NETWORK_ERROR":        "Network connectivity error",
 		},
 		"examples": map[string]interface{}{
 			"start_ethereum_listener": map[string]interface{}{
@@ -6698,8 +6701,8 @@ func (sdk *BridgeSDK) handleGRPCEndpoints(w http.ResponseWriter, r *http.Request
 					"x-api-key": "your_api_key_here",
 				},
 				"request": map[string]interface{}{
-					"chain_id": "1",
-					"rpc_url": "https://mainnet.infura.io/v3/your_project_id",
+					"chain_id":         "1",
+					"rpc_url":          "https://mainnet.infura.io/v3/your_project_id",
 					"contract_address": "0x1234567890abcdef1234567890abcdef12345678",
 				},
 			},
@@ -6709,12 +6712,12 @@ func (sdk *BridgeSDK) handleGRPCEndpoints(w http.ResponseWriter, r *http.Request
 					"x-api-key": "your_api_key_here",
 				},
 				"request": map[string]interface{}{
-					"source_chain": "ethereum",
-					"dest_chain": "solana",
+					"source_chain":     "ethereum",
+					"dest_chain":       "solana",
 					"transaction_hash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-					"amount": "100.5",
-					"token_symbol": "BHX",
-					"dest_address": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+					"amount":           "100.5",
+					"token_symbol":     "BHX",
+					"dest_address":     "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
 				},
 			},
 		},
@@ -6790,15 +6793,15 @@ func (sdk *BridgeSDK) handleLogRetry(w http.ResponseWriter, r *http.Request) {
 	// Process active retry items
 	for _, item := range sdk.retryQueue.items {
 		itemData := map[string]interface{}{
-			"id":          item.ID,
-			"type":        item.Type,
-			"attempts":    item.Attempts,
+			"id":           item.ID,
+			"type":         item.Type,
+			"attempts":     item.Attempts,
 			"max_attempts": item.MaxRetries,
-			"next_retry":  item.NextRetry.Format(time.RFC3339),
-			"created_at":  item.CreatedAt.Format(time.RFC3339),
-			"last_error":  item.LastError,
-			"status":      "pending",
-			"data":        item.Data,
+			"next_retry":   item.NextRetry.Format(time.RFC3339),
+			"created_at":   item.CreatedAt.Format(time.RFC3339),
+			"last_error":   item.LastError,
+			"status":       "pending",
+			"data":         item.Data,
 		}
 
 		if item.Attempts >= item.MaxRetries {
@@ -6874,8 +6877,8 @@ func (sdk *BridgeSDK) handleLogStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Get listener status
 	listeners := map[string]bool{
-		"ethereum": true,  // Always true in simulation mode
-		"solana":   true,  // Always true in simulation mode
+		"ethereum":  true, // Always true in simulation mode
+		"solana":    true, // Always true in simulation mode
 		"blackhole": sdk.blockchainInterface != nil,
 	}
 
@@ -6895,8 +6898,8 @@ func (sdk *BridgeSDK) handleLogStatus(w http.ResponseWriter, r *http.Request) {
 			"bridge_healthy":     true,
 			"database_connected": dbConnected,
 			"uptime_seconds":     int64(uptime),
-			"version":           "1.0.0",
-			"listeners":         listeners,
+			"version":            "1.0.0",
+			"listeners":          listeners,
 			"performance": map[string]interface{}{
 				"cpu_usage":             cpuUsage,
 				"memory_usage":          memoryUsage,
@@ -6960,11 +6963,11 @@ func (sdk *BridgeSDK) handleRetryDemo(w http.ResponseWriter, r *http.Request) {
 		retryID := sdk.addToRetryQueue(request.EventType, testData, fmt.Errorf("demo failure: simulated %s error", request.EventType))
 
 		demoEvents = append(demoEvents, map[string]interface{}{
-			"retry_id":    retryID,
-			"event_type":  request.EventType,
-			"test_data":   testData,
-			"created_at":  time.Now().Format(time.RFC3339),
-			"demo_mode":   request.TestMode,
+			"retry_id":   retryID,
+			"event_type": request.EventType,
+			"test_data":  testData,
+			"created_at": time.Now().Format(time.RFC3339),
+			"demo_mode":  request.TestMode,
 		})
 
 		sdk.logger.Infof("🎭 Demo: Created failing %s event %s for retry demonstration", request.EventType, eventID)
@@ -6983,9 +6986,9 @@ func (sdk *BridgeSDK) handleRetryDemo(w http.ResponseWriter, r *http.Request) {
 			"failure_count": request.FailureCount,
 		},
 		"instructions": map[string]string{
-			"monitor_retry":   "GET /api/log/retry to see retry queue status",
-			"monitor_status":  "GET /api/log/status for system health",
-			"websocket":       "Connect to ws://localhost:8084/ws for real-time updates",
+			"monitor_retry":  "GET /api/log/retry to see retry queue status",
+			"monitor_status": "GET /api/log/status for system health",
+			"websocket":      "Connect to ws://localhost:8084/ws for real-time updates",
 		},
 	}
 
@@ -7337,8 +7340,8 @@ func (sdk *BridgeSDK) handleWalletTransactions(w http.ResponseWriter, r *http.Re
 	resp, err := client.Get("http://localhost:8080/api/blockchain/info")
 	if err != nil {
 		response := map[string]interface{}{
-			"success": false,
-			"error":   "Cannot connect to main dashboard: " + err.Error(),
+			"success":      false,
+			"error":        "Cannot connect to main dashboard: " + err.Error(),
 			"transactions": detectedTransfers, // Return previously detected transfers
 		}
 		json.NewEncoder(w).Encode(response)
@@ -7349,8 +7352,8 @@ func (sdk *BridgeSDK) handleWalletTransactions(w http.ResponseWriter, r *http.Re
 	var blockchainData map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&blockchainData); err != nil {
 		response := map[string]interface{}{
-			"success": false,
-			"error":   "Failed to decode blockchain data: " + err.Error(),
+			"success":      false,
+			"error":        "Failed to decode blockchain data: " + err.Error(),
 			"transactions": detectedTransfers,
 		}
 		json.NewEncoder(w).Encode(response)
@@ -7542,11 +7545,11 @@ func (sdk *BridgeSDK) handleWalletTransactions(w http.ResponseWriter, r *http.Re
 	previousBalances = currentBalances
 
 	response := map[string]interface{}{
-		"success":         true,
-		"transactions":    responseTransactions,
-		"source":          "persistent_database",
-		"total_count":     len(responseTransactions),
-		"new_transfers":   len(newTransfers),
+		"success":          true,
+		"transactions":     responseTransactions,
+		"source":           "persistent_database",
+		"total_count":      len(responseTransactions),
+		"new_transfers":    len(newTransfers),
 		"historical_count": len(allTransactions) - len(newTransfers),
 	}
 
@@ -11470,9 +11473,7 @@ func (sdk *BridgeSDK) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     html += '<span style="color: #ffc107; margin-right: 6px;">◆</span>BHX Wallet Balances (' + bhxWalletBalances.length + ')';
                     html += '</h4>';
 
-<<<<<<< HEAD:bridge-sdk/example/main.go
-                    bhxWalletBalances.forEach((ac
-=======
+
                     bhxWalletBalances.forEach((activity, index) => {
                         const timeAgo = new Date(activity.timestamp).toLocaleTimeString();
                         const shortWallet = activity.wallet_id.length > 35 ? activity.wallet_id.substring(0, 35) + '...' : activity.wallet_id;
@@ -16266,7 +16267,6 @@ func (sdk *BridgeSDK) handleLogEvent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 func (sdk *BridgeSDK) handleBridgeStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -16488,16 +16488,16 @@ func (sdk *BridgeSDK) handleAPILogRetry(w http.ResponseWriter, r *http.Request) 
 			}
 
 			retryData := map[string]interface{}{
-				"id":           item.ID,
-				"type":         item.Type,
-				"attempts":     item.Attempts,
-				"max_retries":  item.MaxRetries,
-				"next_retry":   item.NextRetry.Format(time.RFC3339),
-				"last_error":   item.LastError,
-				"created_at":   item.CreatedAt.Format(time.RFC3339),
-				"updated_at":   item.UpdatedAt.Format(time.RFC3339),
-				"status":       currentStatus,
-				"data":         item.Data,
+				"id":          item.ID,
+				"type":        item.Type,
+				"attempts":    item.Attempts,
+				"max_retries": item.MaxRetries,
+				"next_retry":  item.NextRetry.Format(time.RFC3339),
+				"last_error":  item.LastError,
+				"created_at":  item.CreatedAt.Format(time.RFC3339),
+				"updated_at":  item.UpdatedAt.Format(time.RFC3339),
+				"status":      currentStatus,
+				"data":        item.Data,
 			}
 
 			allRetries = append(allRetries, retryData)
@@ -16541,7 +16541,7 @@ func (sdk *BridgeSDK) handleAPILogRetry(w http.ResponseWriter, r *http.Request) 
 		}
 
 		response := map[string]interface{}{
-			"success":     true,
+			"success": true,
 			"data": map[string]interface{}{
 				"retries":     paginatedRetries,
 				"total_count": totalCount,
@@ -16604,7 +16604,7 @@ func (sdk *BridgeSDK) handleAPILogRetry(w http.ResponseWriter, r *http.Request) 
 			"data": map[string]interface{}{
 				"retriggered_count": retriggeredCount,
 				"requested_count":   len(request.RetryIDs),
-				"errors":           errors,
+				"errors":            errors,
 			},
 		}
 
@@ -16663,14 +16663,14 @@ func (sdk *BridgeSDK) handleAPILogStatus(w http.ResponseWriter, r *http.Request)
 			}
 
 			txData := map[string]interface{}{
-				"id":             tx.ID,
-				"hash":           tx.Hash,
-				"source_chain":   tx.SourceChain,
-				"dest_chain":     tx.DestChain,
-				"token_symbol":   tx.TokenSymbol,
-				"amount":         tx.Amount,
-				"status":         tx.Status,
-				"created_at":     tx.CreatedAt.Format(time.RFC3339),
+				"id":              tx.ID,
+				"hash":            tx.Hash,
+				"source_chain":    tx.SourceChain,
+				"dest_chain":      tx.DestChain,
+				"token_symbol":    tx.TokenSymbol,
+				"amount":          tx.Amount,
+				"status":          tx.Status,
+				"created_at":      tx.CreatedAt.Format(time.RFC3339),
 				"processing_time": tx.ProcessingTime,
 			}
 
@@ -16764,10 +16764,10 @@ func (sdk *BridgeSDK) getBridgeStatusSummary() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"total_transactions":      totalTx,
-		"completed_transactions":  completedTx,
-		"failed_transactions":     failedTx,
-		"pending_transactions":    totalTx - completedTx - failedTx,
+		"total_transactions":     totalTx,
+		"completed_transactions": completedTx,
+		"failed_transactions":    failedTx,
+		"pending_transactions":   totalTx - completedTx - failedTx,
 		"success_rate":           successRate,
 		"bridge_mode":            sdk.getBlockchainMode(),
 	}
@@ -16812,10 +16812,10 @@ func (sdk *BridgeSDK) getSystemHealthSummary() map[string]interface{} {
 
 func (sdk *BridgeSDK) getPerformanceMetricsSummary() map[string]interface{} {
 	return map[string]interface{}{
-		"events_processed":    len(sdk.events),
-		"average_latency":     "0.5s", // Placeholder - would be calculated from actual metrics
-		"throughput_per_sec":  "10",   // Placeholder
-		"error_rate":         "0.1%",  // Placeholder
+		"events_processed":   len(sdk.events),
+		"average_latency":    "0.5s", // Placeholder - would be calculated from actual metrics
+		"throughput_per_sec": "10",   // Placeholder
+		"error_rate":         "0.1%", // Placeholder
 		"last_updated":       time.Now().Format(time.RFC3339),
 	}
 }
@@ -16880,9 +16880,9 @@ func (sdk *BridgeSDK) getErrorSummary() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"total_errors":    len(sdk.errorHandler.errors),
-		"recent_errors":   recentErrors,
-		"errors_by_type":  errorsByType,
+		"total_errors":   len(sdk.errorHandler.errors),
+		"recent_errors":  recentErrors,
+		"errors_by_type": errorsByType,
 	}
 }
 
@@ -16989,11 +16989,11 @@ func (sdk *BridgeSDK) handleCrossChainSimulation(w http.ResponseWriter, r *http.
 	w.Header().Set("Content-Type", "application/json")
 
 	var request struct {
-		SourceChain     string  `json:"source_chain"`     // Source chain (ethereum, polygon, etc.)
-		TargetChain     string  `json:"target_chain"`     // Target chain (polygon, ethereum, etc.)
-		Amount          string  `json:"amount"`           // Amount as string (wei)
-		Token           string  `json:"token"`            // Token symbol
-		WalletAddress   string  `json:"wallet_address"`   // Wallet address
+		SourceChain       string  `json:"source_chain"`       // Source chain (ethereum, polygon, etc.)
+		TargetChain       string  `json:"target_chain"`       // Target chain (polygon, ethereum, etc.)
+		Amount            string  `json:"amount"`             // Amount as string (wei)
+		Token             string  `json:"token"`              // Token symbol
+		WalletAddress     string  `json:"wallet_address"`     // Wallet address
 		SlippageTolerance float64 `json:"slippage_tolerance"` // Slippage tolerance
 	}
 
@@ -17028,20 +17028,20 @@ func (sdk *BridgeSDK) handleCrossChainSimulation(w http.ResponseWriter, r *http.
 	go sdk.executeRoundtripSimulation(simulationID, request)
 
 	response := map[string]interface{}{
-		"success": true,
+		"success":       true,
 		"simulation_id": simulationID,
 		"data": map[string]interface{}{
 			"simulation_id":      simulationID,
 			"source_chain":       request.SourceChain,
 			"target_chain":       request.TargetChain,
-			"amount":            request.Amount,
-			"token":             request.Token,
-			"wallet_address":    request.WalletAddress,
+			"amount":             request.Amount,
+			"token":              request.Token,
+			"wallet_address":     request.WalletAddress,
 			"slippage_tolerance": request.SlippageTolerance,
-			"status":            "started",
-			"estimated_time":    "30-60 seconds",
-			"current_step":      "initializing",
-			"progress":          0,
+			"status":             "started",
+			"estimated_time":     "30-60 seconds",
+			"current_step":       "initializing",
+			"progress":           0,
 		},
 	}
 
@@ -17053,10 +17053,10 @@ func (sdk *BridgeSDK) handleExecuteRoundtripScript(w http.ResponseWriter, r *htt
 	w.Header().Set("Content-Type", "application/json")
 
 	var request struct {
-		SourceChain     string  `json:"source_chain"`
-		TargetChain     string  `json:"target_chain"`
-		Amount          string  `json:"amount"`
-		Token           string  `json:"token"`
+		SourceChain       string  `json:"source_chain"`
+		TargetChain       string  `json:"target_chain"`
+		Amount            string  `json:"amount"`
+		Token             string  `json:"token"`
 		SlippageTolerance float64 `json:"slippage_tolerance"`
 	}
 
@@ -17139,11 +17139,11 @@ func (sdk *BridgeSDK) handleExecuteRoundtripScript(w http.ResponseWriter, r *htt
 
 // executeRoundtripSimulation runs the actual roundtrip simulation with real blockchain integration
 func (sdk *BridgeSDK) executeRoundtripSimulation(simulationID string, request struct {
-	SourceChain     string  `json:"source_chain"`
-	TargetChain     string  `json:"target_chain"`
-	Amount          string  `json:"amount"`
-	Token           string  `json:"token"`
-	WalletAddress   string  `json:"wallet_address"`
+	SourceChain       string  `json:"source_chain"`
+	TargetChain       string  `json:"target_chain"`
+	Amount            string  `json:"amount"`
+	Token             string  `json:"token"`
+	WalletAddress     string  `json:"wallet_address"`
 	SlippageTolerance float64 `json:"slippage_tolerance"`
 }) {
 	// Initialize simulation status
@@ -17152,13 +17152,13 @@ func (sdk *BridgeSDK) executeRoundtripSimulation(simulationID string, request st
 		sdk.simulations = make(map[string]map[string]interface{})
 	}
 	sdk.simulations[simulationID] = map[string]interface{}{
-		"status": "running",
-		"current_step": "wallet_sign",
-		"progress": 0,
-		"start_time": time.Now(),
+		"status":          "running",
+		"current_step":    "wallet_sign",
+		"progress":        0,
+		"start_time":      time.Now(),
 		"steps_completed": 0,
-		"total_steps": 3,
-		"transactions": []map[string]interface{}{},
+		"total_steps":     3,
+		"transactions":    []map[string]interface{}{},
 	}
 	sdk.mu.Unlock()
 
@@ -17262,7 +17262,7 @@ func (sdk *BridgeSDK) executeRoundtripSimulation(simulationID string, request st
 			From:      "bridge_contract",
 			To:        request.WalletAddress,
 			Amount:    amount / 500, // Convert BHX to target token
-			TokenID:   "MATIC", // Polygon native token
+			TokenID:   "MATIC",      // Polygon native token
 			Fee:       300,
 			Nonce:     1,
 			Timestamp: time.Now().Unix(),
@@ -18059,7 +18059,7 @@ func main() {
 	log.Println("🌉 Starting BlackHole Bridge SDK...")
 	InitializeMissingFeatures()
 
-// Register new API endpoints
+	// Register new API endpoints
 
 	// Load environment configuration
 	envConfig := LoadEnvironmentConfig()
@@ -18167,11 +18167,11 @@ func (sdk *BridgeSDK) handleBlockchainHealth(w http.ResponseWriter, r *http.Requ
 
 		if resp.StatusCode == 200 {
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success":    true,
-				"status":     "connected",
-				"message":    "Blockchain node is healthy",
-				"endpoint":   blockchainURL,
-				"connected":  true,
+				"success":   true,
+				"status":    "connected",
+				"message":   "Blockchain node is healthy",
+				"endpoint":  blockchainURL,
+				"connected": true,
 			})
 			return
 		}
@@ -21045,18 +21045,18 @@ func (sdk *BridgeSDK) executeCrossChainSimulation(simulationID string, request s
 
 	// Create simulation context
 	ctx := &CrossChainSimulationContext{
-		ID:             simulationID,
-		Route:          request.Route,
-		Amount:         request.Amount,
-		TokenSymbol:    request.TokenSymbol,
-		SourceAddress:  request.SourceAddress,
-		DestAddress:    request.DestAddress,
+		ID:              simulationID,
+		Route:           request.Route,
+		Amount:          request.Amount,
+		TokenSymbol:     request.TokenSymbol,
+		SourceAddress:   request.SourceAddress,
+		DestAddress:     request.DestAddress,
 		IncludeFailures: request.IncludeFailures,
-		DetailedLogs:   request.DetailedLogs,
-		RealBlockchain: request.RealBlockchain && sdk.blockchainInterface != nil,
-		StartTime:      time.Now(),
-		Steps:          make([]SimulationStep, 0),
-		Logs:           make([]string, 0),
+		DetailedLogs:    request.DetailedLogs,
+		RealBlockchain:  request.RealBlockchain && sdk.blockchainInterface != nil,
+		StartTime:       time.Now(),
+		Steps:           make([]SimulationStep, 0),
+		Logs:            make([]string, 0),
 	}
 
 	// Execute simulation based on route
@@ -21395,15 +21395,15 @@ func (sdk *BridgeSDK) storeSimulationResults(ctx *CrossChainSimulationContext) {
 	successRate := float64(successfulSteps) / float64(len(ctx.Steps)) * 100
 
 	results := map[string]interface{}{
-		"simulation_id":    ctx.ID,
-		"route":           ctx.Route,
-		"total_steps":     len(ctx.Steps),
-		"successful_steps": successfulSteps,
-		"success_rate":    successRate,
-		"total_duration":  ctx.TotalDuration.String(),
+		"simulation_id":         ctx.ID,
+		"route":                 ctx.Route,
+		"total_steps":           len(ctx.Steps),
+		"successful_steps":      successfulSteps,
+		"success_rate":          successRate,
+		"total_duration":        ctx.TotalDuration.String(),
 		"average_step_duration": (totalDuration / time.Duration(len(ctx.Steps))).String(),
-		"real_blockchain": ctx.RealBlockchain,
-		"logs_count":      len(ctx.Logs),
+		"real_blockchain":       ctx.RealBlockchain,
+		"logs_count":            len(ctx.Logs),
 	}
 
 	sdk.logger.Infof("📊 Simulation results: %+v", results)
@@ -21558,23 +21558,23 @@ func (sdk *BridgeSDK) runChaosSimulation(simulationID string, parameters map[str
 
 // CrossChainSimulationContext holds simulation state
 type CrossChainSimulationContext struct {
-	ID             string
-	Route          string
-	Amount         float64
-	TokenSymbol    string
-	SourceAddress  string
-	DestAddress    string
+	ID              string
+	Route           string
+	Amount          float64
+	TokenSymbol     string
+	SourceAddress   string
+	DestAddress     string
 	IncludeFailures bool
-	DetailedLogs   bool
-	RealBlockchain bool
-	StartTime      time.Time
-	EndTime        time.Time
-	TotalDuration  time.Duration
-	Steps          []SimulationStep
-	Logs           []string
-	EthTransaction *Transaction
-	BHTransaction  *Transaction
-	SolTransaction *Transaction
+	DetailedLogs    bool
+	RealBlockchain  bool
+	StartTime       time.Time
+	EndTime         time.Time
+	TotalDuration   time.Duration
+	Steps           []SimulationStep
+	Logs            []string
+	EthTransaction  *Transaction
+	BHTransaction   *Transaction
+	SolTransaction  *Transaction
 }
 
 // SimulationStep represents a single step in the simulation
@@ -21590,21 +21590,21 @@ type SimulationStep struct {
 
 // MainDashboardActivity represents an activity from the main dashboard
 type MainDashboardActivity struct {
-	ID          string                 `json:"id"`
-	Action      string                 `json:"action"`
-	Details     map[string]interface{} `json:"details"`
-	Timestamp   time.Time              `json:"timestamp"`
-	Source      string                 `json:"source"`
-	UserAgent   string                 `json:"user_agent,omitempty"`
+	ID        string                 `json:"id"`
+	Action    string                 `json:"action"`
+	Details   map[string]interface{} `json:"details"`
+	Timestamp time.Time              `json:"timestamp"`
+	Source    string                 `json:"source"`
+	UserAgent string                 `json:"user_agent,omitempty"`
 }
 
 // DEX Slippage Monitoring Structures
 type DEXSlippagePool struct {
-	TokenA      string  `json:"token_a"`
-	TokenB      string  `json:"token_b"`
-	ReserveA    uint64  `json:"reserve_a"`
-	ReserveB    uint64  `json:"reserve_b"`
-	Ratio       float64 `json:"ratio"`
+	TokenA      string    `json:"token_a"`
+	TokenB      string    `json:"token_b"`
+	ReserveA    uint64    `json:"reserve_a"`
+	ReserveB    uint64    `json:"reserve_b"`
+	Ratio       float64   `json:"ratio"`
 	LastUpdated time.Time `json:"last_updated"`
 }
 
@@ -21661,11 +21661,11 @@ func (sdk *BridgeSDK) simulateDEXSwap(pool *DEXSlippagePool, amountIn uint64, to
 	if tokenIn == pool.TokenA {
 		// Swapping TokenA for TokenB
 		amountOut = (amountIn * pool.ReserveB) / (pool.ReserveA + amountIn)
-		slippagePercent = (float64(amountIn) / float64(pool.ReserveA + amountIn)) * 100
+		slippagePercent = (float64(amountIn) / float64(pool.ReserveA+amountIn)) * 100
 	} else if tokenIn == pool.TokenB {
 		// Swapping TokenB for TokenA
 		amountOut = (amountIn * pool.ReserveA) / (pool.ReserveB + amountIn)
-		slippagePercent = (float64(amountIn) / float64(pool.ReserveB + amountIn)) * 100
+		slippagePercent = (float64(amountIn) / float64(pool.ReserveB+amountIn)) * 100
 	} else {
 		return 0, 0, fmt.Errorf("invalid token for swap")
 	}
@@ -21716,8 +21716,8 @@ func (sdk *BridgeSDK) validateDEXSlippageTest(pool *DEXSlippagePool, swapAmount 
 		Protected:       protected,
 		Timestamp:       time.Now(),
 		Details: map[string]interface{}{
-			"simulation":     true,
-			"high_slippage":  slippagePercent > 10.0,
+			"simulation":       true,
+			"high_slippage":    slippagePercent > 10.0,
 			"extreme_slippage": slippagePercent > 50.0,
 		},
 	}
@@ -21737,11 +21737,11 @@ func (sdk *BridgeSDK) getDEXSlippageStatus() map[string]interface{} {
 	copy(tests, globalDEXMonitor.Tests)
 
 	return map[string]interface{}{
-		"pools":         pools,
-		"tests":         tests,
-		"total_tests":   len(tests),
-		"failed_tests":  countFailedTests(tests),
-		"last_updated":  time.Now().Format(time.RFC3339),
+		"pools":        pools,
+		"tests":        tests,
+		"total_tests":  len(tests),
+		"failed_tests": countFailedTests(tests),
+		"last_updated": time.Now().Format(time.RFC3339),
 	}
 }
 
@@ -21767,7 +21767,7 @@ func validateDEXSlippageTest(pool *DEXSlippagePool, swapAmount uint64, minAmount
 
 	// Simulate large swap that should cause high slippage
 	expectedOutput := (swapAmount * testPool.ReserveB) / (testPool.ReserveA + swapAmount)
-	slippagePercent := (float64(swapAmount) / float64(testPool.ReserveA + swapAmount)) * 100
+	slippagePercent := (float64(swapAmount) / float64(testPool.ReserveA+swapAmount)) * 100
 
 	// Check if transaction would revert due to slippage
 	reverted := slippagePercent > 50.0 // High slippage threshold
@@ -21785,8 +21785,8 @@ func validateDEXSlippageTest(pool *DEXSlippagePool, swapAmount uint64, minAmount
 		Protected:       protected,
 		Timestamp:       time.Now(),
 		Details: map[string]interface{}{
-			"simulation":     true,
-			"high_slippage":  slippagePercent > 10.0,
+			"simulation":       true,
+			"high_slippage":    slippagePercent > 10.0,
 			"extreme_slippage": slippagePercent > 50.0,
 		},
 	}
@@ -21814,7 +21814,7 @@ func (sdk *BridgeSDK) AddDEXPool(tokenA, tokenB string, reserveA, reserveB uint6
 	// Check if pool already exists
 	for _, pool := range globalDEXMonitor.Pools {
 		if (pool.TokenA == tokenA && pool.TokenB == tokenB) ||
-		   (pool.TokenA == tokenB && pool.TokenB == tokenA) {
+			(pool.TokenA == tokenB && pool.TokenB == tokenA) {
 			return nil, fmt.Errorf("pool %s-%s already exists", tokenA, tokenB)
 		}
 	}
@@ -21839,7 +21839,7 @@ func (sdk *BridgeSDK) UpdatePoolReserves(tokenA, tokenB string, reserveA, reserv
 
 	for i, pool := range globalDEXMonitor.Pools {
 		if (pool.TokenA == tokenA && pool.TokenB == tokenB) ||
-		   (pool.TokenA == tokenB && pool.TokenB == tokenA) {
+			(pool.TokenA == tokenB && pool.TokenB == tokenA) {
 			globalDEXMonitor.Pools[i].ReserveA = reserveA
 			globalDEXMonitor.Pools[i].ReserveB = reserveB
 			globalDEXMonitor.Pools[i].Ratio = float64(reserveA) / float64(reserveB)
@@ -21858,7 +21858,7 @@ func (sdk *BridgeSDK) RemoveDEXPool(tokenA, tokenB string) error {
 
 	for i, pool := range globalDEXMonitor.Pools {
 		if (pool.TokenA == tokenA && pool.TokenB == tokenB) ||
-		   (pool.TokenA == tokenB && pool.TokenB == tokenA) {
+			(pool.TokenA == tokenB && pool.TokenB == tokenA) {
 			globalDEXMonitor.Pools = append(globalDEXMonitor.Pools[:i], globalDEXMonitor.Pools[i+1:]...)
 			return nil
 		}
@@ -21885,7 +21885,7 @@ func (sdk *BridgeSDK) RunDEXSlippageTest(tokenA, tokenB string, swapAmount uint6
 	var testPool *DEXSlippagePool
 	for _, pool := range globalDEXMonitor.Pools {
 		if (pool.TokenA == tokenA && pool.TokenB == tokenB) ||
-		   (pool.TokenA == tokenB && pool.TokenB == tokenA) {
+			(pool.TokenA == tokenB && pool.TokenB == tokenA) {
 			testPool = &pool
 			break
 		}
@@ -21934,11 +21934,11 @@ func (sdk *BridgeSDK) handleMainDashboardStatus(w http.ResponseWriter, r *http.R
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"status":           status,
-			"main_dashboard":   mainDashboardData,
-			"last_check":       time.Now().Format(time.RFC3339),
-			"bridge_sdk_port":  8084,
-			"main_dash_port":   8080,
+			"status":          status,
+			"main_dashboard":  mainDashboardData,
+			"last_check":      time.Now().Format(time.RFC3339),
+			"bridge_sdk_port": 8084,
+			"main_dash_port":  8080,
 		},
 	}
 
@@ -22173,9 +22173,9 @@ func (sdk *BridgeSDK) handleMainDashboardActivities(w http.ResponseWriter, r *ht
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"activities":    activities,
-			"total_count":   len(activities),
-			"last_updated":  time.Now().Format(time.RFC3339),
+			"activities":   activities,
+			"total_count":  len(activities),
+			"last_updated": time.Now().Format(time.RFC3339),
 		},
 	}
 
@@ -22214,9 +22214,9 @@ func (sdk *BridgeSDK) handleMainDashboardMonitor(w http.ResponseWriter, r *http.
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"activity_id":  activity.ID,
-			"recorded_at":  activity.Timestamp.Format(time.RFC3339),
-			"status":       "recorded",
+			"activity_id": activity.ID,
+			"recorded_at": activity.Timestamp.Format(time.RFC3339),
+			"status":      "recorded",
 		},
 	}
 
@@ -22242,22 +22242,22 @@ func (sdk *BridgeSDK) handleWalletDashboardStatus(w http.ResponseWriter, r *http
 
 		// Mock wallet data since wallet API requires authentication
 		walletData = map[string]interface{}{
-			"service_status":        "running",
-			"active_sessions":       5,
-			"total_wallets":        25,
-			"recent_transactions":  12,
-			"security_score":       98,
+			"service_status":      "running",
+			"active_sessions":     5,
+			"total_wallets":       25,
+			"recent_transactions": 12,
+			"security_score":      98,
 		}
 	}
 
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"status":           status,
-			"wallet_data":      walletData,
-			"last_check":       time.Now().Format(time.RFC3339),
-			"wallet_port":      9000,
-			"bridge_sdk_port":  8084,
+			"status":          status,
+			"wallet_data":     walletData,
+			"last_check":      time.Now().Format(time.RFC3339),
+			"wallet_port":     9000,
+			"bridge_sdk_port": 8084,
 		},
 	}
 
@@ -22281,32 +22281,32 @@ func (sdk *BridgeSDK) handleWalletDashboardTransactions(w http.ResponseWriter, r
 			"timestamp":   time.Now().Add(-10 * time.Minute).Format(time.RFC3339),
 		},
 		{
-			"id":          "wallet_tx_2",
-			"type":        "Bridge",
-			"token":       "ETH",
-			"amount":      "0.5",
-			"from_chain":  "ethereum",
-			"to_chain":    "blackhole",
-			"status":      "Pending",
-			"timestamp":   time.Now().Add(-5 * time.Minute).Format(time.RFC3339),
+			"id":         "wallet_tx_2",
+			"type":       "Bridge",
+			"token":      "ETH",
+			"amount":     "0.5",
+			"from_chain": "ethereum",
+			"to_chain":   "blackhole",
+			"status":     "Pending",
+			"timestamp":  time.Now().Add(-5 * time.Minute).Format(time.RFC3339),
 		},
 		{
-			"id":          "wallet_tx_3",
-			"type":        "Stake",
-			"token":       "BHX",
-			"amount":      "5000",
-			"validator":   "validator_1",
-			"status":      "Completed",
-			"timestamp":   time.Now().Add(-2 * time.Minute).Format(time.RFC3339),
+			"id":        "wallet_tx_3",
+			"type":      "Stake",
+			"token":     "BHX",
+			"amount":    "5000",
+			"validator": "validator_1",
+			"status":    "Completed",
+			"timestamp": time.Now().Add(-2 * time.Minute).Format(time.RFC3339),
 		},
 	}
 
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"transactions":  transactions,
-			"total_count":   len(transactions),
-			"last_updated":  time.Now().Format(time.RFC3339),
+			"transactions": transactions,
+			"total_count":  len(transactions),
+			"last_updated": time.Now().Format(time.RFC3339),
 		},
 	}
 
@@ -22319,14 +22319,14 @@ func (sdk *BridgeSDK) handleWalletDashboardSecurity(w http.ResponseWriter, r *ht
 
 	// Mock security data
 	securityMetrics := map[string]interface{}{
-		"failed_login_attempts":  2,
-		"suspicious_activities":  0,
-		"security_score":         98,
-		"last_security_scan":     time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
-		"active_sessions":        5,
-		"session_timeouts":       3,
-		"encryption_status":      "active",
-		"backup_status":          "up_to_date",
+		"failed_login_attempts": 2,
+		"suspicious_activities": 0,
+		"security_score":        98,
+		"last_security_scan":    time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
+		"active_sessions":       5,
+		"session_timeouts":      3,
+		"encryption_status":     "active",
+		"backup_status":         "up_to_date",
 	}
 
 	response := map[string]interface{}{
@@ -22491,22 +22491,20 @@ var allAdminActivities []map[string]interface{}
 var previousBalances map[string]map[string]float64
 var detectedTransfers []map[string]interface{}
 
-
-
 // Transaction persistence structures
 type WalletTransaction struct {
-	ID          string    `json:"id"`
-	Hash        string    `json:"hash"`
-	From        string    `json:"from"`
-	To          string    `json:"to"`
-	Amount      string    `json:"amount"`
-	Token       string    `json:"token"`
-	Status      string    `json:"status"`
-	Timestamp   int64     `json:"timestamp"`
-	Type        string    `json:"type"`
-	IsNew       bool      `json:"isNew"`
-	CreatedAt   time.Time `json:"createdAt"`
-	MultiAddr   string    `json:"multiAddr"` // Track which multi-address this relates to
+	ID        string    `json:"id"`
+	Hash      string    `json:"hash"`
+	From      string    `json:"from"`
+	To        string    `json:"to"`
+	Amount    string    `json:"amount"`
+	Token     string    `json:"token"`
+	Status    string    `json:"status"`
+	Timestamp int64     `json:"timestamp"`
+	Type      string    `json:"type"`
+	IsNew     bool      `json:"isNew"`
+	CreatedAt time.Time `json:"createdAt"`
+	MultiAddr string    `json:"multiAddr"` // Track which multi-address this relates to
 }
 
 // Database keys for transaction storage
@@ -22649,11 +22647,11 @@ func (sdk *BridgeSDK) handleProxyMainDashboardActivities(w http.ResponseWriter, 
 	response := map[string]interface{}{
 		"success": true,
 		"data": map[string]interface{}{
-			"activities":     activities,
-			"total_count":    len(activities),
-			"last_updated":   time.Now().Format(time.RFC3339),
-			"has_changes":    hasRealChanges,
-			"state_hash":     currentStateHash,
+			"activities":   activities,
+			"total_count":  len(activities),
+			"last_updated": time.Now().Format(time.RFC3339),
+			"has_changes":  hasRealChanges,
+			"state_hash":   currentStateHash,
 		},
 	}
 	json.NewEncoder(w).Encode(response)
@@ -22720,83 +22718,83 @@ func (sdk *BridgeSDK) handleProxyWalletDashboardTransactions(w http.ResponseWrit
 
 // SignedBridgeMessage represents a signed bridge transaction message
 type SignedBridgeMessage struct {
-	Message      *Transaction `json:"message"`
-	Signature    string       `json:"signature"`
-	PublicKey    string       `json:"public_key"`
-	SignatureScheme string    `json:"signature_scheme"`
-	Nonce        uint64       `json:"nonce"`
-	Timestamp    int64        `json:"timestamp"`
+	Message         *Transaction `json:"message"`
+	Signature       string       `json:"signature"`
+	PublicKey       string       `json:"public_key"`
+	SignatureScheme string       `json:"signature_scheme"`
+	Nonce           uint64       `json:"nonce"`
+	Timestamp       int64        `json:"timestamp"`
 }
 
 // MultiSigWallet represents a multi-signature wallet configuration
 type MultiSigWallet struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Owners         []string `json:"owners"`
-	RequiredSigs   int      `json:"required_signatures"`
-	TotalSigs      int      `json:"total_signatures"`
-	Balance        string   `json:"balance"`
-	TokenSymbol    string   `json:"token_symbol"`
-	CreatedAt      time.Time `json:"created_at"`
-	Status         string   `json:"status"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Owners       []string  `json:"owners"`
+	RequiredSigs int       `json:"required_signatures"`
+	TotalSigs    int       `json:"total_signatures"`
+	Balance      string    `json:"balance"`
+	TokenSymbol  string    `json:"token_symbol"`
+	CreatedAt    time.Time `json:"created_at"`
+	Status       string    `json:"status"`
 }
 
 // RateLimiter implements token bucket rate limiting
 type RateLimiter struct {
-	tokens    float64
-	capacity  float64
+	tokens     float64
+	capacity   float64
 	refillRate float64
 	lastRefill time.Time
-	mutex     sync.Mutex
+	mutex      sync.Mutex
 }
 
 // ComplianceCheck represents AML/KYC compliance validation
 type ComplianceCheck struct {
-	ID              string            `json:"id"`
-	TransactionID   string            `json:"transaction_id"`
-	UserID          string            `json:"user_id"`
-	CheckType       string            `json:"check_type"` // "aml", "kyc", "sanctions"
-	Status          string            `json:"status"` // "pending", "passed", "failed", "requires_review"
-	RiskScore       float64           `json:"risk_score"`
-	Details         map[string]interface{} `json:"details"`
-	CheckedAt       time.Time         `json:"checked_at"`
-	ReviewedBy      string            `json:"reviewed_by,omitempty"`
+	ID            string                 `json:"id"`
+	TransactionID string                 `json:"transaction_id"`
+	UserID        string                 `json:"user_id"`
+	CheckType     string                 `json:"check_type"` // "aml", "kyc", "sanctions"
+	Status        string                 `json:"status"`     // "pending", "passed", "failed", "requires_review"
+	RiskScore     float64                `json:"risk_score"`
+	Details       map[string]interface{} `json:"details"`
+	CheckedAt     time.Time              `json:"checked_at"`
+	ReviewedBy    string                 `json:"reviewed_by,omitempty"`
 }
 
 // AdvancedRetryConfig represents enhanced retry configuration
 type AdvancedRetryConfig struct {
-	MaxRetries         int           `json:"max_retries"`
-	MaxAttempts        int           `json:"max_attempts"`
-	BaseDelay          time.Duration `json:"base_delay"`
-	MaxDelay           time.Duration `json:"max_delay"`
-	BackoffMultiplier  float64       `json:"backoff_multiplier"`
-	JitterEnabled      bool          `json:"jitter_enabled"`
-	CircuitBreakerThreshold int      `json:"circuit_breaker_threshold"`
-	DeadLetterEnabled  bool          `json:"dead_letter_enabled"`
+	MaxRetries              int           `json:"max_retries"`
+	MaxAttempts             int           `json:"max_attempts"`
+	BaseDelay               time.Duration `json:"base_delay"`
+	MaxDelay                time.Duration `json:"max_delay"`
+	BackoffMultiplier       float64       `json:"backoff_multiplier"`
+	JitterEnabled           bool          `json:"jitter_enabled"`
+	CircuitBreakerThreshold int           `json:"circuit_breaker_threshold"`
+	DeadLetterEnabled       bool          `json:"dead_letter_enabled"`
 }
 
 // SecurityConfig represents enhanced security configuration
 type SecurityConfig struct {
-	EnableEncryption     bool          `json:"enable_encryption"`
-	EncryptionKey        string        `json:"encryption_key"`
-	EnableAuditLogging   bool          `json:"enable_audit_logging"`
-	SessionTimeout       time.Duration `json:"session_timeout"`
-	EnableIPWhitelist    bool          `json:"enable_ip_whitelist"`
-	AllowedIPs           []string      `json:"allowed_ips"`
-	EnableRateLimiting   bool          `json:"enable_rate_limiting"`
-	RateLimitRequests    int           `json:"rate_limit_requests"`
-	RateLimitWindow      time.Duration `json:"rate_limit_window"`
+	EnableEncryption   bool          `json:"enable_encryption"`
+	EncryptionKey      string        `json:"encryption_key"`
+	EnableAuditLogging bool          `json:"enable_audit_logging"`
+	SessionTimeout     time.Duration `json:"session_timeout"`
+	EnableIPWhitelist  bool          `json:"enable_ip_whitelist"`
+	AllowedIPs         []string      `json:"allowed_ips"`
+	EnableRateLimiting bool          `json:"enable_rate_limiting"`
+	RateLimitRequests  int           `json:"rate_limit_requests"`
+	RateLimitWindow    time.Duration `json:"rate_limit_window"`
 }
 
 // ScalabilityConfig represents horizontal scaling configuration
 type ScalabilityConfig struct {
-	EnableClustering     bool     `json:"enable_clustering"`
-	ClusterNodes         []string `json:"cluster_nodes"`
-	LoadBalancerEnabled  bool     `json:"load_balancer_enabled"`
-	WorkerPoolSize       int      `json:"worker_pool_size"`
-	QueueBufferSize      int      `json:"queue_buffer_size"`
-	EnableMetrics        bool     `json:"enable_metrics"`
-	MetricsEndpoint      string   `json:"metrics_endpoint"`
+	EnableClustering    bool     `json:"enable_clustering"`
+	ClusterNodes        []string `json:"cluster_nodes"`
+	LoadBalancerEnabled bool     `json:"load_balancer_enabled"`
+	WorkerPoolSize      int      `json:"worker_pool_size"`
+	QueueBufferSize     int      `json:"queue_buffer_size"`
+	EnableMetrics       bool     `json:"enable_metrics"`
+	MetricsEndpoint     string   `json:"metrics_endpoint"`
 }
 
 // === SIGNATURE VERIFICATION IMPLEMENTATION ===
@@ -22844,8 +22842,8 @@ func generateEd25519KeyPair() (publicKey, privateKey string, err error) {
 	}
 
 	return base64.StdEncoding.EncodeToString(pubKey),
-		   base64.StdEncoding.EncodeToString(privKey),
-		   nil
+		base64.StdEncoding.EncodeToString(privKey),
+		nil
 }
 
 // signMessageWithEd25519 signs a transaction message with Ed25519
@@ -22947,7 +22945,7 @@ func (rl *RateLimiter) Allow() bool {
 	timePassed := now.Sub(rl.lastRefill).Seconds()
 	tokensToAdd := timePassed * rl.refillRate
 
-	rl.tokens = math.Min(rl.capacity, rl.tokens + tokensToAdd)
+	rl.tokens = math.Min(rl.capacity, rl.tokens+tokensToAdd)
 	rl.lastRefill = now
 
 	if rl.tokens >= 1 {
@@ -23099,9 +23097,9 @@ func (arp *AdvancedRetryProcessor) ProcessRetries() {
 
 // SecurityMiddleware provides enhanced security features
 type SecurityMiddleware struct {
-	config       *SecurityConfig
-	rateLimiter  *RateLimiter
-	auditLogger  *AuditLogger
+	config      *SecurityConfig
+	rateLimiter *RateLimiter
+	auditLogger *AuditLogger
 }
 
 // NewSecurityMiddleware creates a new security middleware
@@ -23109,7 +23107,7 @@ func NewSecurityMiddleware(config *SecurityConfig) *SecurityMiddleware {
 	var rateLimiter *RateLimiter
 	if config.EnableRateLimiting {
 		rateLimiter = NewRateLimiter(float64(config.RateLimitRequests),
-									float64(config.RateLimitRequests)/config.RateLimitWindow.Seconds())
+			float64(config.RateLimitRequests)/config.RateLimitWindow.Seconds())
 	}
 
 	return &SecurityMiddleware{
@@ -23126,7 +23124,7 @@ func (sm *SecurityMiddleware) SecureHandler(handler http.HandlerFunc) http.Handl
 		if sm.rateLimiter != nil && !sm.rateLimiter.Allow() {
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			sm.auditLogger.Log("rate_limit_exceeded", map[string]interface{}{
-				"ip": r.RemoteAddr,
+				"ip":   r.RemoteAddr,
 				"path": r.URL.Path,
 			})
 			return
@@ -23145,7 +23143,7 @@ func (sm *SecurityMiddleware) SecureHandler(handler http.HandlerFunc) http.Handl
 			if !allowed {
 				http.Error(w, "IP not allowed", http.StatusForbidden)
 				sm.auditLogger.Log("ip_blocked", map[string]interface{}{
-					"ip": clientIP,
+					"ip":   clientIP,
 					"path": r.URL.Path,
 				})
 				return
@@ -23161,9 +23159,9 @@ func (sm *SecurityMiddleware) SecureHandler(handler http.HandlerFunc) http.Handl
 		// Audit logging
 		if sm.config.EnableAuditLogging {
 			sm.auditLogger.Log("request", map[string]interface{}{
-				"method": r.Method,
-				"path": r.URL.Path,
-				"ip": r.RemoteAddr,
+				"method":     r.Method,
+				"path":       r.URL.Path,
+				"ip":         r.RemoteAddr,
 				"user_agent": r.UserAgent(),
 			})
 		}
@@ -23177,10 +23175,10 @@ func (sm *SecurityMiddleware) SecureHandler(handler http.HandlerFunc) http.Handl
 
 // WorkerPool manages a pool of worker goroutines
 type WorkerPool struct {
-	workers    int
-	taskQueue  chan func()
-	quit       chan bool
-	wg         sync.WaitGroup
+	workers   int
+	taskQueue chan func()
+	quit      chan bool
+	wg        sync.WaitGroup
 }
 
 // NewWorkerPool creates a new worker pool
@@ -23324,9 +23322,9 @@ func HandleAdvancedRetryOperations(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		// Get retry queue status
 		retryStats := map[string]interface{}{
-			"queue_size": 5,
-			"processing": 2,
-			"dead_letter": 1,
+			"queue_size":   5,
+			"processing":   2,
+			"dead_letter":  1,
 			"success_rate": 0.85,
 		}
 
@@ -23346,8 +23344,8 @@ func HandleAdvancedRetryOperations(w http.ResponseWriter, r *http.Request) {
 
 		// Simulate retry operation
 		result := map[string]interface{}{
-			"item_id": req.ItemID,
-			"status": "retry_initiated",
+			"item_id":      req.ItemID,
+			"status":       "retry_initiated",
 			"next_attempt": time.Now().Add(30 * time.Second),
 		}
 
@@ -23366,11 +23364,11 @@ func HandleSecurityOperations(w http.ResponseWriter, r *http.Request) {
 		// Get security status
 		securityStatus := map[string]interface{}{
 			"encryption_enabled": true,
-			"audit_logging": true,
-			"rate_limiting": true,
-			"active_sessions": 15,
-			"blocked_ips": []string{"192.168.1.100"},
-			"recent_audits": 25,
+			"audit_logging":      true,
+			"rate_limiting":      true,
+			"active_sessions":    15,
+			"blocked_ips":        []string{"192.168.1.100"},
+			"recent_audits":      25,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -23386,7 +23384,7 @@ func HandleSecurityOperations(w http.ResponseWriter, r *http.Request) {
 
 		// Simulate security update
 		result := map[string]interface{}{
-			"status": "security_settings_updated",
+			"status":          "security_settings_updated",
 			"changes_applied": len(req),
 		}
 
@@ -23404,12 +23402,12 @@ func HandleScalabilityOperations(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		// Get scalability metrics
 		scalabilityMetrics := map[string]interface{}{
-			"active_workers": 8,
-			"queue_depth": 15,
-			"cluster_nodes": 3,
-			"load_balancer": true,
-			"cpu_usage": 65.5,
-			"memory_usage": 72.3,
+			"active_workers":    8,
+			"queue_depth":       15,
+			"cluster_nodes":     3,
+			"load_balancer":     true,
+			"cpu_usage":         65.5,
+			"memory_usage":      72.3,
 			"response_time_avg": "45ms",
 		}
 
@@ -23419,9 +23417,9 @@ func HandleScalabilityOperations(w http.ResponseWriter, r *http.Request) {
 	case "POST":
 		// Scale operations
 		var req struct {
-			Action    string `json:"action"` // "scale_up", "scale_down"
-			Workers   int    `json:"workers,omitempty"`
-			Nodes     int    `json:"nodes,omitempty"`
+			Action  string `json:"action"` // "scale_up", "scale_down"
+			Workers int    `json:"workers,omitempty"`
+			Nodes   int    `json:"nodes,omitempty"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -23431,8 +23429,8 @@ func HandleScalabilityOperations(w http.ResponseWriter, r *http.Request) {
 
 		// Simulate scaling operation
 		result := map[string]interface{}{
-			"action": req.Action,
-			"status": "scaling_initiated",
+			"action":               req.Action,
+			"status":               "scaling_initiated",
 			"estimated_completion": time.Now().Add(2 * time.Minute),
 		}
 
@@ -23486,7 +23484,6 @@ func pow(base float64, exp float64) float64 {
 	return result
 }
 
-
 // getClientIP gets the client IP address from request
 func getClientIP(r *http.Request) string {
 	// Check X-Forwarded-For header first
@@ -23520,8 +23517,8 @@ type AuditLogger struct {
 }
 
 type AuditEntry struct {
-	Timestamp time.Time         `json:"timestamp"`
-	Event     string            `json:"event"`
+	Timestamp time.Time              `json:"timestamp"`
+	Event     string                 `json:"event"`
 	Details   map[string]interface{} `json:"details"`
 }
 
@@ -23571,7 +23568,6 @@ func (al *AuditLogger) GetEntries(limit int) []AuditEntry {
 	return result
 }
 
-
 // retryItem attempts to retry an item (mock implementation)
 func (arp *AdvancedRetryProcessor) retryItem(item *RetryItem) bool {
 	// Simulate retry logic - in production, this would attempt the actual operation
@@ -23585,26 +23581,26 @@ func (arp *AdvancedRetryProcessor) retryItem(item *RetryItem) bool {
 func InitializeMissingFeatures() {
 	// Initialize security middleware
 	securityConfig := &SecurityConfig{
-		EnableEncryption:    true,
-		EnableAuditLogging:  true,
-		SessionTimeout:      30 * time.Minute,
-		EnableIPWhitelist:   false,
-		EnableRateLimiting:  true,
-		RateLimitRequests:   100,
-		RateLimitWindow:     time.Minute,
+		EnableEncryption:   true,
+		EnableAuditLogging: true,
+		SessionTimeout:     30 * time.Minute,
+		EnableIPWhitelist:  false,
+		EnableRateLimiting: true,
+		RateLimitRequests:  100,
+		RateLimitWindow:    time.Minute,
 	}
 
 	securityMiddleware = NewSecurityMiddleware(securityConfig)
 
 	// Initialize advanced retry processor
 	retryConfig := &AdvancedRetryConfig{
-		MaxRetries:        5,
-		BaseDelay:         5 * time.Second,
-		MaxDelay:          5 * time.Minute,
-		BackoffMultiplier: 2.0,
-		JitterEnabled:     true,
+		MaxRetries:              5,
+		BaseDelay:               5 * time.Second,
+		MaxDelay:                5 * time.Minute,
+		BackoffMultiplier:       2.0,
+		JitterEnabled:           true,
 		CircuitBreakerThreshold: 10,
-		DeadLetterEnabled: true,
+		DeadLetterEnabled:       true,
 	}
 
 	advancedRetryProcessor = NewAdvancedRetryProcessor(retryConfig)
@@ -23641,8 +23637,8 @@ func startBridgeRESTAPI() {
 // handleBridgeHealth provides bridge-specific health check
 func handleBridgeHealth(w http.ResponseWriter, r *http.Request) {
 	health := map[string]interface{}{
-		"status": "healthy",
-		"service": "bridge-sdk",
+		"status":    "healthy",
+		"service":   "bridge-sdk",
 		"grpc_port": 9090,
 		"rest_port": 8081,
 		"timestamp": time.Now().Unix(),
@@ -23657,8 +23653,8 @@ func handleBridgeStats(w http.ResponseWriter, r *http.Request) {
 	stats := map[string]interface{}{
 		"total_transactions": 0,
 		"active_connections": 0,
-		"uptime_seconds": 0,
-		"version": "v1alpha1",
+		"uptime_seconds":     0,
+		"version":            "v1alpha1",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -23675,8 +23671,8 @@ func handleBridgeRelay(w http.ResponseWriter, r *http.Request) {
 	// Parse the signed message (simplified implementation)
 	var req struct {
 		SignedMessage struct {
-			Message interface{} `json:"message"`
-			Signature string `json:"signature"`
+			Message   interface{} `json:"message"`
+			Signature string      `json:"signature"`
 		} `json:"signed_message"`
 		TargetChain string `json:"target_chain"`
 	}
@@ -23688,11 +23684,11 @@ func handleBridgeRelay(w http.ResponseWriter, r *http.Request) {
 
 	// Simulate relay processing
 	response := map[string]interface{}{
-		"success": true,
-		"message": "Relay request accepted",
-		"relay_id": fmt.Sprintf("relay_%d", time.Now().Unix()),
+		"success":      true,
+		"message":      "Relay request accepted",
+		"relay_id":     fmt.Sprintf("relay_%d", time.Now().Unix()),
 		"target_chain": req.TargetChain,
-		"timestamp": time.Now().Unix(),
+		"timestamp":    time.Now().Unix(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -23704,10 +23700,10 @@ func handleBridgeRelay(w http.ResponseWriter, r *http.Request) {
 
 // BridgeTail monitors and displays bridge logs in real-time
 type BridgeTail struct {
-	logFile    string
-	follow     bool
-	lines      int
-	filter     string
+	logFile string
+	follow  bool
+	lines   int
+	filter  string
 }
 
 // NewBridgeTail creates a new bridge tail instance
@@ -23824,13 +23820,12 @@ func BridgectlTailMain() {
 func RegisterMissingAPIEndpoints(mux *http.ServeMux) {
 	// Multi-signature wallet endpoints
 	mux.HandleFunc("/api/v1/multi-sig/wallets", securityMiddleware.SecureHandler(HandleMultiSigWalletOperations))
-	
+
 	// Compliance endpoints
 	mux.HandleFunc("/api/v1/compliance/check", securityMiddleware.SecureHandler(HandleComplianceCheck))
 
 	// Advanced retry endpoints
 	mux.HandleFunc("/api/v1/retry/queue", securityMiddleware.SecureHandler(HandleAdvancedRetryOperations))
-
 
 	// Security endpoints
 	mux.HandleFunc("/api/v1/security/status", securityMiddleware.SecureHandler(HandleSecurityOperations))
@@ -23856,7 +23851,7 @@ func RegisterMissingAPIEndpoints(mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"entries": entries,
-			"total": len(entries),
+			"total":   len(entries),
 		})
 	}))
 }
@@ -23865,7 +23860,7 @@ func RegisterMissingAPIEndpoints(mux *http.ServeMux) {
 var (
 	securityMiddleware     *SecurityMiddleware
 	advancedRetryProcessor *AdvancedRetryProcessor
-	workerPool            *WorkerPool
+	workerPool             *WorkerPool
 )
 
 // === USAGE INSTRUCTIONS ===

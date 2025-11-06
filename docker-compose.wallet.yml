@@ -1,0 +1,22 @@
+
+networks:
+  blackhole-network:
+    external: true
+    name: blackhole-network
+
+services:
+  wallet:
+    image: golang:1.23-alpine
+    container_name: blackhole-wallet
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      - BLOCKCHAIN_API_URL=http://blackhole-node-1:8080
+      - BRIDGE_API_URL=http://blackhole-bridge:8084
+    networks:
+      - blackhole-network
+    ports:
+      - "9000:9000"
+    entrypoint: ["/bin/sh","-lc","tr -d '\r' < /workspace/docker/wallet-entrypoint.sh > /tmp/wallet-entrypoint.sh && /bin/sh /tmp/wallet-entrypoint.sh"]
+    restart: unless-stopped

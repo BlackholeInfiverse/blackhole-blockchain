@@ -1,10 +1,12 @@
 package api
-
 import (
+
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/bridge"
@@ -52,6 +54,8 @@ func (s *APIServer) Start() {
 	http.HandleFunc("/api/admin/submit-transaction", s.enableCORS(s.submitTransaction))
 	http.HandleFunc("/api/wallets", s.enableCORS(s.getWallets))
 	http.HandleFunc("/api/node/info", s.enableCORS(s.getNodeInfo))
+	// P2P info endpoint for persistent identity and multiaddrs
+	http.HandleFunc("/api/p2p/info", s.enableCORS(s.getP2PInfo))
 	http.HandleFunc("/api/dev/test-dex", s.enableCORS(s.testDEX))
 	http.HandleFunc("/api/dev/test-bridge", s.enableCORS(s.testBridge))
 	http.HandleFunc("/api/dev/test-staking", s.enableCORS(s.testStaking))
@@ -184,7 +188,26 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	html := `<!DOCTYPE html>
+	// Always render Node Connectivity (independent of API port)
+	nodeConnectivity := `
+            <div class="card">
+                <h3>🛰️ Node Connectivity</h3>
+                <div>
+                    <div><strong>Persistent Peer ID:</strong></div>
+                    <div id="p2p-peerid" class="address">-</div>
+                    <div style="margin-top:8px;"><strong>Full MultiAddr:</strong></div>
+                    <div id="p2p-maddr" class="address">-</div>
+                    <div style="margin-top:12px; display:flex; gap:8px;">
+                        <button class="btn" onclick="copyPeerAddr()">Copy</button>
+                        <button class="btn" onclick="refreshP2PInfo()" style="background:#27ae60;">Refresh</button>
+                    </div>
+                    <div style="margin-top:8px; font-size:12px; color:#666;">
+                        Bridge Connected: <span id="p2p-bridge" style="font-weight:bold;">-</span> | Last Seen: <span id="p2p-lastseen">-</span>
+                    </div>
+                </div>
+            </div>`
+
+	template := `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -270,9 +293,11 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
             </div>
 
             <div class="card">
-                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5s-2.24-5-5-5H13V7z"/></svg> Recent Blocks</h3>
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H6.99c-2.76 0-5 2.24-5 5s2.24 5 5 5H11v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm5-6h4.01c2.76 0 5 2.24 5 5s-2.24 5-5 5H13v1.9h4.01c2.76 0 5-2.24 5-5H13V7z"/></svg> Recent Blocks</h3>
                 <div id="recent-blocks"></div>
             </div>
+
+            {{NODE_CONNECTIVITY}}
 
             <div class="card">
                 <h3>💼 Wallet Access</h3>
@@ -344,6 +369,7 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
     <script>
         let refreshInterval;
         let bridgeRefreshInterval;
+        let p2pRefreshInterval;
 
         async function fetchBlockchainInfo() {
             try {
@@ -358,10 +384,38 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
             }
         }
 
+        async function fetchP2PInfo() {
+            try {
+                const elPeer = document.getElementById('p2p-peerid');
+                const elAddr = document.getElementById('p2p-maddr');
+                if (!elPeer || !elAddr) return; // Node section may be hidden in custom builds
+                const resp = await fetch('/api/p2p/info');
+                if (!resp.ok) return;
+                const info = await resp.json();
+                elPeer.textContent = info.peerId || '-';
+                elAddr.textContent = (info.multiaddrs && info.multiaddrs.length > 0) ? info.multiaddrs[0] : '-';
+                const elBridge = document.getElementById('p2p-bridge');
+                const elSeen = document.getElementById('p2p-lastseen');
+                if (elBridge) elBridge.textContent = info.bridgeConnected ? 'Yes' : 'No';
+                if (elSeen) elSeen.textContent = info.lastSeen || '-';
+            } catch (e) {
+                console.warn('p2p info fetch failed', e);
+            }
+        }
+
+        function copyPeerAddr() {
+            const el = document.getElementById('p2p-maddr');
+            if (!el) return;
+            const txt = el.textContent || '';
+            if (!txt) return;
+            navigator.clipboard.writeText(txt);
+        }
+
+        function refreshP2PInfo() { fetchP2PInfo(); }
+
         async function fetchBridgeStatus(retryCount = 0) {
             try {
                 console.log('Checking bridge SDK status, attempt:', retryCount + 1);
-                // Check bridge SDK directly on port 8084
                 const bridgeUrl = 'http://localhost:8084';
                 const response = await fetch(bridgeUrl + '/health');
 
@@ -369,7 +423,6 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
                     const healthData = await response.json();
                     console.log('Bridge SDK health response:', healthData);
 
-                    // Create compatible response format
                     const bridgeData = {
                         success: true,
                         data: {
@@ -388,8 +441,6 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
                 }
             } catch (error) {
                 console.error('Error checking bridge SDK:', error);
-
-                // Retry up to 3 times with increasing delay
                 if (retryCount < 3) {
                     console.log('Retrying bridge status check in', (retryCount + 1) * 2, 'seconds...');
                     setTimeout(() => fetchBridgeStatus(retryCount + 1), (retryCount + 1) * 2000);
@@ -399,57 +450,44 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
             }
         }
 
-        // Note: fetchWorkflowComponents removed - bridge SDK runs separately
-
         function updateUI(data) {
-            // Update stats
-            document.getElementById('block-height').textContent = data.blockHeight;
-            document.getElementById('pending-txs').textContent = data.pendingTxs;
-            document.getElementById('total-supply').textContent = data.totalSupply.toLocaleString();
-            document.getElementById('max-supply').textContent = data.maxSupply ? data.maxSupply.toLocaleString() : 'Unlimited';
-            document.getElementById('supply-utilization').textContent = data.supplyUtilization ? data.supplyUtilization.toFixed(2) + '%' : '0%';
-            document.getElementById('block-reward').textContent = data.blockReward;
-
-            // Update token balances
-            updateTokenBalances(data.tokenBalances);
-
-            // Update staking info
-            updateStakingInfo(data.stakes);
-
-            // Update recent blocks
-            updateRecentBlocks(data.recentBlocks);
+            try {
+                document.getElementById('block-height').textContent = (data.blockHeight ?? '-');
+                document.getElementById('pending-txs').textContent = (data.pendingTxs ?? '-');
+                const totalSupply = data.totalSupply ?? 0;
+                const maxSupply = data.maxSupply ?? 0;
+                document.getElementById('total-supply').textContent = Number(totalSupply).toLocaleString();
+                document.getElementById('max-supply').textContent = maxSupply ? Number(maxSupply).toLocaleString() : 'Unlimited';
+                const util = data.supplyUtilization ?? (maxSupply ? (Number(totalSupply)/Number(maxSupply))*100 : 0);
+                document.getElementById('supply-utilization').textContent = util ? util.toFixed(2) + '%' : '0%';
+                document.getElementById('block-reward').textContent = (data.blockReward ?? '-');
+                updateTokenBalances(data.tokenBalances || {});
+                updateStakingInfo(data.stakes || {});
+                updateRecentBlocks(data.recentBlocks || []);
+            } catch (e) {
+                console.warn('updateUI failed', e);
+            }
         }
 
         function updateBridgeUI(data) {
             console.log('Updating bridge UI with data:', data);
-
             if (data.success && data.data) {
                 const bridgeData = data.data;
                 const status = bridgeData.bridge_status;
-
                 console.log('Bridge status object:', status);
                 console.log('SDK running:', bridgeData.sdk_running);
-
-                // Update bridge status
                 const statusText = status && status.status ? status.status : 'Unknown';
                 document.getElementById('bridge-status').textContent = statusText;
                 document.getElementById('bridge-port').textContent = bridgeData.sdk_port || '-';
-
-                // Check multiple possible health indicators
                 let isHealthy = false;
                 if (status) {
                     isHealthy = status.healthy === true || status.status === 'running';
                 }
-
-                // Also check if SDK is running as a fallback
                 if (!isHealthy && bridgeData.sdk_running === true) {
                     isHealthy = true;
                 }
-
                 console.log('Computed health status:', isHealthy);
                 document.getElementById('bridge-health').innerHTML = isHealthy ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Healthy' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg> Unhealthy';
-
-                // Enable/disable bridge dashboard button
                 const dashboardBtn = document.getElementById('bridge-dashboard-btn');
                 if (bridgeData.sdk_running === true || isHealthy) {
                     dashboardBtn.disabled = false;
@@ -460,27 +498,18 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
                 }
             } else {
                 console.log('Bridge data not available or unsuccessful response');
-                // Bridge not available
                 document.getElementById('bridge-status').textContent = 'Not Available';
                 document.getElementById('bridge-port').textContent = '-';
                 document.getElementById('bridge-health').innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></svg> Offline';
-
                 const dashboardBtn = document.getElementById('bridge-dashboard-btn');
                 dashboardBtn.disabled = true;
                 dashboardBtn.style.background = '#95a5a6';
             }
-
-            // Note: Workflow components removed - bridge SDK runs separately
         }
 
-        // Note: updateWorkflowComponents removed - bridge SDK runs separately
-
         function openBridgeDashboard() {
-            // Bridge SDK runs on port 8084 when started separately
             const bridgePort = 8084;
             const bridgeUrl = 'http://localhost:' + bridgePort;
-
-            // Check if bridge is accessible before opening
             fetch(bridgeUrl + '/health')
                 .then(response => {
                     if (response.ok) {
@@ -495,38 +524,42 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
                 });
         }
 
-        function refreshBridgeStatus() {
-            fetchBridgeStatus();
-        }
+        function refreshBridgeStatus() { fetchBridgeStatus(); }
 
         function updateTokenBalances(tokenBalances) {
             const container = document.getElementById('token-balances');
             let html = '';
-
-            for (const [token, balances] of Object.entries(tokenBalances)) {
+            const entries = Object.entries(tokenBalances || {});
+            if (entries.length === 0) {
+                container.innerHTML = '<em>No token balances yet</em>';
+                return;
+            }
+            for (const [token, balances] of entries) {
                 html += '<h4>' + token + '</h4>';
                 html += '<table><tr><th>Address</th><th>Balance</th></tr>';
-                for (const [address, balance] of Object.entries(balances)) {
-                    if (balance > 0) {
-                        html += '<tr><td class="address">' + address + '</td><td>' + balance.toLocaleString() + '</td></tr>';
+                for (const [address, balance] of Object.entries(balances || {})) {
+                    if (Number(balance) > 0) {
+                        html += '<tr><td class="address">' + address + '</td><td>' + Number(balance).toLocaleString() + '</td></tr>';
                     }
                 }
                 html += '</table>';
             }
-
             container.innerHTML = html;
         }
 
         function updateStakingInfo(stakes) {
             const container = document.getElementById('staking-info');
             let html = '<table><tr><th>Address</th><th>Stake Amount</th></tr>';
-
-            for (const [address, stake] of Object.entries(stakes)) {
-                if (stake > 0) {
-                    html += '<tr><td class="address">' + address + '</td><td>' + stake.toLocaleString() + '</td></tr>';
+            const entries = Object.entries(stakes || {});
+            if (entries.length === 0) {
+                container.innerHTML = '<em>No stakes yet</em>';
+                return;
+            }
+            for (const [address, stake] of entries) {
+                if (Number(stake) > 0) {
+                    html += '<tr><td class="address">' + address + '</td><td>' + Number(stake).toLocaleString() + '</td></tr>';
                 }
             }
-
             html += '</table>';
             container.innerHTML = html;
         }
@@ -534,16 +567,14 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
         function updateRecentBlocks(blocks) {
             const container = document.getElementById('recent-blocks');
             let html = '';
-
-            blocks.slice(-5).reverse().forEach(block => {
+            (Array.isArray(blocks) ? blocks : []).slice(-5).reverse().forEach(block => {
                 html += '<div class="block-item">';
-                html += '<strong>Block #' + block.index + '</strong><br>';
-                html += 'Validator: ' + block.validator + '<br>';
-                html += 'Transactions: ' + block.txCount + '<br>';
-                html += 'Time: ' + new Date(block.timestamp).toLocaleTimeString();
+                html += '<strong>Block #' + (block.index ?? '-') + '</strong><br>';
+                html += 'Validator: ' + (block.validator ?? '-') + '<br>';
+                html += 'Transactions: ' + (block.txCount ?? '-') + '<br>';
+                html += 'Time: ' + (block.timestamp ? new Date(block.timestamp).toLocaleTimeString() : '-') ;
                 html += '</div>';
             });
-
             container.innerHTML = html;
         }
 
@@ -551,25 +582,22 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
             const address = document.getElementById('admin-address').value;
             const token = document.getElementById('admin-token').value;
             const amount = document.getElementById('admin-amount').value;
-
             if (!address || !token || !amount) {
                 alert('Please fill all fields');
                 return;
             }
-
             try {
                 const response = await fetch('/api/admin/add-tokens', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ address, token, amount: parseInt(amount) })
                 });
-
                 const result = await response.json();
                 if (result.success) {
                     alert('Tokens added successfully!');
                     document.getElementById('admin-address').value = '';
                     document.getElementById('admin-amount').value = '';
-                    fetchBlockchainInfo(); // Refresh data
+                    fetchBlockchainInfo();
                 } else {
                     alert('Error: ' + result.error);
                 }
@@ -578,47 +606,32 @@ func (s *APIServer) serveUI(w http.ResponseWriter, r *http.Request) {
             }
         }
 
-        function refreshData() {
-            fetchBlockchainInfo();
-        }
+        function refreshData() { fetchBlockchainInfo(); fetchP2PInfo(); }
 
         function startAutoRefresh() {
-            refreshInterval = setInterval(fetchBlockchainInfo, 3000); // Refresh every 3 seconds
-
-            // Also start a separate interval for bridge status (more frequent)
-            bridgeRefreshInterval = setInterval(fetchBridgeStatus, 5000); // Refresh bridge every 5 seconds
+            refreshInterval = setInterval(fetchBlockchainInfo, 3000);
+            bridgeRefreshInterval = setInterval(fetchBridgeStatus, 5000);
+            p2pRefreshInterval = setInterval(fetchP2PInfo, 5000);
         }
 
         function stopAutoRefresh() {
-            if (refreshInterval) {
-                clearInterval(refreshInterval);
-            }
-            if (bridgeRefreshInterval) {
-                clearInterval(bridgeRefreshInterval);
-            }
+            if (refreshInterval) clearInterval(refreshInterval);
+            if (bridgeRefreshInterval) clearInterval(bridgeRefreshInterval);
+            if (p2pRefreshInterval) clearInterval(p2pRefreshInterval);
         }
 
         // Initialize
         fetchBlockchainInfo();
-
-        // Delay bridge status fetch to give bridge SDK time to start
-        setTimeout(() => {
-            fetchBridgeStatus();
-        }, 2000);
-
+        setTimeout(() => { fetchBridgeStatus(); fetchP2PInfo(); }, 2000);
         startAutoRefresh();
-
-        // Stop auto-refresh when page is hidden
         document.addEventListener('visibilitychange', function() {
-            if (document.hidden) {
-                stopAutoRefresh();
-            } else {
-                startAutoRefresh();
-            }
+            if (document.hidden) { stopAutoRefresh(); } else { startAutoRefresh(); }
         });
     </script>
 </body>
 </html>`
+
+	html := strings.Replace(template, "{{NODE_CONNECTIVITY}}", nodeConnectivity, 1)
 
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
@@ -752,6 +765,48 @@ func (s *APIServer) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(nodeInfo)
+}
+
+// getP2PInfo returns persistent peer identity and multiaddrs for the main dashboard
+func (s *APIServer) getP2PInfo(w http.ResponseWriter, r *http.Request) {
+	p2pNode := s.blockchain.P2PNode
+	if p2pNode == nil || p2pNode.Host == nil {
+		http.Error(w, "P2P node not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	addresses := make([]string, 0)
+	for _, addr := range p2pNode.Host.Addrs() {
+		addresses = append(addresses, fmt.Sprintf("%s/p2p/%s", addr.String(), p2pNode.Host.ID().String()))
+	}
+
+	// Determine lastSeen from peerinfo.json if present (Docker or local path)
+	lastSeen := time.Now().UTC().Format(time.RFC3339)
+	for _, p := range []string{"/data/blockchain/identity/peerinfo.json", "./data/blockchain/identity/peerinfo.json"} {
+		if b, err := os.ReadFile(p); err == nil {
+			var v map[string]interface{}
+			if err := json.Unmarshal(b, &v); err == nil {
+				if ls, ok := v["lastSeen"].(string); ok { lastSeen = ls }
+			}
+			break
+		}
+	}
+
+	// Check bridge health quickly (non-blocking UI also checks directly)
+	bridgeConnected := false
+	client := &http.Client{ Timeout: 500 * time.Millisecond }
+	if resp, err := client.Get("http://localhost:8084/health"); err == nil {
+		if resp.StatusCode == 200 { bridgeConnected = true }
+		resp.Body.Close()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"peerId":          p2pNode.Host.ID().String(),
+		"multiaddrs":      addresses,
+		"bridgeConnected": bridgeConnected,
+		"lastSeen":        lastSeen,
+	})
 }
 
 // serveDevMode serves the developer testing page
