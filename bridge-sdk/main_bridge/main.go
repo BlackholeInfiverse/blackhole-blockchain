@@ -1643,7 +1643,7 @@ func NewBridgeSDK(blockchain interface{}, config *Config) *BridgeSDK {
 
 	// Initialize relay server
 	relayServer := &RelayServer{
-		Port:          9090,
+		Port:          9091,
 		Status:        "initializing",
 		Connections:   0,
 		LastActivity:  time.Now(),
@@ -23614,8 +23614,8 @@ func InitializeMissingFeatures() {
 	// Start REST API on port 8081 (8080 is used by main dashboard)
 	go startBridgeRESTAPI()
 
-	// Note: gRPC server on port 9090 requires proto-generated code
-	log.Println("Bridge gRPC server: Port 9090 configured (requires proto-generated code)")
+	// Note: gRPC server on port 9091 requires proto-generated code
+	log.Println("Bridge gRPC server: Port 9091 configured (requires proto-generated code)")
 }
 
 // startBridgeRESTAPI starts the REST API on port 8081
@@ -23628,8 +23628,8 @@ func startBridgeRESTAPI() {
 	mux.HandleFunc("/bridge/stats", handleBridgeStats)
 	mux.HandleFunc("/bridge/relay", handleBridgeRelay)
 
-	log.Println("Bridge REST API listening on :8081")
-	if err := http.ListenAndServe(":8081", mux); err != nil {
+	log.Println("Bridge REST API listening on :8086")
+	if err := http.ListenAndServe(":8086", mux); err != nil {
 		log.Printf("Bridge REST API failed: %v", err)
 	}
 }
@@ -23639,7 +23639,7 @@ func handleBridgeHealth(w http.ResponseWriter, r *http.Request) {
 	health := map[string]interface{}{
 		"status":    "healthy",
 		"service":   "bridge-sdk",
-		"grpc_port": 9090,
+		"grpc_port": 9091,
 		"rest_port": 8081,
 		"timestamp": time.Now().Unix(),
 	}
@@ -23731,8 +23731,8 @@ func (bt *BridgeTail) TailLogs() error {
 	// Mock implementation showing sample logs
 	sampleLogs := []string{
 		"[2023-12-01 10:30:00] INFO Starting BlackHole Bridge v0.3-rc1",
-		"[2023-12-01 10:30:05] INFO gRPC server listening on :9090",
-		"[2023-12-01 10:30:05] INFO REST gateway listening on :8081",
+		"[2023-12-01 10:30:05] INFO gRPC server listening on :9091",
+		"[2023-12-01 10:30:05] INFO REST gateway listening on :8086",
 		"[2023-12-01 10:30:10] INFO Ethereum listener started",
 		"[2023-12-01 10:30:10] INFO Solana listener started",
 		"[2023-12-01 10:30:15] INFO New Ethereum transaction detected: eth_12345 (1.5 ETH)",
