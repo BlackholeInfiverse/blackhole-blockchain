@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<VirtualBox xmlns="https://www.virtualbox.org/" version="1.16-windows">
+  <Machine name="Blackhole-Bridge" UUID="{a1b2c3d4-1234-5678-90ab-cdef12345678}" nameTimestamp="2025-11-28T10:00:00Z" OSType="Ubuntu_64" snapshotFolder="Snapshots" lastStateChange="2025-11-28T10:00:00Z">
+    <Hardware version="2">
+      <Memory RAMSize="4096" PageFusion="false"/>
+      <CPU count="2" hotplug="false">
+        <PAE enabled="false"/>
+        <LongMode enabled="true"/>
+        <X2APIC enabled="true"/>
+        <HardwareVirtExLargePages enabled="false"/>
+      </CPU>
+      <Boot>
+        <Order position="1" device="DVD"/>
+        <Order position="2" device="HardDisk"/>
+        <Order position="3" device="None"/>
+        <Order position="4" device="None"/>
+      </Boot>
+      <Display VRAMSize="16" monitorCount="1" accelerate3D="false" accelerate2DVideo="false"/>
+      <RemoteDisplay enabled="false" authType="Null" authTimeout="5000">
+        <Channel name="VRDP" port="3389" enabled="false" authType="Null" authTimeout="5000"/>
+      </RemoteDisplay>
+      <BIOS>
+        <IOAPIC enabled="true"/>
+        <Logo fadeIn="true" fadeOut="true" displayTime="0"/>
+        <BootMenu mode="MessageAndMenu"/>
+        <TimeOffset value="0"/>
+        <PXEDebug enabled="false"/>
+        <APIC mode="APIC"/>
+        <CPUProfile host="host" guest=""/>
+      </BIOS>
+      <Network>
+        <Adapter slot="0" enabled="true" MACAddress="080027111111" type="82540EM">
+          <NAT>
+            <Forwarding name="Rule 1" proto="1" hostport="8080" guestport="8080"/>
+            <Forwarding name="Rule 2" proto="1" hostport="8081" guestport="8081"/>
+            <Forwarding name="Rule 3" proto="1" hostport="8545" guestport="8545"/>
+            <Forwarding name="Rule 4" proto="1" hostport="8546" guestport="8546"/>
+            <Forwarding name="Rule 5" proto="2" hostport="30303" guestport="30303"/>
+          </NAT>
+        </Adapter>
+      </Network>
+      <AudioAdapter driver="Pulse" enabled="false" enabledIn="false"/>
+      <RTC localOrUTC="UTC"/>
+      <SharedFolders>
+        <SharedFolder name="blackhole" hostPath="C:\Users\pc121\Desktop\MyProjects\GoProjects\blackhole-blockchain" writable="true" autoMount="true"/>
+      </SharedFolders>
+      <Clipboard mode="Bidirectional"/>
+      <DragAndDrop mode="Bidirectional"/>
+      <IOMMUType type="1_Ioapic"/>
+      <Iommu enabled="false"/>
+      <VBoxInternal2>
+        <HostPci>0x8086:0x1234</HostPci>
+      </VBoxInternal2>
+    </Hardware>
+    <StorageControllers>
+      <StorageController name="SATA Controller" type="AHCI" PortCount="1" useHostIOCache="true" Bootable="true">
+        <AttachedDevice type="HardDisk" port="0" hotpluggable="false">
+          <Image uuid="{b2c3d4e5-2345-6789-01ab-cdef23456789}"/>
+        </AttachedDevice>
+        <AttachedDevice type="DVD" port="1" hotpluggable="false">
+          <Image uuid="{00000000-0000-0000-0000-000000000000}"/>
+        </AttachedDevice>
+      </StorageController>
+    </StorageControllers>
+  </Machine>
+</VirtualBox>

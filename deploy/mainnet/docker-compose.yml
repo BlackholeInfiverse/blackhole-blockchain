@@ -1,0 +1,151 @@
+version: '3.8'
+
+networks:
+  blackhole-mainnet:
+    driver: bridge
+    name: blackhole-mainnet
+
+volumes:
+  mainnet-data-1:
+    driver: local
+  mainnet-logs-1:
+    driver: local
+  mainnet-data-2:
+    driver: local
+  mainnet-logs-2:
+    driver: local
+  mainnet-data-3:
+    driver: local
+  mainnet-logs-3:
+    driver: local
+
+services:
+  # BlackHole Mainnet Node 1
+  blackhole-node-1:
+    image: alpine:latest
+    container_name: blackhole-mainnet-node-1
+    command: ["sh", "-c", "apk add --no-cache wget && ./relay-chain"]
+    ports:
+      - "8080:8080"   # Dashboard
+      - "8545:8545"   # RPC endpoint
+      - "30303:30303" # P2P networking
+    environment:
+      - NODE_ENV=mainnet
+      - DOCKER_MODE=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BLOCKCHAIN_PORT=8080
+      - RPC_PORT=8545
+      - P2P_PORT=30303
+      - DATABASE_PATH=./data/blockchain.db
+      - LOG_FILE=./logs/blockchain.log
+      - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
+      - MAX_PEERS=${MAX_PEERS:-50}
+      - NODE_ID=blackhole-mainnet-node-1
+      - BLOCKCHAIN_IDENTITY_DIR=/data/blockchain
+      - MAINNET_MODE=true
+      - CONSENSUS_MODE=pos
+      - VALIDATOR_STAKE_MINIMUM=1000000
+      - BLOCK_TIME=3s
+      - MAX_BLOCK_SIZE=1048576
+    volumes:
+      - mainnet-data-1:/app/data
+      - mainnet-logs-1:/app/logs
+      - ./core/relay-chain/relay-chain:/app/relay-chain:ro
+    working_dir: /app
+    networks:
+      - blackhole-mainnet
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # BlackHole Mainnet Node 2
+  blackhole-node-2:
+    image: alpine:latest
+    container_name: blackhole-mainnet-node-2
+    command: ["sh", "-c", "apk add --no-cache wget && ./relay-chain"]
+    ports:
+      - "8081:8080"   # Dashboard
+      - "8546:8545"   # RPC endpoint
+      - "30304:30304" # P2P networking
+    environment:
+      - NODE_ENV=mainnet
+      - DOCKER_MODE=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BLOCKCHAIN_PORT=8080
+      - RPC_PORT=8545
+      - P2P_PORT=30304
+      - DATABASE_PATH=./data/blockchain.db
+      - LOG_FILE=./logs/blockchain.log
+      - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
+      - MAX_PEERS=${MAX_PEERS:-50}
+      - NODE_ID=blackhole-mainnet-node-2
+      - BLOCKCHAIN_IDENTITY_DIR=/data/blockchain
+      - MAINNET_MODE=true
+      - CONSENSUS_MODE=pos
+      - VALIDATOR_STAKE_MINIMUM=1000000
+      - BLOCK_TIME=3s
+      - MAX_BLOCK_SIZE=1048576
+    volumes:
+      - mainnet-data-2:/app/data
+      - mainnet-logs-2:/app/logs
+      - ./core/relay-chain/relay-chain:/app/relay-chain:ro
+    working_dir: /app
+    networks:
+      - blackhole-mainnet
+    restart: unless-stopped
+    depends_on:
+      - blackhole-node-1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # BlackHole Mainnet Node 3
+  blackhole-node-3:
+    image: alpine:latest
+    container_name: blackhole-mainnet-node-3
+    command: ["sh", "-c", "apk add --no-cache wget && ./relay-chain"]
+    ports:
+      - "8082:8080"   # Dashboard
+      - "8547:8545"   # RPC endpoint
+      - "30305:30305" # P2P networking
+    environment:
+      - NODE_ENV=mainnet
+      - DOCKER_MODE=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - BLOCKCHAIN_PORT=8080
+      - RPC_PORT=8545
+      - P2P_PORT=30305
+      - DATABASE_PATH=./data/blockchain.db
+      - LOG_FILE=./logs/blockchain.log
+      - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
+      - MAX_PEERS=${MAX_PEERS:-50}
+      - NODE_ID=blackhole-mainnet-node-3
+      - BLOCKCHAIN_IDENTITY_DIR=/data/blockchain
+      - MAINNET_MODE=true
+      - CONSENSUS_MODE=pos
+      - VALIDATOR_STAKE_MINIMUM=1000000
+      - BLOCK_TIME=3s
+      - MAX_BLOCK_SIZE=1048576
+    volumes:
+      - mainnet-data-3:/app/data
+      - mainnet-logs-3:/app/logs
+      - ./core/relay-chain/relay-chain:/app/relay-chain:ro
+    working_dir: /app
+    networks:
+      - blackhole-mainnet
+    restart: unless-stopped
+    depends_on:
+      - blackhole-node-1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

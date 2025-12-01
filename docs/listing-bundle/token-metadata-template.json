@@ -1,0 +1,30 @@
+{
+  "name": "Blackhole Token",
+  "symbol": "BHX",
+  "decimals": 18,
+  "description": "Native token of the Blackhole Blockchain ecosystem",
+  "website": "https://blackhole-blockchain.com",
+  "explorer": "https://explorer.blackhole-blockchain.com",
+  "social": {
+    "twitter": "https://twitter.com/blackhole_bhx",
+    "telegram": "https://t.me/blackhole_bhx",
+    "discord": "https://discord.gg/blackhole_bhx",
+    "github": "https://github.com/blackhole-blockchain"
+  },
+  "contract_addresses": {
+    "mainnet": "0x0000000000000000000000000000000000000000",
+    "testnet": "0x0000000000000000000000000000000000000000"
+  },
+  "total_supply": "1000000000000000000000000000",
+  "circulating_supply": "500000000000000000000000000",
+  "market_cap": "TBD",
+  "logo": "logo.png",
+  "tags": ["blockchain", "defi", "bridge"],
+  "audit_reports": [
+    {
+      "auditor": "Audit Firm Name",
+      "date": "2024-01-01",
+      "report_url": "https://audit.firm.com/report.pdf"
+    }
+  ]
+}
