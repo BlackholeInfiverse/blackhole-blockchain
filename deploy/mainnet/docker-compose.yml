@@ -40,6 +40,7 @@ services:
       dockerfile: ../../deploy/mainnet/Dockerfile.blockchain
     container_name: blackhole-node-1
     restart: unless-stopped
+    user: root
     ports:
       - "8080:8080"
       - "8545:8545"
@@ -67,6 +68,7 @@ services:
       dockerfile: ../../deploy/mainnet/Dockerfile.blockchain
     container_name: blackhole-node-2
     restart: unless-stopped
+    user: root
     depends_on:
       - node1
     ports:
@@ -96,6 +98,7 @@ services:
       dockerfile: ../../deploy/mainnet/Dockerfile.blockchain
     container_name: blackhole-node-3
     restart: unless-stopped
+    user: root
     depends_on:
       - node1
     ports:
@@ -125,6 +128,7 @@ services:
       dockerfile: ../../deploy/mainnet/Dockerfile.blockchain
     container_name: blackhole-node-4
     restart: unless-stopped
+    user: root
     depends_on:
       - node1
     ports:
@@ -154,6 +158,7 @@ services:
       dockerfile: ../../deploy/mainnet/Dockerfile.blockchain
     container_name: blackhole-node-5
     restart: unless-stopped
+    user: root
     depends_on:
       - node1
     ports:
@@ -219,8 +224,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=9000
-      - REACT_APP_BLOCKCHAIN_API_URL=http://blackhole-mainnet.com
-      - REACT_APP_BRIDGE_API_URL=http://blackhole-mainnet.com/bridge
+      - REACT_APP_BLOCKCHAIN_API_URL=http://blackhole-node-1:8080
+      - REACT_APP_BRIDGE_API_URL=http://blackhole-bridge:8084
     volumes:
       - wallet-data:/app/build
     networks:
