@@ -16,8 +16,8 @@ volumes:
 services:
   bridge:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ./bridge-sdk
+      dockerfile: Dockerfile.bridge
     container_name: blackhole-bridge
     command: ["./bridge-sdk"]
     ports:

@@ -1,50 +1,190 @@
+version: '3.8'
+
 networks:
   blackhole-network:
-    external: true
     name: blackhole-network
+    driver: bridge
 
 volumes:
-  mainnet-data-1:
-    driver: local
-  mainnet-logs-1:
-    driver: local
-  mainnet-identity-1:
-    driver: local
-  mainnet-data-2:
-    driver: local
-  mainnet-logs-2:
-    driver: local
-  mainnet-identity-2:
-    driver: local
-  mainnet-data-3:
-    driver: local
-  mainnet-logs-3:
-    driver: local
-  mainnet-identity-3:
-    driver: local
+  # Shared volumes
   letsencrypt:
-    driver: local
   nginx-config:
-    driver: local
   nginx-logs:
-    driver: local
   webroot:
-    driver: local
   bridge-data:
-    driver: local
   bridge-logs:
-    driver: local
+  wallet-data:
+  
+  # Node volumes
+  node1-data:
+  node1-logs:
+  node1-identity:
+  node2-data:
+  node2-logs:
+  node2-identity:
+  node3-data:
+  node3-logs:
+  node3-identity:
+  node4-data:
+  node4-logs:
+  node4-identity:
+  node5-data:
+  node5-logs:
+  node5-identity:
 
 services:
+  # Node 1 (Bootstrap/Seed Node)
+  node1:
+    build:
+      context: ../../core/relay-chain
+      dockerfile: ../../deploy/mainnet/Dockerfile.blockchain
+    container_name: blackhole-node-1
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "8545:8545"
+      - "30303:30303"
+    environment:
+      - NODE_NAME=node1
+      - NODE_ENV=mainnet
+      - LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8545
+      - HTTP_PORT=8080
+      - NODE_KEY=node1.key
+      - IS_BOOTNODE=true
+    volumes:
+      - node1-data:/data/blockchain
+      - node1-logs:/app/logs
+      - node1-identity:/app/identity
+    networks:
+      - blackhole-network
+
+  # Node 2
+  node2:
+    build:
+      context: ../../core/relay-chain
+      dockerfile: ../../deploy/mainnet/Dockerfile.blockchain
+    container_name: blackhole-node-2
+    restart: unless-stopped
+    depends_on:
+      - node1
+    ports:
+      - "8081:8080"
+      - "8546:8545"
+      - "30304:30303"
+    environment:
+      - NODE_NAME=node2
+      - NODE_ENV=mainnet
+      - LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8545
+      - HTTP_PORT=8080
+      - BOOTNODES=/ip4/node1/tcp/30303/p2p/1
+      - NODE_KEY=node2.key
+    volumes:
+      - node2-data:/data/blockchain
+      - node2-logs:/app/logs
+      - node2-identity:/app/identity
+    networks:
+      - blackhole-network
+
+  # Node 3
+  node3:
+    build:
+      context: ../../core/relay-chain
+      dockerfile: ../../deploy/mainnet/Dockerfile.blockchain
+    container_name: blackhole-node-3
+    restart: unless-stopped
+    depends_on:
+      - node1
+    ports:
+      - "8082:8080"
+      - "8547:8545"
+      - "30305:30303"
+    environment:
+      - NODE_NAME=node3
+      - NODE_ENV=mainnet
+      - LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8545
+      - HTTP_PORT=8080
+      - BOOTNODES=/ip4/node1/tcp/30303/p2p/1
+      - NODE_KEY=node3.key
+    volumes:
+      - node3-data:/data/blockchain
+      - node3-logs:/app/logs
+      - node3-identity:/app/identity
+    networks:
+      - blackhole-network
+
+  # Node 4
+  node4:
+    build:
+      context: ../../core/relay-chain
+      dockerfile: ../../deploy/mainnet/Dockerfile.blockchain
+    container_name: blackhole-node-4
+    restart: unless-stopped
+    depends_on:
+      - node1
+    ports:
+      - "8083:8080"
+      - "8548:8545"
+      - "30306:30303"
+    environment:
+      - NODE_NAME=node4
+      - NODE_ENV=mainnet
+      - LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8545
+      - HTTP_PORT=8080
+      - BOOTNODES=/ip4/node1/tcp/30303/p2p/1
+      - NODE_KEY=node4.key
+    volumes:
+      - node4-data:/data/blockchain
+      - node4-logs:/app/logs
+      - node4-identity:/app/identity
+    networks:
+      - blackhole-network
+
+  # Node 5
+  node5:
+    build:
+      context: ../../core/relay-chain
+      dockerfile: ../../deploy/mainnet/Dockerfile.blockchain
+    container_name: blackhole-node-5
+    restart: unless-stopped
+    depends_on:
+      - node1
+    ports:
+      - "8084:8080"
+      - "8549:8545"
+      - "30307:30303"
+    environment:
+      - NODE_NAME=node5
+      - NODE_ENV=mainnet
+      - LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8545
+      - HTTP_PORT=8080
+      - BOOTNODES=/ip4/node1/tcp/30303/p2p/1
+      - NODE_KEY=node5.key
+    volumes:
+      - node5-data:/data/blockchain
+      - node5-logs:/app/logs
+      - node5-identity:/app/identity
+    networks:
+      - blackhole-network
+
   # Bridge Service
   bridge:
     build:
       context: ../../bridge-sdk
-      dockerfile: Dockerfile.prod
+      dockerfile: Dockerfile.bridge
     container_name: blackhole-bridge
     command: ["./bridge-sdk"]
     ports:
-      - "8084:8084"   # Bridge dashboard & API
+      - "8090:8084"   # Bridge dashboard & API
       - "9090:9090"   # gRPC & Relay server
     environment:
       - NODE_ENV=mainnet
@@ -54,38 +194,42 @@ services:
       - RELAY_PORT=9090
       - DATABASE_PATH=/app/data/bridge.db
       - LOG_FILE=/app/logs/bridge.log
-      - BLOCKCHAIN_IDENTITY_DIR=/data/blockchain
+      - BLOCKCHAIN_RPC_URL=http://node1:8545
     volumes:
       - bridge-data:/app/data
       - bridge-logs:/app/logs
-      - mainnet-identity-1:/data/blockchain:ro
     networks:
       - blackhole-network
-    user: root
     restart: unless-stopped
+    depends_on:
+      - node1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 30s
 
   # Wallet Service
   wallet:
-    image: golang:1.23-alpine
+    build:
+      context: ../../services/wallet
+      dockerfile: Dockerfile
     container_name: blackhole-wallet
-    working_dir: /workspace
-    volumes:
-      - ../../:/workspace:ro
     environment:
-      - BLOCKCHAIN_API_URL=http://blackhole-node-1:8080
-      - BRIDGE_API_URL=http://blackhole-bridge:8084
+      - NODE_ENV=production
+      - PORT=9000
+      - REACT_APP_BLOCKCHAIN_API_URL=http://blackhole-mainnet.com
+      - REACT_APP_BRIDGE_API_URL=http://blackhole-mainnet.com/bridge
+    volumes:
+      - wallet-data:/app/build
     networks:
       - blackhole-network
     ports:
       - "9000:9000"
-    entrypoint: ["/bin/sh","-lc","tr -d '\r' < /workspace/docker/wallet-entrypoint.sh > /tmp/wallet-entrypoint.sh && /bin/sh /tmp/wallet-entrypoint.sh"]
     restart: unless-stopped
+    depends_on:
+      - bridge
 
   # Nginx Reverse Proxy
   nginx:
@@ -100,6 +244,7 @@ services:
       - nginx-logs:/var/log/nginx
       - letsencrypt:/etc/letsencrypt
       - webroot:/var/www/html
+      - ../../wallet/build:/var/www/wallet:ro
     networks:
       - blackhole-network
     restart: unless-stopped
@@ -117,6 +262,17 @@ services:
       - webroot:/var/www/html
     networks:
       - blackhole-network
-    command: certonly --webroot --webroot-path=/var/www/html --email admin@blackhole.com --agree-tos --no-eff-email -d blackhole-mainnet.com
+    command: >
+      sh -c "mkdir -p /etc/letsencrypt/live/blackhole-mainnet.com && \
+      openssl req -x509 -nodes -newkey rsa:4096 \
+      -keyout /etc/letsencrypt/live/blackhole-mainnet.com/privkey.pem \
+      -out /etc/letsencrypt/live/blackhole-mainnet.com/fullchain.pem \
+      -days 365 \
+      -subj '/CN=blackhole-mainnet.com' && \
+      certbot certonly --webroot --webroot-path=/var/www/html \
+      --email admin@blackhole.com --agree-tos --no-eff-email \
+      -d blackhole-mainnet.com --keep-until-expiring --non-interactive \
+      --config-dir /etc/letsencrypt --work-dir /var/lib/letsencrypt \
+      --logs-dir /var/log/letsencrypt"
     depends_on:
       - nginx

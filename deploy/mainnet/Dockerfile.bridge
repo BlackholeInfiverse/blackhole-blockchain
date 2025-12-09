@@ -1,0 +1,50 @@
+# Build stage
+FROM golang:1.24.3-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    git \
+    gcc \
+    musl-dev \
+    sqlite-dev \
+    ca-certificates
+
+# Set working directory
+WORKDIR /app
+
+# Copy only the necessary files for dependency resolution
+COPY go.mod .
+# Create an empty go.sum if it doesn't exist
+RUN if [ ! -f go.sum ]; then touch go.sum; fi
+RUN go mod download
+
+# Copy the rest of the application
+COPY . .
+
+# Build the application
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o bridge-sdk .
+
+# Final stage
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates
+
+# Set working directory
+WORKDIR /app
+
+# Copy the binary from builder
+COPY --from=builder /app/bridge-sdk .
+
+# Create necessary directories and set permissions
+RUN mkdir -p /app/data /app/logs && \
+    chown -R 1000:1000 /app
+
+# Use non-root user
+USER 1000:1000
+
+# Expose ports
+EXPOSE 8084 9090
+
+# Command to run the application
+CMD ["./bridge-sdk"]

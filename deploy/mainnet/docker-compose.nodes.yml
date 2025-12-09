@@ -1,0 +1,166 @@
+version: '3.8'
+
+networks:
+  blackhole-network:
+    driver: bridge
+
+volumes:
+  node1-data:
+  node1-logs:
+  node1-identity:
+  node2-data:
+  node2-logs:
+  node2-identity:
+  node3-data:
+  node3-logs:
+  node3-identity:
+  node4-data:
+  node4-logs:
+  node4-identity:
+  node5-data:
+  node5-logs:
+  node5-identity:
+
+services:
+  # Node 1 (Bootstrap/Seed Node)
+  node1:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: blackhole-node-1
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "8545:8545"
+      - "30303:30303"
+    environment:
+      - NODE_NAME=node1
+      - NODE_ENV=mainnet
+      - LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8545
+      - HTTP_PORT=8080
+      - NODE_KEY=node1.key
+      - IS_BOOTNODE=true
+    volumes:
+      - node1-data:/data/blockchain
+      - node1-logs:/app/logs
+      - node1-identity:/app/identity
+    networks:
+      - blackhole-network
+
+  # Node 2
+  node2:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: blackhole-node-2
+    restart: unless-stopped
+    depends_on:
+      - node1
+    ports:
+      - "8081:8080"
+      - "8546:8545"
+      - "30304:30303"
+    environment:
+      - NODE_NAME=node2
+      - NODE_ENV=mainnet
+      - LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8545
+      - HTTP_PORT=8080
+      - BOOTNODES=/ip4/node1/tcp/30303/p2p/1
+      - NODE_KEY=node2.key
+    volumes:
+      - node2-data:/data/blockchain
+      - node2-logs:/app/logs
+      - node2-identity:/app/identity
+    networks:
+      - blackhole-network
+
+  # Node 3
+  node3:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: blackhole-node-3
+    restart: unless-stopped
+    depends_on:
+      - node1
+    ports:
+      - "8082:8080"
+      - "8547:8545"
+      - "30305:30303"
+    environment:
+      - NODE_NAME=node3
+      - NODE_ENV=mainnet
+      - LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8545
+      - HTTP_PORT=8080
+      - BOOTNODES=/ip4/node1/tcp/30303/p2p/1
+      - NODE_KEY=node3.key
+    volumes:
+      - node3-data:/data/blockchain
+      - node3-logs:/app/logs
+      - node3-identity:/app/identity
+    networks:
+      - blackhole-network
+
+  # Node 4
+  node4:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: blackhole-node-4
+    restart: unless-stopped
+    depends_on:
+      - node1
+    ports:
+      - "8083:8080"
+      - "8548:8545"
+      - "30306:30303"
+    environment:
+      - NODE_NAME=node4
+      - NODE_ENV=mainnet
+      - LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8545
+      - HTTP_PORT=8080
+      - BOOTNODES=/ip4/node1/tcp/30303/p2p/1
+      - NODE_KEY=node4.key
+    volumes:
+      - node4-data:/data/blockchain
+      - node4-logs:/app/logs
+      - node4-identity:/app/identity
+    networks:
+      - blackhole-network
+
+  # Node 5
+  node5:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: blackhole-node-5
+    restart: unless-stopped
+    depends_on:
+      - node1
+    ports:
+      - "8084:8080"
+      - "8549:8545"
+      - "30307:30303"
+    environment:
+      - NODE_NAME=node5
+      - NODE_ENV=mainnet
+      - LOG_LEVEL=info
+      - P2P_PORT=30303
+      - RPC_PORT=8545
+      - HTTP_PORT=8080
+      - BOOTNODES=/ip4/node1/tcp/30303/p2p/1
+      - NODE_KEY=node5.key
+    volumes:
+      - node5-data:/data/blockchain
+      - node5-logs:/app/logs
+      - node5-identity:/app/identity
+    networks:
+      - blackhole-network
