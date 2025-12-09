@@ -1,29 +1,29 @@
 #!/bin/bash
 
-# Roundtrip Test Script for BlackHole Bridge SDK
-# This script performs end-to-end roundtrip testing of cross-chain swaps
-# with visualization in the infra dashboard
-#
-# Steps:
-# 1. Wallet signs & submits swap to DEX
-# 2. DEX emits event → bridge picks and relays to TargetChain
-# 3. TargetChain receives mint/unlock confirmation
+# DAY 2 ROUNDTRIP TEST - Non-breaking addition
+# Tests complete flow: Wallet → DEX → Bridge → Target Chain
+# Generates roundtrip-proof.json with full audit trail
 
-set -e
+set -e  # Exit on any error
 
-# Configuration
-BRIDGE_SDK_URL="http://localhost:8084"
-MAIN_DASHBOARD_URL="http://localhost:8080"
-TEST_DURATION=${TEST_DURATION:-600}  # 10 minutes default
-CHECK_INTERVAL=${CHECK_INTERVAL:-5}   # Check every 5 seconds
+# Configuration - use environment variables or defaults
+BRIDGE_HOST="${BRIDGE_HOST:-localhost:9091}"
+WALLET_HOST="${WALLET_HOST:-localhost:8080}"
+RPC_HOST="${RPC_HOST:-localhost:8545}"
+TARGET_CHAIN="${TARGET_CHAIN:-ethereum}"
+
+# Test parameters
+TOKEN_A="BHX"
+TOKEN_B="USDT"
+SWAP_AMOUNT=1000
+MIN_AMOUNT_OUT=4800  # 0.3% slippage protection
+TEST_TIMEOUT=300     # 5 minutes timeout
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Logging functions
@@ -43,499 +43,307 @@ log_error() {
     echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ERROR: $1${NC}"
 }
 
-log_step() {
-    echo -e "${PURPLE}[$(date +'%Y-%m-%d %H:%M:%S')] STEP $1: $2${NC}"
+# Initialize proof data structure
+PROOF_DATA='{
+  "test_type": "day2_roundtrip",
+  "timestamp": "'$(date -Iseconds)'",
+  "services": {},
+  "steps": [],
+  "transactions": {},
+  "events": {},
+  "final_status": "unknown",
+  "duration_seconds": 0
+}'
+
+# Update proof data
+update_proof() {
+    local key="$1"
+    local value="$2"
+    PROOF_DATA=$(echo "$PROOF_DATA" | jq ".$key = $value")
 }
 
-log_progress() {
-    echo -e "${CYAN}[$(date +'%Y-%m-%d %H:%M:%S')] PROGRESS: $1${NC}"
+add_step() {
+    local step_name="$1"
+    local status="$2"
+    local details="$3"
+    local timestamp=$(date -Iseconds)
+
+    local step_data='{
+        "name": "'$step_name'",
+        "status": "'$status'",
+        "details": "'$details'",
+        "timestamp": "'$timestamp'"
+    }'
+
+    PROOF_DATA=$(echo "$PROOF_DATA" | jq ".steps += [$step_data]")
 }
 
-# Check if services are running
+# Service health checks
 check_services() {
-    log_info "Checking if required services are running..."
+    log_info "🔍 Checking service health..."
 
-    # Check Bridge SDK
-    if curl -s -f "${BRIDGE_SDK_URL}/health" > /dev/null 2>&1; then
-        log_success "Bridge SDK is running at ${BRIDGE_SDK_URL}"
+    # Check Bridge service
+    if curl -s -f "http://$BRIDGE_HOST/api/health" > /dev/null 2>&1; then
+        log_success "Bridge service is healthy"
+        update_proof "services.bridge" '{"status": "healthy", "host": "'$BRIDGE_HOST'"}'
     else
-        log_error "Bridge SDK is not accessible at ${BRIDGE_SDK_URL}"
+        log_error "Bridge service is not responding"
+        update_proof "services.bridge" '{"status": "unhealthy", "host": "'$BRIDGE_HOST'"}'
         return 1
     fi
 
-    # Check Main Dashboard
-    if curl -s -f "${MAIN_DASHBOARD_URL}/api/health" > /dev/null 2>&1; then
-        log_success "Main BlackHole blockchain dashboard is running at ${MAIN_DASHBOARD_URL}"
+    # Check Wallet service
+    if curl -s -f "http://$WALLET_HOST/api/health" > /dev/null 2>&1; then
+        log_success "Wallet service is healthy"
+        update_proof "services.wallet" '{"status": "healthy", "host": "'$WALLET_HOST'"}'
     else
-        log_error "Main BlackHole blockchain dashboard is not accessible at ${MAIN_DASHBOARD_URL}"
+        log_warning "Wallet service not available (expected for CLI testing)"
+        update_proof "services.wallet" '{"status": "not_available", "host": "'$WALLET_HOST'"}'
+    fi
+
+    # Check RPC service
+    if curl -s -f -X POST -H "Content-Type: application/json" \
+        --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+        "http://$RPC_HOST" > /dev/null 2>&1; then
+        log_success "RPC service is healthy"
+        update_proof "services.rpc" '{"status": "healthy", "host": "'$RPC_HOST'"}'
+    else
+        log_error "RPC service is not responding"
+        update_proof "services.rpc" '{"status": "unhealthy", "host": "'$RPC_HOST'"}'
         return 1
     fi
 
-    return 0
+    add_step "service_health_check" "completed" "All required services are healthy"
 }
 
-# Check wallet balance for a specific token
-check_wallet_balance() {
-    local wallet_address=$1
-    local token_symbol=$2
+# Submit swap transaction
+submit_swap() {
+    log_info "🔄 Step 1: Submitting swap transaction via wallet/bridge API..."
 
-    local response
-    response=$(curl -s -f "${MAIN_DASHBOARD_URL}/api/wallets/${wallet_address}/balance/${token_symbol}" 2>/dev/null)
+    local swap_request='{
+        "token_a": "'$TOKEN_A'",
+        "token_b": "'$TOKEN_B'",
+        "amount_in": '$SWAP_AMOUNT',
+        "min_amount_out": '$MIN_AMOUNT_OUT'
+    }'
 
-    if [ $? -eq 0 ] && echo "$response" | jq -e '.success' > /dev/null 2>&1; then
-        local balance
-        balance=$(echo "$response" | jq -r '.data.balance // 0')
-        echo "$balance"
-        return 0
-    else
-        log_warning "Could not check balance for ${wallet_address}:${token_symbol}, assuming 0"
-        echo "0"
-        return 1
-    fi
-}
+    log_info "Swap request: $swap_request"
 
-# Mint tokens to a wallet address (admin function)
-mint_tokens() {
-    local wallet_address=$1
-    local token_symbol=$2
-    local amount=$3
-
-    log_info "Minting ${amount} ${token_symbol} tokens to ${wallet_address}"
-
-    local response
-    response=$(curl -s -X POST "${MAIN_DASHBOARD_URL}/api/admin/mint" \
+    # Submit swap via bridge API (simulating wallet submission)
+    local response=$(curl -s -X POST "http://$BRIDGE_HOST/api/dex/swap" \
         -H "Content-Type: application/json" \
-        -d "{\"address\":\"${wallet_address}\",\"token\":\"${token_symbol}\",\"amount\":${amount}}" 2>/dev/null)
+        -d "$swap_request" 2>/dev/null)
 
     if [ $? -eq 0 ] && echo "$response" | jq -e '.success' > /dev/null 2>&1; then
-        log_success "Successfully minted ${amount} ${token_symbol} to ${wallet_address}"
-        return 0
-    else
-        log_error "Failed to mint tokens: $response"
-        return 1
-    fi
-}
+        local tx_hash=$(echo "$response" | jq -r '.data.tx_hash // empty')
+        local amount_out=$(echo "$response" | jq -r '.data.amount_out // empty')
 
-# Start a cross-chain simulation with real blockchain integration
-start_roundtrip_simulation() {
-    local source_chain=${1:-"blackhole"}
-    local target_chain=${2:-"ethereum"}
-    local amount=${3:-"1000000000"}  # 1 BHX token (1B wei)
-    local token=${4:-"BHX"}
-
-    log_step "1" "Starting real roundtrip test: ${amount} ${token} from ${source_chain} to ${target_chain}"
-
-    # First check if main dashboard is accessible
-    if ! curl -s -f "${MAIN_DASHBOARD_URL}/api/health" > /dev/null 2>&1; then
-        log_error "Main dashboard at ${MAIN_DASHBOARD_URL} is not accessible"
-        return 1
-    fi
-
-    # Check BHX balance for the test wallet
-    local test_wallet="0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
-    local bhx_balance
-    bhx_balance=$(check_wallet_balance "$test_wallet" "BHX")
-
-    if [ "$bhx_balance" -lt "$amount" ]; then
-        log_warning "Insufficient BHX balance ($bhx_balance). Minting additional tokens..."
-        mint_tokens "$test_wallet" "BHX" "$amount"
-    fi
-
-    local response
-    response=$(curl -s -X POST "${BRIDGE_SDK_URL}/api/simulation/cross-chain" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"source_chain\": \"${source_chain}\",
-            \"target_chain\": \"${target_chain}\",
-            \"amount\": \"${amount}\",
-            \"token\": \"${token}\",
-            \"wallet_address\": \"${test_wallet}\",
-            \"slippage_tolerance\": 0.5
-        }" 2>/dev/null)
-
-    if [ $? -eq 0 ] && echo "$response" | jq -e '.success' > /dev/null 2>&1; then
-        local simulation_id
-        simulation_id=$(echo "$response" | jq -r '.simulation_id')
-        log_success "Real roundtrip test started with ID: ${simulation_id}"
-        echo "$simulation_id"
-        return 0
-    else
-        log_error "Failed to start roundtrip test: $response"
-        return 1
-    fi
-}
-
-# Check simulation status
-check_simulation_status() {
-    local simulation_id=$1
-
-    local response
-    response=$(curl -s -f "${BRIDGE_SDK_URL}/api/simulation/cross-chain/status/${simulation_id}" 2>/dev/null)
-
-    if [ $? -eq 0 ] && echo "$response" | jq -e '.success' > /dev/null 2>&1; then
-        echo "$response"
-        return 0
-    else
-        log_error "Failed to check simulation status"
-        return 1
-    fi
-}
-
-# Monitor roundtrip progress with real blockchain integration
-monitor_roundtrip() {
-    local simulation_id=$1
-    local start_time=$(date +%s)
-    local end_time=$((start_time + TEST_DURATION))
-
-    log_info "Monitoring real roundtrip test ${simulation_id} for ${TEST_DURATION} seconds..."
-    log_info "Check interval: ${CHECK_INTERVAL} seconds"
-    log_info "Main dashboard: ${MAIN_DASHBOARD_URL}"
-    log_info "Infra dashboard: ${BRIDGE_SDK_URL}/infra-dashboard"
-
-    local iteration=1
-    local current_step=""
-    local recorded_transactions=()
-
-    while [ $(date +%s) -lt $end_time ]; do
-        log_progress "=== Monitoring Iteration $iteration ==="
-
-        local status_data
-        if ! status_data=$(check_simulation_status "$simulation_id"); then
-            log_error "Failed to get simulation status"
-            sleep "$CHECK_INTERVAL"
-            continue
-        fi
-
-        local status
-        local step
-        local progress
-        local message
-
-        status=$(echo "$status_data" | jq -r '.data.status')
-        step=$(echo "$status_data" | jq -r '.data.current_step')
-        progress=$(echo "$status_data" | jq -r '.data.progress // 0')
-        message=$(echo "$status_data" | jq -r '.data.message // ""')
-
-        # Log step changes
-        if [ "$step" != "$current_step" ]; then
-            case "$step" in
-                "wallet_sign")
-                    log_step "1" "BHX wallet signing and submitting swap to DEX"
-                    ;;
-                "dex_event")
-                    log_step "2" "DEX processing BHX swap, bridge relaying to target chain"
-                    ;;
-                "target_confirm")
-                    log_step "3" "Target chain receiving mint/unlock confirmation"
-                    ;;
-                "completed")
-                    log_success "Roundtrip test completed successfully!"
-                    ;;
-                "failed")
-                    log_error "Roundtrip test failed: $message"
-                    ;;
-            esac
-            current_step="$step"
-        fi
-
-        # Check for new transactions
-        local transactions
-        transactions=$(echo "$status_data" | jq -r '.data.transactions // []')
-        if [ "$transactions" != "[]" ] && [ "$transactions" != "null" ]; then
-            local tx_count
-            tx_count=$(echo "$transactions" | jq length)
-            if [ "$tx_count" -gt "${#recorded_transactions[@]}" ]; then
-                log_info "New transactions detected in blockchain"
-                # Could add more detailed transaction logging here
-            fi
-        fi
-
-        # Show progress
-        if [ "$progress" -gt 0 ]; then
-            log_progress "Progress: ${progress}% - $message"
-        fi
-
-        # Check blockchain health during test
-        if ! check_blockchain_health; then
-            log_warning "Blockchain health check failed during test"
-        fi
-
-        # Check if completed or failed
-        if [ "$status" = "completed" ]; then
-            log_success "Roundtrip test completed successfully"
-            log_info "Test completed all 3 steps: BHX transfer → DEX processing → Cross-chain relay"
+        if [ -n "$tx_hash" ]; then
+            log_success "Swap submitted successfully - TX: $tx_hash, Amount Out: $amount_out"
+            update_proof "transactions.swap" '{"tx_hash": "'$tx_hash'", "amount_in": '$SWAP_AMOUNT', "amount_out": '$amount_out', "token_pair": "'$TOKEN_A'/'$TOKEN_B'"}'
+            add_step "submit_swap" "completed" "Swap transaction submitted: $tx_hash"
+            echo "$tx_hash"
             return 0
-        elif [ "$status" = "failed" ]; then
-            log_error "Roundtrip test failed: $message"
-            return 1
         fi
+    fi
 
-        iteration=$((iteration + 1))
-        sleep "$CHECK_INTERVAL"
-    done
-
-    log_warning "Monitoring timeout reached after ${TEST_DURATION} seconds"
+    log_error "Failed to submit swap transaction"
+    log_error "Response: $response"
+    add_step "submit_swap" "failed" "Failed to submit swap transaction"
     return 1
 }
 
-# Check blockchain health
-check_blockchain_health() {
-    local response
-    response=$(curl -s -f "${MAIN_DASHBOARD_URL}/api/health" 2>/dev/null)
+# Monitor DEX events
+monitor_dex_events() {
+    local swap_tx_hash="$1"
+    local timeout_seconds=$TEST_TIMEOUT
 
-    if [ $? -eq 0 ] && echo "$response" | jq -e '.healthy' > /dev/null 2>&1; then
-        return 0
-    else
-        return 1
-    fi
-}
+    log_info "👂 Step 2: Monitoring for DEX event emission..."
 
-# Get infra dashboard data
-get_infra_dashboard_data() {
-    local response
-    response=$(curl -s -f "${BRIDGE_SDK_URL}/infra/listener-status" 2>/dev/null)
+    local start_time=$(date +%s)
+    local end_time=$((start_time + timeout_seconds))
 
-    if [ $? -eq 0 ]; then
-        echo "$response"
-        return 0
-    else
-        log_error "Failed to fetch infra dashboard data"
-        return 1
-    fi
-}
+    while [ $(date +%s) -lt $end_time ]; do
+        # Check bridge events endpoint for DEX events
+        local events_response=$(curl -s "http://$BRIDGE_HOST/api/events" 2>/dev/null || echo "{}")
 
-# Analyze roundtrip results with real blockchain data
-analyze_roundtrip_results() {
-    local simulation_id=$1
+        # Look for DEX-related events
+        local dex_events=$(echo "$events_response" | jq -r '.events[]? | select(.type == "dex_swap" or .type == "price_change") | .id' 2>/dev/null || echo "")
 
-    log_info "Analyzing real roundtrip test results..."
-
-    # Get final status
-    local final_status
-    if final_status=$(check_simulation_status "$simulation_id"); then
-        local total_time
-        local steps_completed
-        local transactions
-
-        total_time=$(echo "$final_status" | jq -r '.data.total_time // 0')
-        steps_completed=$(echo "$final_status" | jq -r '.data.steps_completed // 0')
-        transactions=$(echo "$final_status" | jq -r '.data.transactions // []')
-
-        log_info "Roundtrip Analysis:"
-        log_info "  Total Time: ${total_time} seconds"
-        log_info "  Steps Completed: ${steps_completed}/3"
-
-        # Analyze transactions
-        if [ "$transactions" != "[]" ] && [ "$transactions" != "null" ]; then
-            local tx_count
-            tx_count=$(echo "$transactions" | jq length)
-            log_info "  Transactions Processed: $tx_count"
-
-            # Show transaction details
-            echo "$transactions" | jq -c '.[]' | while read -r tx; do
-                local tx_type
-                local tx_id
-                local description
-                local amount
-
-                tx_type=$(echo "$tx" | jq -r '.type')
-                tx_id=$(echo "$tx" | jq -r '.id')
-                description=$(echo "$tx" | jq -r '.description')
-                amount=$(echo "$tx" | jq -r '.amount')
-
-                log_info "    $tx_type: $description (Amount: $amount, ID: ${tx_id:0:16}...)"
-            done
+        if [ -n "$dex_events" ]; then
+            log_success "DEX event detected: $dex_events"
+            update_proof "events.dex" '{"event_ids": "'$dex_events'", "swap_tx_hash": "'$swap_tx_hash'"}'
+            add_step "dex_event_emission" "completed" "DEX emitted event for swap: $swap_tx_hash"
+            return 0
         fi
 
-        # Calculate success rate
-        if [ "$steps_completed" -eq 3 ]; then
-            log_success "Roundtrip test: 100% success rate - All BHX transactions processed successfully"
-        elif [ "$steps_completed" -gt 0 ]; then
-            local success_rate=$((steps_completed * 100 / 3))
-            log_warning "Roundtrip test: ${success_rate}% success rate - Partial completion"
-        else
-            log_error "Roundtrip test: 0% success rate - No transactions completed"
+        # Check for transaction status updates
+        local tx_status=$(curl -s "http://$BRIDGE_HOST/api/tx/$swap_tx_hash" 2>/dev/null || echo "{}")
+        local status=$(echo "$tx_status" | jq -r '.status // empty' 2>/dev/null || echo "")
+
+        if [ "$status" = "confirmed" ] || [ "$status" = "success" ]; then
+            log_success "Swap transaction confirmed: $status"
+            update_proof "transactions.swap.status" '"confirmed"'
+            break
         fi
-    fi
 
-    # Check final BHX balances
-    local test_wallet="0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
-    local final_bhx_balance
-    final_bhx_balance=$(check_wallet_balance "$test_wallet" "BHX")
-    log_info "Final BHX Balance for test wallet: $final_bhx_balance"
-
-    # Get blockchain summary
-    local blockchain_info
-    if blockchain_info=$(curl -s -f "${MAIN_DASHBOARD_URL}/api/blockchain/info" 2>/dev/null); then
-        local block_height
-        local total_txs
-        local bhx_supply
-
-        block_height=$(echo "$blockchain_info" | jq -r '.blockHeight // 0')
-        total_txs=$(echo "$blockchain_info" | jq -r '.totalSupply // 0')
-        bhx_supply=$(echo "$blockchain_info" | jq -r '.tokenBalances.BHX.total // 0')
-
-        log_info "Blockchain Status:"
-        log_info "  Block Height: $block_height"
-        log_info "  Total BHX Supply: $bhx_supply"
-        log_info "  Total Transactions: $total_txs"
-    fi
-
-    # Get infra dashboard summary
-    local infra_data
-    if infra_data=$(get_infra_dashboard_data); then
-        local active_listeners
-        local processed_events
-        local pending_events
-
-        active_listeners=$(echo "$infra_data" | jq -r '.active_listeners // 0')
-        processed_events=$(echo "$infra_data" | jq -r '.processed_events // 0')
-        pending_events=$(echo "$infra_data" | jq -r '.pending_events // 0')
-
-        log_info "Bridge Infrastructure Status:"
-        log_info "  Active Listeners: $active_listeners"
-        log_info "  Processed Events: $processed_events"
-        log_info "  Pending Events: $pending_events"
-    fi
-}
-
-# Generate test report
-generate_report() {
-    local simulation_id=$1
-    local report_file="roundtrip_test_report_$(date +%Y%m%d_%H%M%S).txt"
-
-    log_info "Generating test report: $report_file"
-
-    {
-        echo "Roundtrip Test Report"
-        echo "===================="
-        echo "Generated: $(date)"
-        echo "Simulation ID: ${simulation_id}"
-        echo "Test Duration: ${TEST_DURATION} seconds"
-        echo "Check Interval: ${CHECK_INTERVAL} seconds"
-        echo ""
-        echo "Configuration:"
-        echo "  Bridge SDK URL: ${BRIDGE_SDK_URL}"
-        echo "  Main Dashboard URL: ${MAIN_DASHBOARD_URL}"
-        echo ""
-        echo "Final Simulation Status:"
-        if status_data=$(check_simulation_status "$simulation_id"); then
-            echo "$status_data" | jq '.'
-        else
-            echo "Failed to fetch final status"
-        fi
-        echo ""
-        echo "Infrastructure Dashboard Data:"
-        if infra_data=$(get_infra_dashboard_data); then
-            echo "$infra_data" | jq '.'
-        else
-            echo "Failed to fetch infra data"
-        fi
-    } > "$report_file"
-
-    log_success "Report saved to: $report_file"
-}
-
-# Main function
-main() {
-    log_info "Starting Real Roundtrip Test for BlackHole Blockchain"
-    log_info "==================================================="
-
-    # Parse command line arguments
-    local source_chain="blackhole"
-    local target_chain="ethereum"
-    local amount="1000000000"
-    local token="BHX"
-
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --source-chain)
-                source_chain="$2"
-                shift 2
-                ;;
-            --target-chain)
-                target_chain="$2"
-                shift 2
-                ;;
-            --amount)
-                amount="$2"
-                shift 2
-                ;;
-            --token)
-                token="$2"
-                shift 2
-                ;;
-            --duration)
-                TEST_DURATION="$2"
-                shift 2
-                ;;
-            --interval)
-                CHECK_INTERVAL="$2"
-                shift 2
-                ;;
-            --help)
-                echo "Usage: $0 [OPTIONS]"
-                echo ""
-                echo "Real BlackHole Blockchain Roundtrip Test"
-                echo "Tests complete cross-chain BHX token transfers"
-                echo ""
-                echo "Options:"
-                echo "  --source-chain CHAIN    Source chain (default: blackhole)"
-                echo "  --target-chain CHAIN    Target chain (default: ethereum, bitcoin, polygon)"
-                echo "  --amount AMOUNT         Amount in BHX wei (default: 1000000000)"
-                echo "  --token TOKEN           Token symbol (default: BHX)"
-                echo "  --duration SECONDS      Test duration in seconds (default: 600)"
-                echo "  --interval SECONDS      Check interval in seconds (default: 5)"
-                echo "  --help                  Show this help message"
-                echo ""
-                echo "Test Flow:"
-                echo "  1. BHX wallet signs & submits swap to DEX"
-                echo "  2. DEX emits event → bridge picks and relays to TargetChain"
-                echo "  3. TargetChain receives mint/unlock confirmation"
-                echo ""
-                echo "Environment variables:"
-                echo "  BRIDGE_SDK_URL          Bridge SDK URL (default: http://localhost:8084)"
-                echo "  MAIN_DASHBOARD_URL      Main BHX blockchain URL (default: http://localhost:8080)"
-                exit 0
-                ;;
-            *)
-                log_error "Unknown option: $1"
-                exit 1
-                ;;
-        esac
+        sleep 2
     done
 
-    # Initial service check
-    if ! check_services; then
-        log_error "Required services are not running. Please start:"
-        log_error "  1. Bridge SDK: go run bridge-sdk/main_bridge/main.go"
-        log_error "  2. Main Blockchain: go run core/relay-chain/cmd/relay/main.go"
-        exit 1
-    fi
-
-    # Start roundtrip simulation
-    local simulation_id
-    if ! simulation_id=$(start_roundtrip_simulation "$source_chain" "$target_chain" "$amount" "$token"); then
-        log_error "Failed to start roundtrip simulation"
-        exit 1
-    fi
-
-    # Monitor the roundtrip
-    if monitor_roundtrip "$simulation_id"; then
-        log_success "Roundtrip test completed successfully"
-    else
-        log_warning "Roundtrip test did not complete within timeout"
-    fi
-
-    # Analyze results
-    analyze_roundtrip_results "$simulation_id"
-
-    # Generate final report
-    generate_report "$simulation_id"
-
-    log_success "Real BlackHole blockchain roundtrip testing completed"
-    log_info "BHX tokens were transferred through the DEX and bridged to target chain"
+    log_warning "DEX event monitoring timeout - proceeding with bridge check"
+    add_step "dex_event_emission" "timeout" "DEX event monitoring timed out, proceeding to bridge check"
+    return 0  # Don't fail on timeout, continue to bridge check
 }
 
-# Run main function
+# Monitor bridge relay
+monitor_bridge_relay() {
+    local swap_tx_hash="$1"
+    local timeout_seconds=$TEST_TIMEOUT
+
+    log_info "🌉 Step 3: Monitoring bridge for event pickup and relay..."
+
+    local start_time=$(date +%s)
+    local end_time=$((start_time + timeout_seconds))
+
+    while [ $(date +%s) -lt $end_time ]; do
+        # Check for relay events
+        local relay_events=$(curl -s "http://$BRIDGE_HOST/api/events" 2>/dev/null || echo "{}")
+
+        # Look for relay events to target chain
+        local relay_event=$(echo "$relay_events" | jq -r '.events[]? | select(.type == "relay_'$TARGET_CHAIN'" or .type == "cross_chain_transfer") | .id' 2>/dev/null || echo "")
+
+        if [ -n "$relay_event" ]; then
+            log_success "Bridge relay event detected: $relay_event"
+            update_proof "events.bridge_relay" '{"event_id": "'$relay_event'", "target_chain": "'$TARGET_CHAIN'"}'
+            add_step "bridge_relay" "completed" "Bridge relayed to $TARGET_CHAIN: $relay_event"
+            return 0
+        fi
+
+        sleep 3
+    done
+
+    log_error "Bridge relay monitoring timeout"
+    add_step "bridge_relay" "timeout" "Bridge relay monitoring timed out"
+    return 1
+}
+
+# Verify target chain mint/unlock
+verify_target_chain() {
+    local timeout_seconds=$TEST_TIMEOUT
+
+    log_info "🎯 Step 4: Verifying target chain ($TARGET_CHAIN) mint/unlock..."
+
+    local start_time=$(date +%s)
+    local end_time=$((start_time + timeout_seconds))
+
+    while [ $(date +%s) -lt $end_time ]; do
+        # Check relay endpoint for confirmation
+        local relay_status=$(curl -s "http://$BRIDGE_HOST/api/relay/status" 2>/dev/null || echo "{}")
+
+        # Look for successful relays to target chain
+        local target_confirmations=$(echo "$relay_status" | jq -r '.relays[]? | select(.chain == "'$TARGET_CHAIN'" and .status == "confirmed") | .tx_hash' 2>/dev/null || echo "")
+
+        if [ -n "$target_confirmations" ]; then
+            log_success "Target chain confirmation received: $target_confirmations"
+            update_proof "events.target_chain" '{"confirmations": "'$target_confirmations'", "chain": "'$TARGET_CHAIN'"}'
+            add_step "target_chain_confirm" "completed" "Target chain ($TARGET_CHAIN) confirmed mint/unlock: $target_confirmations"
+            return 0
+        fi
+
+        sleep 3
+    done
+
+    log_error "Target chain verification timeout"
+    add_step "target_chain_confirm" "timeout" "Target chain verification timed out"
+    return 1
+}
+
+# Generate final proof
+generate_proof() {
+    local final_status="$1"
+    local duration="$2"
+
+    update_proof "final_status" "\"$final_status\""
+    update_proof "duration_seconds" "$duration"
+
+    # Add summary
+    local summary="Roundtrip test $final_status in ${duration}s. Steps completed: $(echo "$PROOF_DATA" | jq '.steps | length')"
+
+    # Save to file
+    echo "$PROOF_DATA" | jq '.' > roundtrip-proof.json
+
+    log_info "📄 Roundtrip proof saved to roundtrip-proof.json"
+    log_info "Summary: $summary"
+}
+
+# Main test execution
+main() {
+    local start_time=$(date +%s)
+
+    echo "🚀 Starting DAY 2 Roundtrip Test"
+    echo "================================="
+    log_info "Configuration: BRIDGE_HOST=$BRIDGE_HOST, WALLET_HOST=$WALLET_HOST, RPC_HOST=$RPC_HOST, TARGET_CHAIN=$TARGET_CHAIN"
+    log_info "Test Parameters: $TOKEN_A -> $TOKEN_B, Amount: $SWAP_AMOUNT, Min Out: $MIN_AMOUNT_OUT"
+
+    # Step 1: Service health checks
+    if ! check_services; then
+        log_error "Service health checks failed - aborting test"
+        generate_proof "failed_precondition" $(($(date +%s) - start_time))
+        exit 1
+    fi
+
+    # Step 2: Submit swap
+    local swap_tx_hash
+    if ! swap_tx_hash=$(submit_swap); then
+        log_error "Swap submission failed - aborting test"
+        generate_proof "failed_swap" $(($(date +%s) - start_time))
+        exit 1
+    fi
+
+    # Step 3: Monitor DEX events
+    if ! monitor_dex_events "$swap_tx_hash"; then
+        log_error "DEX event monitoring failed"
+        generate_proof "failed_dex_event" $(($(date +%s) - start_time))
+        exit 1
+    fi
+
+    # Step 4: Monitor bridge relay
+    if ! monitor_bridge_relay "$swap_tx_hash"; then
+        log_error "Bridge relay monitoring failed"
+        generate_proof "failed_bridge_relay" $(($(date +%s) - start_time))
+        exit 1
+    fi
+
+    # Step 5: Verify target chain
+    if ! verify_target_chain; then
+        log_error "Target chain verification failed"
+        generate_proof "failed_target_chain" $(($(date +%s) - start_time))
+        exit 1
+    fi
+
+    # Success!
+    local duration=$(($(date +%s) - start_time))
+    log_success "🎉 Roundtrip test completed successfully in ${duration}s!"
+    generate_proof "success" "$duration"
+}
+
+# Cleanup function
+cleanup() {
+    local exit_code=$?
+    local duration=$(($(date +%s) - ${start_time:-$(date +%s)}))
+
+    if [ $exit_code -eq 0 ]; then
+        log_success "Test completed successfully"
+    else
+        log_error "Test failed with exit code $exit_code"
+        generate_proof "failed" "$duration"
+    fi
+
+    exit $exit_code
+}
+
+# Set up cleanup trap
+trap cleanup EXIT
+
+# Run main test
 main "$@"

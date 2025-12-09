@@ -99,3 +99,34 @@
 10:58:03.335063 version@stat F·[3 1] S·3KiB[1KiB 1KiB] Sc·[0.75 0.00]
 10:58:03.338756 db@janitor F·6 G·0
 10:58:03.338756 db@open done T·12.0041ms
+=============== Dec 8, 2025 (IST) ===============
+13:17:57.256191 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+13:17:57.271231 version@stat F·[3 1] S·3KiB[1KiB 1KiB] Sc·[0.75 0.00]
+13:17:57.271231 db@open opening
+13:17:57.271749 journal@recovery F·2
+13:17:57.271749 journal@recovery recovering @24
+13:17:57.278972 journal@recovery recovering @118
+13:17:57.280567 memdb@flush created L0@119 N·12 S·914B "acc..0d0,v58":"tok..BHX,v52"
+13:17:57.280567 version@stat F·[4 1] S·3KiB[2KiB 1KiB] Sc·[1.00 0.00]
+13:17:57.285297 version@stat F·[4 1] S·3KiB[2KiB 1KiB] Sc·[1.00 0.00]
+13:17:57.286344 db@janitor F·8 G·1
+13:17:57.286344 db@janitor removing manifest-119
+13:17:57.286857 db@open done T·15.1128ms
+13:17:57.286857 table@compaction L0·4 -> L1·1 S·3KiB Q·59
+13:17:57.318800 table@build created L1@122 N·21 S·1KiB "acc..dd1,v26":"tok..BHX,v52"
+13:17:57.318800 version@stat F·[0 1] S·1KiB[0B 1KiB] Sc·[0.00 0.00]
+13:17:57.319316 table@compaction committed F-4 S-2KiB Ke·0 D·17 T·32.4589ms
+13:17:57.319849 table@remove removed @23
+13:17:57.319849 table@remove removed @20
+13:17:57.319849 table@remove removed @17
+13:17:57.320363 table@remove removed @16
+=============== Dec 9, 2025 (IST) ===============
+10:28:35.514808 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+10:28:35.535194 version@stat F·[0 1] S·1KiB[0B 1KiB] Sc·[0.00 0.00]
+10:28:35.535194 db@open opening
+10:28:35.535194 journal@recovery F·1
+10:28:35.535194 journal@recovery recovering @121
+10:28:35.536709 version@stat F·[0 1] S·1KiB[0B 1KiB] Sc·[0.00 0.00]
+10:28:35.542436 db@janitor F·4 G·1
+10:28:35.542436 db@janitor removing table-119
+10:28:35.542971 db@open done T·7.7777ms

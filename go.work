@@ -2,7 +2,6 @@ go 1.24.3
 
 use (
 	./bridge-sdk
-	./bridge-sdk/main_bridge
 	./core/relay-chain
 	./libs
 	./parachains

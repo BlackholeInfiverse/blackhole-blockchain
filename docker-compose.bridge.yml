@@ -27,6 +27,7 @@ services:
       - NODE_ENV=production
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - PORT=8084
+      - USE_REAL_BLOCKCHAIN_LISTENERS=true
       - RELAY_PORT=9090
       - DATABASE_PATH=/app/data/bridge_v4.db
       - LOG_FILE=/app/logs/bridge.log
@@ -37,6 +38,7 @@ services:
       - blockchain_data:/data/blockchain:ro
     networks:
       - blackhole-network
+    user: root
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8084/health"]

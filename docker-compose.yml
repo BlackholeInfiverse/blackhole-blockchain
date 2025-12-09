@@ -2,7 +2,7 @@
 
 networks:
   blackhole-network:
-    driver: bridge
+    external: true
     name: blackhole-network
 
 volumes:
@@ -37,9 +37,9 @@ volumes:
 services:
   # BlackHole Blockchain Node 1
   blockchain-node-1:
-    build: 
+    build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: deploy/mainnet/Dockerfile.blockchain
     container_name: blackhole-node-1
     command: ["./blockchain"]
     ports:
@@ -67,7 +67,7 @@ services:
       - blackhole-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -75,9 +75,9 @@ services:
 
   # BlackHole Blockchain Node 2
   blockchain-node-2:
-    build: 
+    build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: deploy/mainnet/Dockerfile.blockchain
     container_name: blackhole-node-2
     command: ["./blockchain"]
     ports:
@@ -113,9 +113,9 @@ services:
 
   # BlackHole Blockchain Node 3
   blockchain-node-3:
-    build: 
+    build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: deploy/mainnet/Dockerfile.blockchain
     container_name: blackhole-node-3
     command: ["./blockchain"]
     ports:
@@ -151,9 +151,9 @@ services:
 
   # BlackHole Blockchain Node 4
   blockchain-node-4:
-    build: 
+    build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: deploy/mainnet/Dockerfile.blockchain
     container_name: blackhole-node-4
     command: ["./blockchain"]
     ports:
@@ -189,9 +189,9 @@ services:
 
   # BlackHole Blockchain Node 5
   blockchain-node-5:
-    build: 
+    build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: deploy/mainnet/Dockerfile.blockchain
     container_name: blackhole-node-5
     command: ["./blockchain"]
     ports:

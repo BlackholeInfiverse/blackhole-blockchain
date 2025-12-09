@@ -2,83 +2,151 @@ package bridgesdk
 
 import (
 	"context"
-	"github.com/sirupsen/logrus"
-	"time"
-	
 	"fmt"
+	"math/big"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"math/big"
+	"github.com/gorilla/websocket"
+	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 // RealBlockchainListener represents a listener for real blockchain events
 type RealBlockchainListener struct {
-	sdk    *BridgeSDK
-	logger *logrus.Logger
+	sdk             BridgeSDKInterface
+	logger          *logrus.Logger
+	ethClient       *ethclient.Client
+	wsClients       []*websocket.Conn
+	mu              sync.Mutex
+	stopCh          chan struct{}
+	contracts       map[string]common.Address // token contract addresses to watch
+	lastBlockNumber uint64
 }
 
 // NewRealBlockchainListener creates a new real blockchain listener
-func NewRealBlockchainListener(sdk *BridgeSDK) *RealBlockchainListener {
+func NewRealBlockchainListener(sdk BridgeSDKInterface) *RealBlockchainListener {
 	return &RealBlockchainListener{
-		sdk:    sdk,
-		logger: sdk.logger,
+		sdk:       sdk,
+		logger:    sdk.GetLogger(),
+		contracts: make(map[string]common.Address),
+		stopCh:    make(chan struct{}),
 	}
 }
 
-// StartEthereumListener starts the Ethereum blockchain listener
+// AddTokenContract adds a token contract to watch
+func (rbl *RealBlockchainListener) AddTokenContract(symbol string, address common.Address) {
+	rbl.mu.Lock()
+	defer rbl.mu.Unlock()
+	rbl.contracts[symbol] = address
+}
+
+// Start starts all blockchain listeners
+func (rbl *RealBlockchainListener) Start(ctx context.Context) error {
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Start Ethereum listener
+	g.Go(func() error {
+		return rbl.StartEthereumListener(ctx)
+	})
+
+	// Start Solana listener
+	// TODO: Fix Solana API usage
+	// g.Go(func() error {
+	// 	return rbl.StartSolanaListener(ctx)
+	// })
+
+	return g.Wait()
+}
+
+// Stop stops all listeners
+func (rbl *RealBlockchainListener) Stop() {
+	close(rbl.stopCh)
+	if rbl.ethClient != nil {
+		rbl.ethClient.Close()
+	}
+	// Close all WebSocket connections
+	rbl.mu.Lock()
+	defer rbl.mu.Unlock()
+	for _, conn := range rbl.wsClients {
+		conn.Close()
+	}
+}
+
+// StartEthereumListener starts the Ethereum blockchain listener with WebSocket subscription
 func (rbl *RealBlockchainListener) StartEthereumListener(ctx context.Context) error {
 	rbl.logger.Info("🔗 Starting real Ethereum blockchain listener...")
 
-	// Get Ethereum RPC URL from SDK config
-	ethRPC := rbl.sdk.config.EthereumRPC
+	// Get Ethereum WebSocket URL (replace http/https with ws/wss)
+	ethRPC := rbl.sdk.GetConfig().EthereumRPC
 	if ethRPC == "" {
-		ethRPC = "https://eth-mainnet.g.alchemy.com/v2/demo" // Fallback to demo RPC
+		ethRPC = "wss://eth-mainnet.g.alchemy.com/v2/demo" // Fallback to demo WebSocket
+	} else {
+		ethRPC = strings.Replace(ethRPC, "http://", "ws://", 1)
+		ethRPC = strings.Replace(ethRPC, "https://", "wss://", 1)
 	}
 
-	// Connect to Ethereum node
-	client, err := ethclient.DialContext(ctx, ethRPC)
+	// Connect to Ethereum node with WebSocket
+	client, err := ethclient.Dial(ethRPC)
 	if err != nil {
-		rbl.logger.Errorf("❌ Failed to connect to Ethereum node: %v", err)
-		return fmt.Errorf("failed to connect to Ethereum: %v", err)
+		rbl.logger.Errorf("❌ Failed to connect to Ethereum WebSocket: %v", err)
+		return fmt.Errorf("failed to connect to Ethereum WebSocket: %v", err)
 	}
-	defer client.Close()
+	rbl.ethClient = client
 
-	rbl.logger.Infof("✅ Connected to Ethereum node: %s", ethRPC)
+	rbl.logger.Infof("✅ Connected to Ethereum WebSocket: %s", ethRPC)
 
-	// Start listening for new blocks
+	// Get current block number to start from
+	header, err := client.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get latest block: %v", err)
+	}
+	rbl.lastBlockNumber = header.Number.Uint64()
+
+	// Start block subscription
+	headers := make(chan *types.Header)
+	sub, err := client.SubscribeNewHead(ctx, headers)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to new headers: %v", err)
+	}
+
+	// Start processing blocks
 	go func() {
-		ticker := time.NewTicker(15 * time.Second) // Poll every 15 seconds
-		defer ticker.Stop()
-
-		var lastBlock uint64 = 0
+		defer sub.Unsubscribe()
 
 		for {
 			select {
-			case <-ctx.Done():
-				rbl.logger.Info("🛑 Ethereum listener stopped")
+			case err := <-sub.Err():
+				rbl.logger.Errorf("❌ Ethereum subscription error: %v", err)
+				// Attempt to resubscribe
+				time.Sleep(5 * time.Second)
+				if err := rbl.StartEthereumListener(ctx); err != nil {
+					rbl.logger.Errorf("❌ Failed to resubscribe to Ethereum: %v", err)
+				}
 				return
-			case <-ticker.C:
-				// Get latest block number
-				currentBlock, err := client.BlockNumber(ctx)
-				if err != nil {
-					rbl.logger.Errorf("❌ Failed to get current block: %v", err)
-					continue
-				}
 
-				// Initialize lastBlock if first run
-				if lastBlock == 0 {
-					lastBlock = currentBlock - 10 // Start from 10 blocks ago
-				}
-
-				// Process new blocks
-				for blockNum := lastBlock + 1; blockNum <= currentBlock; blockNum++ {
-					if err := rbl.processEthereumBlock(ctx, client, blockNum); err != nil {
-						rbl.logger.Warnf("⚠️ Error processing block %d: %v", blockNum, err)
-						continue
+			case header := <-headers:
+				blockNum := header.Number.Uint64()
+				if blockNum > rbl.lastBlockNumber+1 {
+					// We missed some blocks, process them all
+					for i := rbl.lastBlockNumber + 1; i < blockNum; i++ {
+						rbl.processEthereumBlock(ctx, client, i)
 					}
-					lastBlock = blockNum
 				}
+				rbl.processEthereumBlock(ctx, client, blockNum)
+				rbl.lastBlockNumber = blockNum
+
+			case <-rbl.stopCh:
+				rbl.logger.Info("🛑 Ethereum listener stopped by request")
+				return
+
+			case <-ctx.Done():
+				rbl.logger.Info("🛑 Ethereum listener context cancelled")
+				return
 			}
 		}
 	}()
@@ -110,18 +178,18 @@ func (rbl *RealBlockchainListener) processEthereumBlock(ctx context.Context, cli
 				if len(vLog.Topics) > 0 {
 					// Transfer event signature: 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
 					transferEventSig := common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")
-					
+
 					if vLog.Topics[0] == transferEventSig && len(vLog.Topics) >= 3 {
 						// Parse Transfer event
 						event := rbl.parseEthereumTransferLog(vLog, blockNum)
-						
+
 						// Convert to bridge transaction
 						bridgeTx, err := rbl.convertEthereumEventToBridgeTx(event)
 						if err != nil {
 							rbl.logger.Warnf("⚠️ Failed to convert event: %v", err)
 							continue
 						}
-						
+
 						// Process bridge transaction
 						rbl.processBridgeTransaction(bridgeTx)
 					}
@@ -138,7 +206,7 @@ func (rbl *RealBlockchainListener) parseEthereumTransferLog(vLog *types.Log, blo
 	// Extract from and to addresses from topics
 	fromAddr := common.HexToAddress(vLog.Topics[1].Hex())
 	toAddr := common.HexToAddress(vLog.Topics[2].Hex())
-	
+
 	// Extract amount from data (uint256)
 	var amount uint64
 	if len(vLog.Data) >= 32 {
@@ -162,40 +230,10 @@ func (rbl *RealBlockchainListener) parseEthereumTransferLog(vLog *types.Log, blo
 	}
 }
 
-// StartSolanaListener starts the Solana blockchain listener
+// StartSolanaListener starts the Solana blockchain listener with WebSocket subscription
+// TODO: Implement Solana listener with correct API usage
 func (rbl *RealBlockchainListener) StartSolanaListener(ctx context.Context) error {
-	rbl.logger.Info("🔗 Starting real Solana blockchain listener...")
-
-	// Get Solana RPC URL from SDK config
-	solRPC := rbl.sdk.config.SolanaRPC
-	if solRPC == "" {
-		solRPC = "https://api.mainnet-beta.solana.com" // Fallback to mainnet
-	}
-
-	rbl.logger.Infof("✅ Connecting to Solana node: %s", solRPC)
-
-	// Note: Full Solana WebSocket implementation would require solana-go library
-	// For now, we'll use HTTP polling as a real implementation
-	go func() {
-		ticker := time.NewTicker(20 * time.Second) // Poll every 20 seconds
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				rbl.logger.Info("🛑 Solana listener stopped")
-				return
-			case <-ticker.C:
-				// Real Solana implementation would use getSignaturesForAddress
-				// and getTransaction to fetch real transactions
-				// This requires solana-go SDK which we'll implement
-				rbl.logger.Debug("Polling Solana for new transactions...")
-				// TODO: Implement real Solana transaction fetching
-				// For production, use: github.com/gagliardetto/solana-go
-			}
-		}
-	}()
-
+	rbl.logger.Info("🔗 Solana listener not implemented yet")
 	return nil
 }
 

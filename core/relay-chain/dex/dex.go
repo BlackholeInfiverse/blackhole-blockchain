@@ -7,7 +7,65 @@ import (
 	"time"
 
 	"github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain/chain"
+// CircuitBreaker provides emergency stop functionality for DEX operations
+type CircuitBreaker struct {
+	IsOpen       bool // true = breaker open (swaps blocked), false = closed (swaps allowed)
+	Threshold    int  // number of consecutive failures to trigger breaker
+	FailureCount int  // current consecutive failure count
+	mu           sync.Mutex
+}
+
+// NewCircuitBreaker creates a new circuit breaker with default settings
+func NewCircuitBreaker(threshold int) *CircuitBreaker {
+	return &CircuitBreaker{
+		IsOpen:    false, // start closed
+		Threshold: threshold,
+	}
+}
+
+// IsBreakerOpen returns true if the circuit breaker is open
+func (cb *CircuitBreaker) IsBreakerOpen() bool {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	return cb.IsOpen
+}
+
+// Enable closes the circuit breaker (allows swaps)
+func (cb *CircuitBreaker) Enable() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.IsOpen = false
+	cb.FailureCount = 0
+}
+
+// Disable opens the circuit breaker (blocks swaps)
+func (cb *CircuitBreaker) Disable() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.IsOpen = true
+}
+
+// RecordSuccess resets the failure count on successful operation
+func (cb *CircuitBreaker) RecordSuccess() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.FailureCount = 0
+}
+
+// RecordFailure increments failure count and opens breaker if threshold exceeded
+func (cb *CircuitBreaker) RecordFailure() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.FailureCount++
+	if cb.FailureCount >= cb.Threshold {
+		cb.IsOpen = true
+	}
+}
+
+// DAY1 ADDITION – non-breaking
 )
+// DAY1 ADDITION – non-breaking
+const MaxSlippageThreshold = 5.0 // 5% maximum allowed slippage
 
 // LiquidityPool represents a trading pair pool
 type LiquidityPool struct {
@@ -47,14 +105,16 @@ type DEX struct {
 	Pools             map[string]*LiquidityPool `json:"pools"` // key: "TokenA-TokenB"
 	Blockchain        *chain.Blockchain         `json:"-"`
 	BridgeEventLogger BridgeEventLogger         `json:"-"` // Bridge event logger
+	CircuitBreaker    *CircuitBreaker           `json:"-"` // Circuit breaker for emergency stops
 	mu                sync.RWMutex
 }
 
 // NewDEX creates a new DEX instance
 func NewDEX(blockchain *chain.Blockchain) *DEX {
 	return &DEX{
-		Pools:      make(map[string]*LiquidityPool),
-		Blockchain: blockchain,
+		Pools:          make(map[string]*LiquidityPool),
+		Blockchain:     blockchain,
+		CircuitBreaker: NewCircuitBreaker(10), // default threshold: 10 consecutive failures
 	}
 }
 
@@ -264,6 +324,21 @@ func (dex *DEX) ExecuteSwap(tokenIn, tokenOut string, amountIn uint64, minAmount
 	dex.mu.Lock()
 	defer dex.mu.Unlock()
 
+	// Circuit breaker check
+	if dex.CircuitBreaker.IsBreakerOpen() {
+		return 0, fmt.Errorf("circuit breaker is open")
+	}
+
+	// Track success/failure for circuit breaker
+	success := false
+	defer func() {
+		if success {
+			dex.CircuitBreaker.RecordSuccess()
+		} else {
+			dex.CircuitBreaker.RecordFailure()
+		}
+	}()
+
 	pairKey := dex.getPairKey(tokenIn, tokenOut)
 	pool, exists := dex.Pools[pairKey]
 	if !exists {
@@ -284,14 +359,23 @@ func (dex *DEX) ExecuteSwap(tokenIn, tokenOut string, amountIn uint64, minAmount
 	}
 
 	// Calculate output amount
-	amountOut, err := dex.GetSwapQuote(tokenIn, tokenOut, amountIn)
-	if err != nil {
-		return 0, err
-	}
-
-	if amountOut < minAmountOut {
-		return 0, fmt.Errorf("insufficient output amount: got %d, minimum %d", amountOut, minAmountOut)
-	}
+		amountOut, err := dex.GetSwapQuote(tokenIn, tokenOut, amountIn)
+		if err != nil {
+			return 0, err
+		}
+	
+		// DAY1 ADDITION – non-breaking
+		priceImpact, err := dex.CalculatePriceImpact(tokenIn, tokenOut, amountIn)
+		if err != nil {
+			return 0, err
+		}
+		if priceImpact > MaxSlippageThreshold {
+			return 0, fmt.Errorf("slippage too high: %.2f%% exceeds maximum threshold of %.2f%%", priceImpact, MaxSlippageThreshold)
+		}
+	
+		if amountOut < minAmountOut {
+			return 0, fmt.Errorf("insufficient output amount: got %d, minimum %d", amountOut, minAmountOut)
+		}
 
 	// Update pool reserves
 	if tokenIn == pool.TokenA {
@@ -334,6 +418,7 @@ func (dex *DEX) ExecuteSwap(tokenIn, tokenOut string, amountIn uint64, minAmount
 
 	fmt.Printf("✅ Swap executed: %d %s → %d %s (price: %.6f → %.6f)\n",
 		amountIn, tokenIn, amountOut, tokenOut, oldPrice, newPrice)
+	success = true
 	return amountOut, nil
 }
 

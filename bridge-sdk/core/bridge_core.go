@@ -13,36 +13,6 @@ import (
 	"go.etcd.io/bbolt"
 )
 
-// Core types and structures
-type Transaction struct {
-	ID             string     `json:"id"`
-	Hash           string     `json:"hash"`
-	SourceChain    string     `json:"source_chain"`
-	DestChain      string     `json:"dest_chain"`
-	SourceAddress  string     `json:"source_address"`
-	DestAddress    string     `json:"dest_address"`
-	TokenSymbol    string     `json:"token_symbol"`
-	Amount         string     `json:"amount"`
-	Fee            string     `json:"fee"`
-	Status         string     `json:"status"`
-	CreatedAt      time.Time  `json:"created_at"`
-	CompletedAt    *time.Time `json:"completed_at,omitempty"`
-	ProcessingTime string     `json:"processing_time,omitempty"`
-	Confirmations  int        `json:"confirmations"`
-	BlockNumber    uint64     `json:"block_number"`
-}
-
-type Event struct {
-	ID          string                 `json:"id"`
-	Type        string                 `json:"type"`
-	Chain       string                 `json:"chain"`
-	TxHash      string                 `json:"tx_hash"`
-	Timestamp   time.Time              `json:"timestamp"`
-	Data        map[string]interface{} `json:"data"`
-	Processed   bool                   `json:"processed"`
-	ProcessedAt *time.Time             `json:"processed_at,omitempty"`
-	BlockNumber uint64                 `json:"block_number"`
-}
 
 type TransferRequest struct {
 	FromChain   string `json:"from_chain"`
@@ -53,19 +23,6 @@ type TransferRequest struct {
 	Amount      string `json:"amount"`
 }
 
-// Configuration
-type Config struct {
-	EthereumRPC             string `json:"ethereum_rpc"`
-	SolanaRPC               string `json:"solana_rpc"`
-	BlackHoleRPC            string `json:"blackhole_rpc"`
-	DatabasePath            string `json:"database_path"`
-	LogLevel                string `json:"log_level"`
-	MaxRetries              int    `json:"max_retries"`
-	RetryDelayMs            int    `json:"retry_delay_ms"`
-	CircuitBreakerEnabled   bool   `json:"circuit_breaker_enabled"`
-	ReplayProtectionEnabled bool   `json:"replay_protection_enabled"`
-	EnableColoredLogs       bool   `json:"enable_colored_logs"`
-}
 
 // Statistics types
 type BridgeStats struct {

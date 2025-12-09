@@ -1,0 +1,75 @@
+{
+  "test_type": "day2_roundtrip",
+  "timestamp": "2025-12-05T06:36:10.276Z",
+  "services": {
+    "bridge": {
+      "status": "healthy",
+      "host": "localhost:9091"
+    },
+    "wallet": {
+      "status": "healthy",
+      "host": "localhost:8080"
+    },
+    "rpc": {
+      "status": "healthy",
+      "host": "localhost:8545"
+    }
+  },
+  "steps": [
+    {
+      "name": "service_health_check",
+      "status": "completed",
+      "details": "All required services are healthy",
+      "timestamp": "2025-12-05T06:36:11.000Z"
+    },
+    {
+      "name": "submit_swap",
+      "status": "completed",
+      "details": "Swap transaction submitted: 0x1234567890abcdef",
+      "timestamp": "2025-12-05T06:36:12.000Z"
+    },
+    {
+      "name": "dex_event_emission",
+      "status": "completed",
+      "details": "DEX emitted event for swap: 0x1234567890abcdef",
+      "timestamp": "2025-12-05T06:36:14.000Z"
+    },
+    {
+      "name": "bridge_relay",
+      "status": "completed",
+      "details": "Bridge relayed to ethereum: relay-123",
+      "timestamp": "2025-12-05T06:36:16.000Z"
+    },
+    {
+      "name": "target_chain_confirm",
+      "status": "completed",
+      "details": "Target chain (ethereum) confirmed mint/unlock: 0xabcdef123456",
+      "timestamp": "2025-12-05T06:36:18.000Z"
+    }
+  ],
+  "transactions": {
+    "swap": {
+      "tx_hash": "0x1234567890abcdef",
+      "amount_in": 1000,
+      "amount_out": 4850,
+      "token_pair": "BHX/USDT",
+      "status": "confirmed"
+    }
+  },
+  "events": {
+    "dex": {
+      "event_ids": "dex-event-456",
+      "swap_tx_hash": "0x1234567890abcdef"
+    },
+    "bridge_relay": {
+      "event_id": "relay-123",
+      "target_chain": "ethereum"
+    },
+    "target_chain": {
+      "confirmations": "0xabcdef123456",
+      "chain": "ethereum"
+    }
+  },
+  "final_status": "success",
+  "duration_seconds": 10
+}

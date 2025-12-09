@@ -2,10 +2,7 @@ module github.com/Shivam-Patel-G/blackhole-blockchain
 
 go 1.24.3
 
-require (
-	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250729115313-0c9c4e33acaf
-	github.com/syndtr/goleveldb v1.0.0
-)
+require github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250729115313-0c9c4e33acaf
 
 require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
@@ -94,6 +91,7 @@ require (
 	github.com/quic-go/webtransport-go v0.8.1-0.20241018022711-4ac2c9250e66 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
+	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	go.uber.org/dig v1.18.0 // indirect
 	go.uber.org/fx v1.23.0 // indirect

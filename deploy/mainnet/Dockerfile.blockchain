@@ -1,0 +1,75 @@
+# BlackHole Blockchain Node - Optimized Multi-Stage Build
+FROM golang:1.24.3-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    git \
+    gcc \
+    musl-dev \
+    sqlite-dev \
+    ca-certificates
+
+# Set working directory
+WORKDIR /app
+
+# Copy only the necessary files for dependency resolution
+COPY go.mod go.sum ./
+RUN mkdir -p core && \
+    touch core/go.mod core/go.sum && \
+    if [ -f core/go.mod ]; then \
+        cp core/go.mod core/go.mod.bak && \
+        cp core/go.sum core/go.sum.bak; \
+    fi
+
+# Download dependencies
+RUN go mod download
+
+# Copy the rest of the application
+COPY . .
+
+# Restore the original core module files if they were backed up
+RUN if [ -f core/go.mod.bak ]; then \
+        mv core/go.mod.bak core/go.mod && \
+        mv core/go.sum.bak core/go.sum; \
+    fi
+
+# Build the application
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" \
+    -o /app/blockchain ./core/relay-chain/cmd/relay/main.go
+
+# Final runtime image
+FROM alpine:latest
+
+# Install runtime dependencies
+RUN apk --no-cache add \
+    ca-certificates \
+    sqlite \
+    wget \
+    && addgroup -g 1001 appgroup \
+    && adduser -u 1001 -S appuser -G appgroup
+
+# Create application directories
+WORKDIR /app
+RUN mkdir -p data logs \
+    && chown -R appuser:appgroup /app
+
+# Copy binary from builder
+COPY --from=builder /app/blockchain ./
+
+# Switch to non-root user
+USER appuser
+
+# Expose ports
+EXPOSE 8080 8545 30303
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+# Default environment variables
+ENV NODE_ENV=mainnet
+ENV LOG_LEVEL=info
+ENV DOCKER_MODE=true
+
+# Default command
+CMD ["./blockchain"]

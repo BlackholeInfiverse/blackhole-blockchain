@@ -109,7 +109,6 @@ Cargo.lock
 
 # Go
 vendor/
-*.sum
 
 # Temporary files
 *.tmp

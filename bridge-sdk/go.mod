@@ -7,9 +7,9 @@ toolchain go1.24.4
 require github.com/ethereum/go-ethereum v1.14.12
 
 require (
-	github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk v0.0.0-20250812104124-230f597f26ca
 	github.com/Shivam-Patel-G/blackhole-blockchain/core/relay-chain v0.0.0-20250619043033-c8a59a60e299
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2
 	github.com/sirupsen/logrus v1.9.3
@@ -115,7 +115,7 @@ require (
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/mod v0.26.0 // indirect
 	golang.org/x/net v0.42.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/sync v0.16.0
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/tools v0.35.0 // indirect
@@ -153,7 +153,9 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	google.golang.org/genproto v0.0.0-20190306203927-b5d61aea6440 // indirect
+	google.golang.org/genproto v0.0.0-20200331122359-1ee6d9798940 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 
 )
+
+replace github.com/Shivam-Patel-G/blackhole-blockchain/bridge-sdk/main_bridge => ./main_bridge

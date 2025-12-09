@@ -86,13 +86,13 @@ services:
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
       - P2P_PORT=30303
-      - DATABASE_PATH=./data/blockchain.db
+      - DATABASE_PATH=/data/blockchain/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=blackhole-node-1
     volumes:
-      - blockchain-data-1:/app/data
+      - blockchain-data-1:/data/blockchain
       - blockchain-logs-1:/app/logs
     networks:
       - blackhole-network
@@ -121,13 +121,13 @@ services:
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
       - P2P_PORT=30303
-      - DATABASE_PATH=./data/blockchain.db
+      - DATABASE_PATH=/data/blockchain/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=blackhole-node-2
     volumes:
-      - blockchain-data-2:/app/data
+      - blockchain-data-2:/data/blockchain
       - blockchain-logs-2:/app/logs
     networks:
       - blackhole-network
@@ -159,13 +159,13 @@ services:
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
       - P2P_PORT=30303
-      - DATABASE_PATH=./data/blockchain.db
+      - DATABASE_PATH=/data/blockchain/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=blackhole-node-3
     volumes:
-      - blockchain-data-3:/app/data
+      - blockchain-data-3:/data/blockchain
       - blockchain-logs-3:/app/logs
     networks:
       - blackhole-network
@@ -197,13 +197,13 @@ services:
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
       - P2P_PORT=30303
-      - DATABASE_PATH=./data/blockchain.db
+      - DATABASE_PATH=/data/blockchain/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=blackhole-node-4
     volumes:
-      - blockchain-data-4:/app/data
+      - blockchain-data-4:/data/blockchain
       - blockchain-logs-4:/app/logs
     networks:
       - blackhole-network
@@ -235,13 +235,13 @@ services:
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
       - P2P_PORT=30303
-      - DATABASE_PATH=./data/blockchain.db
+      - DATABASE_PATH=/data/blockchain/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=blackhole-node-5
     volumes:
-      - blockchain-data-5:/app/data
+      - blockchain-data-5:/data/blockchain
       - blockchain-logs-5:/app/logs
     networks:
       - blackhole-network
@@ -277,14 +277,14 @@ services:
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
       - P2P_PORT=30303
-      - DATABASE_PATH=./data/blockchain.db
+      - DATABASE_PATH=/data/blockchain/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=dashboard-node-1
       - DASHBOARD_TYPE=main
     volumes:
-      - dashboard-data-1:/app/data
+      - dashboard-data-1:/data/blockchain
       - dashboard-logs-1:/app/logs
     networks:
       - blackhole-network
@@ -313,14 +313,14 @@ services:
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
       - P2P_PORT=30303
-      - DATABASE_PATH=./data/blockchain.db
+      - DATABASE_PATH=/data/blockchain/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=dashboard-node-2
       - DASHBOARD_TYPE=main
     volumes:
-      - dashboard-data-2:/app/data
+      - dashboard-data-2:/data/blockchain
       - dashboard-logs-2:/app/logs
     networks:
       - blackhole-network
@@ -352,14 +352,14 @@ services:
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
       - P2P_PORT=30303
-      - DATABASE_PATH=./data/blockchain.db
+      - DATABASE_PATH=/data/blockchain/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=dashboard-node-3
       - DASHBOARD_TYPE=main
     volumes:
-      - dashboard-data-3:/app/data
+      - dashboard-data-3:/data/blockchain
       - dashboard-logs-3:/app/logs
     networks:
       - blackhole-network
@@ -391,14 +391,14 @@ services:
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
       - P2P_PORT=30303
-      - DATABASE_PATH=./data/blockchain.db
+      - DATABASE_PATH=/data/blockchain/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=dashboard-node-4
       - DASHBOARD_TYPE=main
     volumes:
-      - dashboard-data-4:/app/data
+      - dashboard-data-4:/data/blockchain
       - dashboard-logs-4:/app/logs
     networks:
       - blackhole-network
@@ -430,14 +430,14 @@ services:
       - BLOCKCHAIN_PORT=8080
       - RPC_PORT=8545
       - P2P_PORT=30303
-      - DATABASE_PATH=./data/blockchain.db
+      - DATABASE_PATH=/data/blockchain/blockchain.db
       - LOG_FILE=./logs/blockchain.log
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=dashboard-node-5
       - DASHBOARD_TYPE=main
     volumes:
-      - dashboard-data-5:/app/data
+      - dashboard-data-5:/data/blockchain
       - dashboard-logs-5:/app/logs
     networks:
       - blackhole-network

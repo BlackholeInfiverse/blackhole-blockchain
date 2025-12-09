@@ -1,8 +1,7 @@
 
 networks:
   blackhole-network:
-    driver: bridge
-    name: blackhole-network
+    external: true
 
 volumes:
   blockchain-data-1:
@@ -31,11 +30,12 @@ volumes:
 services:
   # BlackHole Blockchain Node 1
   blockchain-node-1:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     container_name: blackhole-node-1
     command: ["./blockchain"]
+    user: root
     ports:
       - "8080:8080"   # Dashboard
       - "8545:8545"   # RPC endpoint
@@ -52,16 +52,16 @@ services:
       - PEER_DISCOVERY=${PEER_DISCOVERY:-true}
       - MAX_PEERS=${MAX_PEERS:-50}
       - NODE_ID=blackhole-node-1
-      - BLOCKCHAIN_IDENTITY_DIR=/data/blockchain
+      - BLOCKCHAIN_IDENTITY_DIR=/app/data/blockchain
     volumes:
       - blockchain-data-1:/app/data
       - blockchain-logs-1:/app/logs
-      - blockchain_data:/data/blockchain
+      - blockchain_data:/app/data/blockchain
     networks:
       - blackhole-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -69,11 +69,12 @@ services:
 
   # BlackHole Blockchain Node 2
   blockchain-node-2:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     container_name: blackhole-node-2
     command: ["./blockchain"]
+    user: root
     ports:
       - "8081:8080"   # Dashboard
       - "8546:8545"   # RPC endpoint
@@ -99,7 +100,7 @@ services:
     depends_on:
       - blockchain-node-1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -107,11 +108,12 @@ services:
 
   # BlackHole Blockchain Node 3
   blockchain-node-3:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     container_name: blackhole-node-3
     command: ["./blockchain"]
+    user: root
     ports:
       - "8082:8080"   # Dashboard
       - "8547:8545"   # RPC endpoint
@@ -137,7 +139,7 @@ services:
     depends_on:
       - blockchain-node-1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -145,11 +147,12 @@ services:
 
   # BlackHole Blockchain Node 4
   blockchain-node-4:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     container_name: blackhole-node-4
     command: ["./blockchain"]
+    user: root
     ports:
       - "8083:8080"   # Dashboard
       - "8548:8545"   # RPC endpoint
@@ -175,7 +178,7 @@ services:
     depends_on:
       - blockchain-node-1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -183,11 +186,12 @@ services:
 
   # BlackHole Blockchain Node 5
   blockchain-node-5:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     container_name: blackhole-node-5
     command: ["./blockchain"]
+    user: root
     ports:
       - "8085:8080"   # Dashboard
       - "8549:8545"   # RPC endpoint
@@ -213,7 +217,7 @@ services:
     depends_on:
       - blockchain-node-1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
