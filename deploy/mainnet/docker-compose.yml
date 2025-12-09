@@ -54,6 +54,7 @@ services:
       - HTTP_PORT=8080
       - NODE_KEY=node1.key
       - IS_BOOTNODE=true
+      - REACT_APP_BRIDGE_API_URL=https://blackhole-mainnet.com/bridge
     volumes:
       - node1-data:/data/blockchain
       - node1-logs:/app/logs
@@ -268,16 +269,16 @@ services:
     networks:
       - blackhole-network
     command: >
-      sh -c "mkdir -p /etc/letsencrypt/live/blackhole-mainnet.com && \
-      openssl req -x509 -nodes -newkey rsa:4096 \
-      -keyout /etc/letsencrypt/live/blackhole-mainnet.com/privkey.pem \
-      -out /etc/letsencrypt/live/blackhole-mainnet.com/fullchain.pem \
-      -days 365 \
-      -subj '/CN=blackhole-mainnet.com' && \
-      certbot certonly --webroot --webroot-path=/var/www/html \
-      --email admin@blackhole.com --agree-tos --no-eff-email \
-      -d blackhole-mainnet.com --keep-until-expiring --non-interactive \
-      --config-dir /etc/letsencrypt --work-dir /var/lib/letsencrypt \
-      --logs-dir /var/log/letsencrypt"
+          sh -c "mkdir -p /etc/letsencrypt/live/blackhole-mainnet.com && \
+          openssl req -x509 -nodes -newkey rsa:4096 \
+          -keyout /etc/letsencrypt/live/blackhole-mainnet.com/privkey.pem \
+          -out /etc/letsencrypt/live/blackhole-mainnet.com/fullchain.pem \
+          -days 365 \
+          -subj '/CN=blackhole-mainnet.com' && \
+          certbot certonly --staging --webroot --webroot-path=/var/www/html \
+          --email admin@blackhole.com --agree-tos --no-eff-email \
+          -d blackhole-mainnet.com --keep-until-expiring --non-interactive \
+          --config-dir /etc/letsencrypt --work-dir /var/lib/letsencrypt \
+          --logs-dir /var/log/letsencrypt"
     depends_on:
       - nginx
