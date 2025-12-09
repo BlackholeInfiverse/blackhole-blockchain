@@ -35,7 +35,7 @@ RUN if [ -f core/go.mod.bak ]; then \
 
 # Build the application
 RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" \
-    -o /app/blockchain ./core/relay-chain/cmd/relay/main.go
+    -o /app/blockchain ./cmd/relay/main.go
 
 # Final runtime image
 FROM alpine:latest
