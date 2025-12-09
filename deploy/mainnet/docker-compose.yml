@@ -201,6 +201,7 @@ services:
       - DATABASE_PATH=/app/data/bridge.db
       - LOG_FILE=/app/logs/bridge.log
       - BLOCKCHAIN_RPC_URL=http://node1:8545
+      - LOCAL_RPC_URL=http://blackhole-node-1:8545
     volumes:
       - bridge-data:/app/data
       - bridge-logs:/app/logs

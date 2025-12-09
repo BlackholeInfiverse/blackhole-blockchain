@@ -3,6 +3,9 @@ package wallet
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 // Global blockchain client variable
@@ -17,11 +20,23 @@ func InitBlockchainClient(port int) error {
 
 // CheckTokenBalance displays the token balance for a wallet
 func CheckTokenBalance(ctx context.Context, user *User, walletName, password, tokenSymbol string) (uint64, error) {
-	// Get wallet
-	wallet, _, _, err := GetWalletDetails(ctx, user, walletName, password)
+	// Query the wallet directly from DB to get address without decrypting keys
+	var wallet Wallet
+	err := WalletCollection.FindOne(ctx, bson.M{
+		"user_id":     user.ID,
+		"wallet_name": walletName,
+	}).Decode(&wallet)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get wallet: %v", err)
 	}
+
+	// Update last accessed time
+	now := time.Now()
+	WalletCollection.UpdateOne(ctx, bson.M{
+		"_id": wallet.ID,
+	}, bson.M{
+		"$set": bson.M{"last_accessed": now},
+	})
 
 	// Get token balance
 	balance, err := DefaultBlockchainClient.GetTokenBalance(wallet.Address, tokenSymbol)

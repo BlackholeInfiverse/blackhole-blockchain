@@ -4496,9 +4496,15 @@ func handleCheckBalanceCached(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get wallet address
+	// Get wallet address without decryption
 	ctx := context.Background()
-	walletDoc, _, _, err := wallet.GetWalletDetails(ctx, user, req.WalletName, req.Password)
+	var walletDoc struct {
+		Address string `bson:"address"`
+	}
+	err = wallet.WalletCollection.FindOne(ctx, bson.M{
+		"user_id":     user.ID,
+		"wallet_name": req.WalletName,
+	}).Decode(&walletDoc)
 	if err != nil {
 		logError("CHECK_BALANCE_CACHED_WALLET", fmt.Errorf("failed to get wallet '%s' for user '%s': %v", req.WalletName, user.Username, err))
 		sendJSONResponse(w, APIResponse{Success: false, Message: "Failed to access wallet"}, http.StatusInternalServerError)
