@@ -1,15 +1,33 @@
+# Build stage
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the binary
+RUN go build -o wallet .
+
 # Production stage
-FROM nginx:alpine
+FROM alpine:latest
 
-# Copy static wallet web UI files
-COPY wallet-web-ui/ /usr/share/nginx/html/
+# Install ca-certificates for HTTPS
+RUN apk --no-cache add ca-certificates
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /root/
 
-# Expose port 80
-EXPOSE 80
+# Copy the binary from builder stage
+COPY --from=builder /app/wallet .
 
+# Expose port 9000
+EXPOSE 9000
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Run the wallet service
+CMD ["./wallet", "-web", "-port", "9000", "-peerAddr", "/dns4/blackhole-node-1/tcp/3000/p2p/12D3KooWMRRmpZVtmSC8ShFxR5kVLdycGHuLtuvxMtvgAhLN22ku"]
